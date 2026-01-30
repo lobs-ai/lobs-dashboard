@@ -4,17 +4,14 @@ import PackageDescription
 let package = Package(
   name: "LobsDashboard",
   platforms: [
-    .macOS(.v13)
+    .macOS(.13)
   ],
   products: [
     .executable(name: "lobs-dashboard", targets: ["LobsDashboard"])
   ],
   targets: [
     .executableTarget(
-      name: "LobsDashboard",
-      resources: [
-        .process("Resources")
-      ]
+      name: "LobsDashboard"
     )
   ]
 )

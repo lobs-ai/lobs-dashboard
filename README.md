@@ -1,35 +1,25 @@
-# lobs-dashboard (skeleton)
+# lobs-dashboard
 
-Minimal localhost-only dashboard that proves the loop:
+Local macOS SwiftUI app for operating `lobs-control`.
 
-**task → state → artifact → human approval**
+- No networking.
+- Reads/writes `lobs-control/state/*.json`.
+- Runs `git` under the hood to commit (and optionally push) changes.
 
 ## Run (macOS)
 
 ```bash
-cd lobs-dashboard
+cd ~/lobs-dashboard
 swift run lobs-dashboard
 ```
 
-Then open:
-- http://127.0.0.1:8080
+## First-run usage
+- Click **Choose lobs-control…** and select your `lobs-control` folder.
+- Select a task to view its artifact.
+- Use ✅ Approve / ❌ Reject to update status (writes `state/tasks.json`).
+- The app will run `git add -A`, `git commit`, and (if enabled) `git push`.
 
-## Data storage
-
-On first run, it seeds:
-- a task in `tasks.json`
-- a markdown artifact in `artifacts/`
-- a JSONL log in `log.jsonl`
-
-The server prints the exact paths on startup.
-
-## Endpoints
-- `GET /` → UI
-- `GET /api/tasks` → tasks array
-- `GET /api/tasks/{id}/artifact` → markdown text
-- `POST /api/tasks/{id}/approve` → sets status=completed
-- `POST /api/tasks/{id}/reject` → sets status=rejected
-
-## Notes
-- Uses `Network` (`NWListener`) for a tiny HTTP server.
-- No external frameworks.
+## Notes for Codex
+- Repo path is configurable via `@AppStorage("repoPath")`.
+- Git is executed via `Process` calling `/usr/bin/env git`.
+- Task store format: `state/tasks.json` (schemaVersion=1).
