@@ -307,7 +307,7 @@ final class AppViewModel: ObservableObject {
     optimisticUpdate(taskId: id, localMutation: {
       $0.status = .completed
       $0.reviewState = .approved
-      if $0.workState == nil { $0.workState = .completed }
+      $0.workState = nil
     }) { repoURL in
       let store = LobsControlStore(repoRoot: repoURL)
       try store.setStatus(taskId: id, status: .completed)
