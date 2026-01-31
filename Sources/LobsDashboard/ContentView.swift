@@ -40,7 +40,11 @@ struct ContentView: View {
       .frame(minWidth: 260)
 
     } content: {
-      BoardView(vm: vm)
+      BoardView(
+        vm: vm,
+        showAllCompleted: $showAllCompleted,
+        showAllRejected: $showAllRejected
+      )
         .navigationTitle("Lobs Dashboard")
         .toolbar {
           ToolbarItemGroup {
@@ -171,6 +175,8 @@ private struct SidebarView: View {
 
 private struct BoardView: View {
   @ObservedObject var vm: AppViewModel
+  @Binding var showAllCompleted: Bool
+  @Binding var showAllRejected: Bool
 
   var body: some View {
     ScrollView(.horizontal) {
