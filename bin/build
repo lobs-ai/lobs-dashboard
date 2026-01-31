@@ -9,7 +9,14 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/.build"
 APP_DIR="${BUILD_DIR}/${APP_NAME}.app"
 
-swift build -c "${CONFIG}" --product lobs-dashboard
+XDG_CACHE_HOME="${BUILD_DIR}/.cache"
+export XDG_CACHE_HOME
+export CLANG_MODULE_CACHE_PATH="${XDG_CACHE_HOME}/clang/ModuleCache"
+export SWIFTPM_DISABLE_SANDBOX=1
+
+mkdir -p "${CLANG_MODULE_CACHE_PATH}"
+
+swift build --disable-sandbox -c "${CONFIG}" --product lobs-dashboard
 
 mkdir -p "${APP_DIR}/Contents/MacOS"
 mkdir -p "${APP_DIR}/Contents/Resources"

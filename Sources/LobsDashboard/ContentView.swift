@@ -553,8 +553,6 @@ private struct BoardColumn: View {
   var body: some View {
     let isCompletedLike = title.lowercased() == "completed" || title.lowercased() == "done"
     let isRejected = title.lowercased() == "rejected"
-    let isInbox = title.lowercased() == "inbox"
-
     let showAll = isCompletedLike ? showAllCompleted : (isRejected ? showAllRejected : true)
     let visibleTasks = (isCompletedLike || isRejected) && !showAll
       ? Array(tasks.sorted { $0.createdAt > $1.createdAt }.prefix(vm.completedShowRecent))
@@ -595,7 +593,7 @@ private struct BoardColumn: View {
 
         Spacer()
 
-        if isCompleted {
+        if isCompletedLike {
           Button {
             withAnimation(.easeInOut(duration: 0.2)) {
               showAllCompleted.toggle()
@@ -638,7 +636,7 @@ private struct BoardColumn: View {
               }
           }
 
-          if (isCompleted || isRejected) && !showAll && tasks.count > vm.completedShowRecent {
+          if (isCompletedLike || isRejected) && !showAll && tasks.count > vm.completedShowRecent {
             Text("+\(tasks.count - vm.completedShowRecent) more")
               .font(.caption2)
               .foregroundStyle(.secondary)
@@ -832,7 +830,7 @@ private struct TaskDetailPopover: View {
               lastAutosavedTitle = editTitle
               lastAutosavedNotes = editNotes
             }
-            .onChange(of: editTitle) { _, _ in scheduleAutosave() }
+            .onChange(of: editTitle) { _ in scheduleAutosave() }
 
           HStack(spacing: 6) {
             DetailTag(text: task.owner.rawValue, icon: "person", color: .purple)
@@ -853,7 +851,7 @@ private struct TaskDetailPopover: View {
             TextField("Add notes…", text: $editNotes, axis: .vertical)
               .textFieldStyle(.roundedBorder)
               .lineLimit(6, reservesSpace: true)
-              .onChange(of: editNotes) { _, _ in scheduleAutosave() }
+              .onChange(of: editNotes) { _ in scheduleAutosave() }
           }
 
           Button {
