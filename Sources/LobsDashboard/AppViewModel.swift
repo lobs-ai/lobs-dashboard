@@ -39,6 +39,9 @@ final class AppViewModel: ObservableObject {
     }
 
     do {
+      // Always sync with remote first so the dashboard operates on the latest state.
+      try syncRepo(repoURL: repoURL)
+
       let store = LobsControlStore(repoRoot: repoURL)
       let file = try store.loadTasks()
       tasks = file.tasks
@@ -78,6 +81,9 @@ final class AppViewModel: ObservableObject {
     guard !trimmedTitle.isEmpty, let repoURL else { return }
 
     do {
+      // Pull before making any changes.
+      try syncRepo(repoURL: repoURL)
+
       let store = LobsControlStore(repoRoot: repoURL)
       let task = try store.addTask(
         title: trimmedTitle,
@@ -85,14 +91,6 @@ final class AppViewModel: ObservableObject {
         status: .inbox,
         notes: trimmedNotes
       )
-
-      _ = try Git.run(["add", "-A"], cwd: repoURL)
-
-      let stagedClean = try Git.run(["diff", "--cached", "--quiet"], cwd: repoURL)
-      if stagedClean.exitCode == 0 {
-        reload()
-        return
-      }
 
       try commitAndMaybePush(
         repoURL: repoURL,
@@ -105,6 +103,22 @@ final class AppViewModel: ObservableObject {
     } catch {
       lastError = String(describing: error)
     }
+  }
+
+  private func syncRepo(repoURL: URL) throws {
+    // "Easy mode" sync:
+    // - no rebase
+    // - tolerate force-pushes
+    // - always operate on origin/main
+
+    let remotes = try Git.run(["remote"], cwd: repoURL)
+    if remotes.exitCode != 0 { return }
+    let hasOrigin = remotes.stdout.split(separator: "\n").map(String.init).contains("origin")
+    if !hasOrigin { return }
+
+    _ = try Git.run(["fetch", "origin"], cwd: repoURL)
+    _ = try Git.run(["reset", "--hard", "origin/main"], cwd: repoURL)
+    _ = try Git.run(["clean", "-fd"], cwd: repoURL)
   }
 
   private func commitAndMaybePush(repoURL: URL, message: String, autoPush: Bool) throws {
@@ -141,6 +155,9 @@ final class AppViewModel: ObservableObject {
     guard let repoURL, let id = selectedTaskId else { return }
 
     do {
+      // Pull (sync) before making any changes.
+      try syncRepo(repoURL: repoURL)
+
       let store = LobsControlStore(repoRoot: repoURL)
       try store.setStatus(taskId: id, status: status)
 
@@ -161,6 +178,9 @@ final class AppViewModel: ObservableObject {
     guard let repoURL, let id = selectedTaskId else { return }
 
     do {
+      // Pull (sync) before making any changes.
+      try syncRepo(repoURL: repoURL)
+
       let store = LobsControlStore(repoRoot: repoURL)
       try store.setReviewState(taskId: id, reviewState: reviewState)
 
@@ -201,6 +221,9 @@ final class AppViewModel: ObservableObject {
   func moveTask(taskId: String, to status: TaskStatus) {
     guard let repoURL else { return }
     do {
+      // Pull (sync) before making any changes.
+      try syncRepo(repoURL: repoURL)
+
       let store = LobsControlStore(repoRoot: repoURL)
       try store.setStatus(taskId: taskId, status: status)
       try commitAndMaybePush(
