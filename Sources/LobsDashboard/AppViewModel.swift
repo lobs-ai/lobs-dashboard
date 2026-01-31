@@ -43,12 +43,7 @@ final class AppViewModel: ObservableObject {
       let file = try store.loadTasks()
       tasks = file.tasks
       lastError = nil
-
-      if let id = selectedTaskId, let t = tasks.first(where: { $0.id == id }), let ap = t.artifactPath {
-        artifactText = try store.readArtifact(relativePath: ap)
-      } else {
-        artifactText = "(select a task)"
-      }
+      try loadArtifactForSelected(store: store)
 
     } catch {
       lastError = String(describing: error)
@@ -57,7 +52,7 @@ final class AppViewModel: ObservableObject {
 
   func selectTask(_ task: DashboardTask) {
     selectedTaskId = task.id
-    reload()
+    loadArtifactForSelected()
   }
 
   func approveSelected(autoPush: Bool) {
@@ -154,6 +149,24 @@ final class AppViewModel: ObservableObject {
 
     } catch {
       lastError = String(describing: error)
+    }
+  }
+
+  func loadArtifactForSelected() {
+    guard let repoURL else { return }
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try loadArtifactForSelected(store: store)
+    } catch {
+      lastError = String(describing: error)
+    }
+  }
+
+  private func loadArtifactForSelected(store: LobsControlStore) throws {
+    if let id = selectedTaskId, let t = tasks.first(where: { $0.id == id }), let ap = t.artifactPath {
+      artifactText = try store.readArtifact(relativePath: ap)
+    } else {
+      artifactText = "(select a task)"
     }
   }
 }

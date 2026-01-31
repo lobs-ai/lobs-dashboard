@@ -1,6 +1,6 @@
 # lobs-dashboard
 
-Local macOS SwiftUI app for operating `lobs-control`.
+Local macOS SwiftUI app for operating `lobs-control` tasks.
 
 - No networking.
 - Reads/writes `lobs-control/state/*.json`.
@@ -22,11 +22,13 @@ open .build/LobsDashboard.app
 
 ## First-run usage
 - Click **Choose lobs-control…** and select your `lobs-control` folder.
-- Select a task to view its artifact.
+- Select a task to view its artifact (if `artifactPath` is set).
 - Use ✅ Approve / ❌ Reject to update status (writes `state/tasks.json`).
 - The app will run `git add -A`, `git commit`, and (if enabled) `git push`.
 
 ## Notes for Codex
 - Repo path is configurable via `@AppStorage("repoPath")`.
 - Git is executed via `Process` calling `/usr/bin/env git`.
-- Task store format: `state/tasks.json` (schemaVersion=1).
+- Task store format: `state/tasks.json` (schemaVersion=2).
+- Task fields: `id`, `title`, `status`, `owner`, `createdAt`, `updatedAt`, `artifactPath?`, `notes?`.
+- Unknown/new statuses are displayed under **Other** so the UI stays resilient.
