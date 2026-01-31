@@ -13,15 +13,24 @@ final class AppViewModel: ObservableObject {
   @Published var artifactText: String = "(select a task)"
   @Published var lastError: String? = nil
 
+  /// Transient error banner — shown briefly then auto-dismissed.
+  @Published var errorBanner: String? = nil
+
+  /// Whether a background git operation is in flight.
+  @Published var isGitBusy: Bool = false
+
   // Kanban UX
   @Published var searchText: String = ""
-  @Published var ownerFilter: String = "all" // "all" | "lobs" | "rafe" | "other"
+  @Published var ownerFilter: String = "all"
   @Published var wipLimitActive: Int = 6
 
   // Completed hygiene
   @Published var completedShowRecent: Int = 30
   @Published var autoArchiveCompleted: Bool = false
   @Published var archiveCompletedAfterDays: Int = 30
+
+  // Popover state for task detail
+  @Published var popoverTaskId: String? = nil
 
   init() {
     repoPath = settings.string(forKey: repoPathKey) ?? ""
@@ -49,12 +58,10 @@ final class AppViewModel: ObservableObject {
     }
 
     do {
-      // Always sync with remote first so the dashboard operates on the latest state.
       try syncRepo(repoURL: repoURL)
 
       let store = LobsControlStore(repoRoot: repoURL)
 
-      // Optional hygiene: archive old completed tasks.
       if autoArchiveCompleted {
         try store.archiveCompleted(olderThanDays: archiveCompletedAfterDays)
       }
@@ -71,24 +78,110 @@ final class AppViewModel: ObservableObject {
 
   func selectTask(_ task: DashboardTask) {
     selectedTaskId = task.id
+    popoverTaskId = task.id
     loadArtifactForSelected()
   }
 
+  // MARK: - Optimistic + Async Helpers
+
+  /// Show error banner that auto-dismisses after a few seconds.
+  private func flashError(_ message: String) {
+    errorBanner = message
+    Task {
+      try? await Task.sleep(nanoseconds: 5_000_000_000)
+      if errorBanner == message { errorBanner = nil }
+    }
+  }
+
+  /// Optimistically update a task locally, then do git work in background.
+  /// On failure, reload from disk and show banner.
+  private func optimisticUpdate(
+    taskId: String,
+    localMutation: (inout DashboardTask) -> Void,
+    gitWork: @escaping (URL) async throws -> Void
+  ) {
+    guard let repoURL else { return }
+
+    // 1. Apply local mutation immediately.
+    if let idx = tasks.firstIndex(where: { $0.id == taskId }) {
+      withAnimation(.easeInOut(duration: 0.25)) {
+        localMutation(&tasks[idx])
+      }
+    }
+
+    // 2. Persist to disk synchronously (fast, local only).
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      if let idx = tasks.firstIndex(where: { $0.id == taskId }) {
+        let t = tasks[idx]
+        try store.setStatus(taskId: t.id, status: t.status)
+        if let rs = t.reviewState {
+          try store.setReviewState(taskId: t.id, reviewState: rs)
+        }
+      }
+    } catch {
+      flashError("Failed to save: \(error.localizedDescription)")
+      return
+    }
+
+    // 3. Git add/commit/push in background.
+    isGitBusy = true
+    Task {
+      do {
+        try await gitWork(repoURL)
+      } catch {
+        flashError("Git sync failed: \(error.localizedDescription)")
+        // Reload from disk to get true state.
+        reload()
+      }
+      isGitBusy = false
+    }
+  }
+
+  // MARK: - Actions (now optimistic + async)
+
   func approveSelected(autoPush: Bool) {
-    setSelectedReviewState(.approved, autoPush: autoPush)
+    guard let id = selectedTaskId else { return }
+    optimisticUpdate(taskId: id, localMutation: { $0.reviewState = .approved }) { repoURL in
+      try await self.asyncCommitAndMaybePush(
+        repoURL: repoURL,
+        message: "Lobs: set \(id) reviewState=approved",
+        autoPush: autoPush
+      )
+    }
   }
 
   func requestChangesSelected(autoPush: Bool) {
-    setSelectedReviewState(.changesRequested, autoPush: autoPush)
+    guard let id = selectedTaskId else { return }
+    optimisticUpdate(taskId: id, localMutation: { $0.reviewState = .changesRequested }) { repoURL in
+      try await self.asyncCommitAndMaybePush(
+        repoURL: repoURL,
+        message: "Lobs: set \(id) reviewState=changes_requested",
+        autoPush: autoPush
+      )
+    }
   }
 
   func rejectSelected(autoPush: Bool) {
-    // Reject = reject the artifact/review.
-    setSelectedReviewState(.rejected, autoPush: autoPush)
+    guard let id = selectedTaskId else { return }
+    optimisticUpdate(taskId: id, localMutation: { $0.reviewState = .rejected }) { repoURL in
+      try await self.asyncCommitAndMaybePush(
+        repoURL: repoURL,
+        message: "Lobs: set \(id) reviewState=rejected",
+        autoPush: autoPush
+      )
+    }
   }
 
   func completeSelected(autoPush: Bool) {
-    setSelectedStatus(.completed, autoPush: autoPush)
+    guard let id = selectedTaskId else { return }
+    optimisticUpdate(taskId: id, localMutation: { $0.status = .completed }) { repoURL in
+      try await self.asyncCommitAndMaybePush(
+        repoURL: repoURL,
+        message: "Lobs: set \(id) status=completed",
+        autoPush: autoPush
+      )
+    }
   }
 
   func submitTaskToLobs(title: String, notes: String?, autoPush: Bool) {
@@ -96,37 +189,98 @@ final class AppViewModel: ObservableObject {
     let trimmedNotes = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmedTitle.isEmpty, let repoURL else { return }
 
-    do {
-      // Pull before making any changes.
-      try syncRepo(repoURL: repoURL)
+    // Optimistically add to local list.
+    let now = Date()
+    let newTask = DashboardTask(
+      id: UUID().uuidString,
+      title: trimmedTitle,
+      status: .inbox,
+      owner: .lobs,
+      createdAt: now,
+      updatedAt: now,
+      workState: .notStarted,
+      reviewState: .pending,
+      artifactPath: nil,
+      notes: trimmedNotes
+    )
 
+    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+      tasks.append(newTask)
+    }
+
+    // Write to disk + async git.
+    do {
       let store = LobsControlStore(repoRoot: repoURL)
-      let task = try store.addTask(
+      _ = try store.addTask(
         title: trimmedTitle,
         owner: .lobs,
         status: .inbox,
         notes: trimmedNotes
       )
-
-      try commitAndMaybePush(
-        repoURL: repoURL,
-        message: "Lobs: submit task \(task.id)",
-        autoPush: autoPush
-      )
-
-      reload()
-
     } catch {
-      lastError = String(describing: error)
+      flashError("Failed to save task: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: submit task \(newTask.id)",
+          autoPush: autoPush
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+        reload()
+      }
+      isGitBusy = false
+    }
+  }
+
+  func moveTask(taskId: String, to status: TaskStatus) {
+    optimisticUpdate(taskId: taskId, localMutation: { $0.status = status }) { repoURL in
+      try await self.asyncCommitAndMaybePush(
+        repoURL: repoURL,
+        message: "Lobs: move \(taskId) to \(status.rawValue)",
+        autoPush: true
+      )
+    }
+  }
+
+  // MARK: - Async Git Helpers
+
+  private func asyncCommitAndMaybePush(repoURL: URL, message: String, autoPush: Bool) async throws {
+    _ = try await Git.runAsync(["add", "-A"], cwd: repoURL)
+
+    let stagedClean = try await Git.runAsync(["diff", "--cached", "--quiet"], cwd: repoURL)
+    if stagedClean.exitCode == 0 { return }
+
+    let author = "Lobs <thelobsbot@gmail.com>"
+    let committerEnv: [String: String] = [
+      "GIT_COMMITTER_NAME": "Lobs",
+      "GIT_COMMITTER_EMAIL": "thelobsbot@gmail.com",
+    ]
+
+    let commit = try await Git.runAsync([
+      "commit", "--author", author, "-m", message
+    ], cwd: repoURL, env: committerEnv)
+
+    if commit.exitCode != 0 {
+      throw NSError(domain: "Git", code: Int(commit.exitCode),
+                    userInfo: [NSLocalizedDescriptionKey: commit.stderr])
+    }
+
+    if autoPush {
+      let push = try await Git.runAsync(["push"], cwd: repoURL)
+      if push.exitCode != 0 {
+        throw NSError(domain: "Git", code: Int(push.exitCode),
+                      userInfo: [NSLocalizedDescriptionKey: push.stderr])
+      }
     }
   }
 
   private func syncRepo(repoURL: URL) throws {
-    // "Easy mode" sync:
-    // - no rebase
-    // - tolerate force-pushes
-    // - always operate on origin/main
-
     let remotes = try Git.run(["remote"], cwd: repoURL)
     if remotes.exitCode != 0 { return }
     let hasOrigin = remotes.stdout.split(separator: "\n").map(String.init).contains("origin")
@@ -140,14 +294,9 @@ final class AppViewModel: ObservableObject {
   private func commitAndMaybePush(repoURL: URL, message: String, autoPush: Bool) throws {
     _ = try Git.run(["add", "-A"], cwd: repoURL)
 
-    // Skip commit/push when no changes staged.
     let stagedClean = try Git.run(["diff", "--cached", "--quiet"], cwd: repoURL)
-    if stagedClean.exitCode == 0 {
-      return
-    }
+    if stagedClean.exitCode == 0 { return }
 
-    // Ensure commits are attributed to Lobs, not the local machine user.
-    // Note: --author sets the author; committer is controlled by env vars (or git config).
     let author = "Lobs <thelobsbot@gmail.com>"
     let committerEnv: [String: String] = [
       "GIT_COMMITTER_NAME": "Lobs",
@@ -155,66 +304,20 @@ final class AppViewModel: ObservableObject {
     ]
 
     let commit = try Git.run([
-      "commit",
-      "--author", author,
-      "-m", message
+      "commit", "--author", author, "-m", message
     ], cwd: repoURL, env: committerEnv)
 
     if commit.exitCode != 0 {
-      throw NSError(domain: "Git", code: Int(commit.exitCode), userInfo: [NSLocalizedDescriptionKey: commit.stderr])
+      throw NSError(domain: "Git", code: Int(commit.exitCode),
+                    userInfo: [NSLocalizedDescriptionKey: commit.stderr])
     }
 
     if autoPush {
       let push = try Git.run(["push"], cwd: repoURL)
       if push.exitCode != 0 {
-        throw NSError(domain: "Git", code: Int(push.exitCode), userInfo: [NSLocalizedDescriptionKey: push.stderr])
+        throw NSError(domain: "Git", code: Int(push.exitCode),
+                      userInfo: [NSLocalizedDescriptionKey: push.stderr])
       }
-    }
-  }
-
-  private func setSelectedStatus(_ status: TaskStatus, autoPush: Bool) {
-    guard let repoURL, let id = selectedTaskId else { return }
-
-    do {
-      // Pull (sync) before making any changes.
-      try syncRepo(repoURL: repoURL)
-
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.setStatus(taskId: id, status: status)
-
-      try commitAndMaybePush(
-        repoURL: repoURL,
-        message: "Lobs: set \(id) status=\(status.rawValue)",
-        autoPush: autoPush
-      )
-
-      reload()
-
-    } catch {
-      lastError = String(describing: error)
-    }
-  }
-
-  private func setSelectedReviewState(_ reviewState: ReviewState, autoPush: Bool) {
-    guard let repoURL, let id = selectedTaskId else { return }
-
-    do {
-      // Pull (sync) before making any changes.
-      try syncRepo(repoURL: repoURL)
-
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.setReviewState(taskId: id, reviewState: reviewState)
-
-      try commitAndMaybePush(
-        repoURL: repoURL,
-        message: "Lobs: set \(id) reviewState=\(reviewState.rawValue)",
-        autoPush: autoPush
-      )
-
-      reload()
-
-    } catch {
-      lastError = String(describing: error)
     }
   }
 
@@ -264,25 +367,6 @@ final class AppViewModel: ObservableObject {
     ]
   }
 
-  func moveTask(taskId: String, to status: TaskStatus) {
-    guard let repoURL else { return }
-    do {
-      // Pull (sync) before making any changes.
-      try syncRepo(repoURL: repoURL)
-
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.setStatus(taskId: taskId, status: status)
-      try commitAndMaybePush(
-        repoURL: repoURL,
-        message: "Lobs: move \(taskId) to \(status.rawValue)",
-        autoPush: true
-      )
-      reload()
-    } catch {
-      lastError = String(describing: error)
-    }
-  }
-
   func loadArtifactForSelected() {
     guard let repoURL else { return }
     do {
@@ -298,6 +382,30 @@ final class AppViewModel: ObservableObject {
       artifactText = try store.readArtifact(relativePath: ap)
     } else {
       artifactText = "(select a task)"
+    }
+  }
+
+  // MARK: - Keyboard Navigation
+
+  func selectNextTask() {
+    let visible = filteredTasks
+    guard !visible.isEmpty else { return }
+    if let current = selectedTaskId, let idx = visible.firstIndex(where: { $0.id == current }) {
+      let next = min(idx + 1, visible.count - 1)
+      selectTask(visible[next])
+    } else {
+      selectTask(visible[0])
+    }
+  }
+
+  func selectPreviousTask() {
+    let visible = filteredTasks
+    guard !visible.isEmpty else { return }
+    if let current = selectedTaskId, let idx = visible.firstIndex(where: { $0.id == current }) {
+      let prev = max(idx - 1, 0)
+      selectTask(visible[prev])
+    } else {
+      selectTask(visible[visible.count - 1])
     }
   }
 }

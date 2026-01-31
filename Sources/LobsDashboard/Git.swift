@@ -15,7 +15,6 @@ struct Git {
     proc.arguments = ["git"] + args
     proc.currentDirectoryURL = cwd
 
-    // Merge env vars (callsite can override things like committer identity).
     var merged = ProcessInfo.processInfo.environment
     for (k, v) in env { merged[k] = v }
     proc.environment = merged
@@ -32,5 +31,19 @@ struct Git {
     let stderr = String(data: err.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
 
     return .init(exitCode: proc.terminationStatus, stdout: stdout, stderr: stderr)
+  }
+
+  /// Run a git command off the main thread. Returns the result asynchronously.
+  static func runAsync(_ args: [String], cwd: URL, env: [String: String] = [:]) async throws -> Result {
+    try await withCheckedThrowingContinuation { continuation in
+      DispatchQueue.global(qos: .userInitiated).async {
+        do {
+          let result = try run(args, cwd: cwd, env: env)
+          continuation.resume(returning: result)
+        } catch {
+          continuation.resume(throwing: error)
+        }
+      }
+    }
   }
 }
