@@ -8,22 +8,91 @@ final class LobsControlStore {
   }
 
   private var tasksURL: URL { repoRoot.appendingPathComponent("state/tasks.json") }
+  private var tasksDirURL: URL { repoRoot.appendingPathComponent("state/tasks") }
+
+  private func decoder() -> JSONDecoder {
+    let d = JSONDecoder()
+    d.dateDecodingStrategy = .iso8601
+    return d
+  }
+
+  private func encoder() -> JSONEncoder {
+    let e = JSONEncoder()
+    e.outputFormatting = [.prettyPrinted, .sortedKeys]
+    e.dateEncodingStrategy = .iso8601
+    return e
+  }
+
+  private func taskFileURL(taskId: String) -> URL {
+    tasksDirURL.appendingPathComponent("\(taskId).json")
+  }
 
   func loadTasks() throws -> TasksFile {
+    // Prefer per-task files if the directory exists.
+    if FileManager.default.fileExists(atPath: tasksDirURL.path) {
+      let items = try FileManager.default.contentsOfDirectory(
+        at: tasksDirURL,
+        includingPropertiesForKeys: nil,
+        options: [.skipsHiddenFiles]
+      )
+
+      let dec = decoder()
+      var tasks: [DashboardTask] = []
+
+      for url in items where url.pathExtension.lowercased() == "json" {
+        let data = try Data(contentsOf: url)
+        let t = try dec.decode(DashboardTask.self, from: data)
+        tasks.append(t)
+      }
+
+      // Stable ordering (nice UX)
+      tasks.sort { (a, b) in
+        if a.status.rawValue != b.status.rawValue { return a.status.rawValue < b.status.rawValue }
+        if a.updatedAt != b.updatedAt { return a.updatedAt > b.updatedAt }
+        return a.createdAt > b.createdAt
+      }
+
+      return TasksFile(schemaVersion: 0, generatedAt: Date(), tasks: tasks)
+    }
+
+    // Fallback: legacy single file.
     let data = try Data(contentsOf: tasksURL)
-    let decoder = JSONDecoder()
-    decoder.dateDecodingStrategy = .iso8601
-    return try decoder.decode(TasksFile.self, from: data)
+    return try decoder().decode(TasksFile.self, from: data)
   }
 
   func saveTasks(_ file: TasksFile) throws {
+    // If per-task directory exists, write each task to its own file.
+    if FileManager.default.fileExists(atPath: tasksDirURL.path) {
+      try FileManager.default.createDirectory(
+        at: tasksDirURL,
+        withIntermediateDirectories: true
+      )
+
+      let enc = encoder()
+      for task in file.tasks {
+        var t = task
+        t.updatedAt = Date()
+        let data = try enc.encode(t)
+        try data.write(to: taskFileURL(taskId: t.id), options: [.atomic])
+      }
+
+      // Keep legacy tasks.json updated too (helps older tooling).
+      var legacy = file
+      legacy.generatedAt = Date()
+      let legacyData = try enc.encode(legacy)
+      try FileManager.default.createDirectory(
+        at: tasksURL.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      try legacyData.write(to: tasksURL, options: [.atomic])
+      return
+    }
+
+    // Legacy mode
     var file = file
     file.generatedAt = Date()
 
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-    encoder.dateEncodingStrategy = .iso8601
-    let data = try encoder.encode(file)
+    let data = try encoder().encode(file)
 
     try FileManager.default.createDirectory(
       at: tasksURL.deletingLastPathComponent(),
@@ -39,6 +108,17 @@ final class LobsControlStore {
   }
 
   func setStatus(taskId: String, status: TaskStatus) throws {
+    if FileManager.default.fileExists(atPath: tasksDirURL.path) {
+      let url = taskFileURL(taskId: taskId)
+      let data = try Data(contentsOf: url)
+      var task = try decoder().decode(DashboardTask.self, from: data)
+      task.status = status
+      task.updatedAt = Date()
+      let out = try encoder().encode(task)
+      try out.write(to: url, options: [.atomic])
+      return
+    }
+
     var file = try loadTasks()
     guard let idx = file.tasks.firstIndex(where: { $0.id == taskId }) else { return }
     file.tasks[idx].status = status
@@ -47,6 +127,17 @@ final class LobsControlStore {
   }
 
   func setWorkState(taskId: String, workState: WorkState?) throws {
+    if FileManager.default.fileExists(atPath: tasksDirURL.path) {
+      let url = taskFileURL(taskId: taskId)
+      let data = try Data(contentsOf: url)
+      var task = try decoder().decode(DashboardTask.self, from: data)
+      task.workState = workState
+      task.updatedAt = Date()
+      let out = try encoder().encode(task)
+      try out.write(to: url, options: [.atomic])
+      return
+    }
+
     var file = try loadTasks()
     guard let idx = file.tasks.firstIndex(where: { $0.id == taskId }) else { return }
     file.tasks[idx].workState = workState
@@ -55,6 +146,17 @@ final class LobsControlStore {
   }
 
   func setReviewState(taskId: String, reviewState: ReviewState?) throws {
+    if FileManager.default.fileExists(atPath: tasksDirURL.path) {
+      let url = taskFileURL(taskId: taskId)
+      let data = try Data(contentsOf: url)
+      var task = try decoder().decode(DashboardTask.self, from: data)
+      task.reviewState = reviewState
+      task.updatedAt = Date()
+      let out = try encoder().encode(task)
+      try out.write(to: url, options: [.atomic])
+      return
+    }
+
     var file = try loadTasks()
     guard let idx = file.tasks.firstIndex(where: { $0.id == taskId }) else { return }
     file.tasks[idx].reviewState = reviewState
@@ -63,7 +165,6 @@ final class LobsControlStore {
   }
 
   func addTask(title: String, owner: TaskOwner, status: TaskStatus, notes: String?) throws -> DashboardTask {
-    var file = try loadTasks()
     let now = Date()
     let task = DashboardTask(
       id: UUID().uuidString,
@@ -77,6 +178,15 @@ final class LobsControlStore {
       artifactPath: nil,
       notes: notes?.isEmpty == true ? nil : notes
     )
+
+    if FileManager.default.fileExists(atPath: tasksDirURL.path) {
+      try FileManager.default.createDirectory(at: tasksDirURL, withIntermediateDirectories: true)
+      let out = try encoder().encode(task)
+      try out.write(to: taskFileURL(taskId: task.id), options: [.atomic])
+      return task
+    }
+
+    var file = try loadTasks()
     file.tasks.append(task)
     try saveTasks(file)
     return task
