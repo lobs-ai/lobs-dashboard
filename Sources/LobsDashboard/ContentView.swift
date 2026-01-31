@@ -338,6 +338,13 @@ private struct SettingsPopover: View {
             .toggleStyle(.switch)
             .controlSize(.small)
 
+          Toggle("Auto-refresh (\(vm.autoRefreshIntervalSeconds)s)", isOn: $vm.autoRefreshEnabled)
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .onChange(of: vm.autoRefreshEnabled) { _ in
+              vm.startAutoRefreshIfNeeded()
+            }
+
           Toggle("Auto-archive completed tasks", isOn: $vm.autoArchiveCompleted)
             .toggleStyle(.switch)
             .controlSize(.small)
@@ -687,6 +694,16 @@ private struct TaskTile: View {
 
   private var isSelected: Bool { vm.selectedTaskId == task.id }
 
+  /// Staleness: tasks sitting in inbox/active too long get visual attention.
+  private var stalenessColor: Color? {
+    guard task.status == .inbox || task.status == .active else { return nil }
+    let age = Date().timeIntervalSince(task.updatedAt)
+    if age > 7 * 86400 { return .red }       // >7 days
+    if age > 3 * 86400 { return .orange }     // >3 days
+    if age > 1 * 86400 { return .yellow }     // >1 day
+    return nil
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       Text(task.title)
@@ -727,7 +744,11 @@ private struct TaskTile: View {
     )
     .overlay(
       RoundedRectangle(cornerRadius: Theme.cardRadius)
-        .stroke(isSelected ? Theme.accent.opacity(0.4) : Theme.border, lineWidth: isSelected ? 1.5 : 0.5)
+        .stroke(
+          isSelected ? Theme.accent.opacity(0.4)
+            : (stalenessColor?.opacity(0.4) ?? Theme.border),
+          lineWidth: isSelected ? 1.5 : (stalenessColor != nil ? 1.0 : 0.5)
+        )
     )
     .scaleEffect(isHovering ? 1.01 : 1.0)
     .animation(.easeOut(duration: 0.15), value: isHovering)

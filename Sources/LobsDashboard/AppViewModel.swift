@@ -32,8 +32,46 @@ final class AppViewModel: ObservableObject {
   // Popover state for task detail
   @Published var popoverTaskId: String? = nil
 
+  // Auto-refresh
+  @Published var autoRefreshEnabled: Bool = true
+  @Published var autoRefreshIntervalSeconds: Int = 30
+  private var refreshTimer: Timer?
+
   init() {
     repoPath = settings.string(forKey: repoPathKey) ?? ""
+    startAutoRefreshIfNeeded()
+  }
+
+  func startAutoRefreshIfNeeded() {
+    refreshTimer?.invalidate()
+    refreshTimer = nil
+    guard autoRefreshEnabled else { return }
+    refreshTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(autoRefreshIntervalSeconds), repeats: true) { [weak self] _ in
+      Task { @MainActor [weak self] in
+        self?.silentReload()
+      }
+    }
+  }
+
+  /// Reload without clearing error state if nothing changed.
+  func silentReload() {
+    guard let repoURL else { return }
+    do {
+      try syncRepo(repoURL: repoURL)
+      let store = LobsControlStore(repoRoot: repoURL)
+      if autoArchiveCompleted {
+        try store.archiveCompleted(olderThanDays: archiveCompletedAfterDays)
+      }
+      let file = try store.loadTasks()
+      // Only update if something changed (avoid UI flicker).
+      if file.tasks.map({ $0.id }).sorted() != tasks.map({ $0.id }).sorted()
+        || file.tasks.map({ $0.updatedAt }) != tasks.map({ $0.updatedAt }) {
+        tasks = file.tasks
+        try loadArtifactForSelected(store: store)
+      }
+    } catch {
+      // Silent — don't overwrite errors from user actions.
+    }
   }
 
   var repoURL: URL? {
