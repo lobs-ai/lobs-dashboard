@@ -47,10 +47,11 @@ final class LobsControlStore {
       }
 
       // Stable ordering (nice UX)
+      // Prefer creation time over edit time so edits don't reshuffle the list.
       tasks.sort { (a, b) in
         if a.status.rawValue != b.status.rawValue { return a.status.rawValue < b.status.rawValue }
-        if a.updatedAt != b.updatedAt { return a.updatedAt > b.updatedAt }
-        return a.createdAt > b.createdAt
+        if a.createdAt != b.createdAt { return a.createdAt > b.createdAt }
+        return a.updatedAt > b.updatedAt
       }
 
       return TasksFile(schemaVersion: 0, generatedAt: Date(), tasks: tasks)

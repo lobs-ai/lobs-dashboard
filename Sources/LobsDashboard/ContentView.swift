@@ -408,7 +408,12 @@ private struct StatsBar: View {
 
   private var inboxCount: Int { vm.tasks.filter { $0.status == .inbox }.count }
   private var activeCount: Int { vm.tasks.filter { $0.status == .active }.count }
-  private var completedCount: Int { vm.tasks.filter { $0.status == .completed }.count }
+  private var completedCount: Int {
+    vm.tasks.filter { $0.status == .completed && $0.reviewState != .approved }.count
+  }
+  private var doneCount: Int {
+    vm.tasks.filter { $0.status == .completed && $0.reviewState == .approved }.count
+  }
   private var blockedCount: Int { vm.tasks.filter { $0.workState == .blocked }.count }
   private var totalCount: Int { vm.tasks.count }
 
@@ -419,7 +424,10 @@ private struct StatsBar: View {
       if blockedCount > 0 {
         StatPill(label: "Blocked", count: blockedCount, color: .red)
       }
-      StatPill(label: "Done", count: completedCount, color: .green)
+      if completedCount > 0 {
+        StatPill(label: "Completed", count: completedCount, color: .green)
+      }
+      StatPill(label: "Done", count: doneCount, color: .green)
 
       Spacer()
 
@@ -536,19 +544,20 @@ private struct BoardColumn: View {
     case "active": return .orange
     case "waiting on": return .yellow
     case "completed": return .green
+    case "done": return .green
     case "rejected": return .red
     default: return .gray
     }
   }
 
   var body: some View {
-    let isCompleted = title.lowercased() == "completed"
+    let isCompletedLike = title.lowercased() == "completed" || title.lowercased() == "done"
     let isRejected = title.lowercased() == "rejected"
     let isInbox = title.lowercased() == "inbox"
 
-    let showAll = isCompleted ? showAllCompleted : (isRejected ? showAllRejected : true)
-    let visibleTasks = (isCompleted || isRejected) && !showAll
-      ? Array(tasks.sorted { $0.updatedAt > $1.updatedAt }.prefix(vm.completedShowRecent))
+    let showAll = isCompletedLike ? showAllCompleted : (isRejected ? showAllRejected : true)
+    let visibleTasks = (isCompletedLike || isRejected) && !showAll
+      ? Array(tasks.sorted { $0.createdAt > $1.createdAt }.prefix(vm.completedShowRecent))
       : tasks
 
     let wipLimit = (title.lowercased() == "active") ? vm.wipLimitActive : 0
@@ -640,29 +649,7 @@ private struct BoardColumn: View {
         .padding(10)
       }
 
-      // Quick-add inline for Inbox (Task #84248F22)
-      if isInbox {
-        Divider()
-          .padding(.horizontal, 10)
-
-        HStack(spacing: 6) {
-          Image(systemName: "plus.circle")
-            .foregroundStyle(.secondary)
-            .font(.caption)
-          TextField("Quick add task…", text: $quickAddText)
-            .textFieldStyle(.plain)
-            .font(.caption)
-            .onSubmit {
-              let trimmed = quickAddText.trimmingCharacters(in: .whitespacesAndNewlines)
-              if !trimmed.isEmpty {
-                vm.submitTaskToLobs(title: trimmed, notes: nil, autoPush: autoPush)
-                quickAddText = ""
-              }
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-      }
+      // Quick-add inline removed (Task #9168CFAF)
     }
     .frame(width: Theme.columnWidth)
     .frame(maxHeight: 600)
@@ -821,6 +808,10 @@ private struct TaskDetailPopover: View {
   @State private var editTitle: String = ""
   @State private var editNotes: String = ""
 
+  @State private var autosaveWorkItem: DispatchWorkItem? = nil
+  @State private var lastAutosavedTitle: String = ""
+  @State private var lastAutosavedNotes: String = ""
+
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 16) {
@@ -833,7 +824,15 @@ private struct TaskDetailPopover: View {
             .onAppear {
               editTitle = task.title
               editNotes = task.notes ?? ""
+              lastAutosavedTitle = editTitle
+              lastAutosavedNotes = editNotes
             }
+            .onSubmit {
+              vm.editTask(taskId: task.id, title: editTitle, notes: editNotes, autoPush: autoPush)
+              lastAutosavedTitle = editTitle
+              lastAutosavedNotes = editNotes
+            }
+            .onChange(of: editTitle) { _, _ in scheduleAutosave() }
 
           HStack(spacing: 6) {
             DetailTag(text: task.owner.rawValue, icon: "person", color: .purple)
@@ -854,6 +853,7 @@ private struct TaskDetailPopover: View {
             TextField("Add notes…", text: $editNotes, axis: .vertical)
               .textFieldStyle(.roundedBorder)
               .lineLimit(6, reservesSpace: true)
+              .onChange(of: editNotes) { _, _ in scheduleAutosave() }
           }
 
           Button {
@@ -957,6 +957,23 @@ private struct TaskDetailPopover: View {
       }
       .padding(20)
     }
+  }
+
+  private func scheduleAutosave() {
+    autosaveWorkItem?.cancel()
+    let titleNow = editTitle
+    let notesNow = editNotes
+
+    let item = DispatchWorkItem {
+      // Avoid noisy commits if nothing materially changed.
+      if titleNow == lastAutosavedTitle && notesNow == lastAutosavedNotes { return }
+      vm.editTask(taskId: task.id, title: titleNow, notes: notesNow, autoPush: autoPush)
+      lastAutosavedTitle = titleNow
+      lastAutosavedNotes = notesNow
+    }
+
+    autosaveWorkItem = item
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: item)
   }
 }
 

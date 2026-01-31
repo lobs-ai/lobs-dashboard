@@ -98,11 +98,12 @@ final class AppViewModel: ObservableObject {
   }
 
   private func sortTasksForUX(_ tasks: inout [DashboardTask]) {
-    // Match LobsControlStore stable ordering (status, then most-recent updated)
+    // Stable ordering for UX.
+    // Key change: prefer creation time over edit time so editing a task doesn't reshuffle the board.
     tasks.sort { (a, b) in
       if a.status.rawValue != b.status.rawValue { return a.status.rawValue < b.status.rawValue }
-      if a.updatedAt != b.updatedAt { return a.updatedAt > b.updatedAt }
-      return a.createdAt > b.createdAt
+      if a.createdAt != b.createdAt { return a.createdAt > b.createdAt }
+      return a.updatedAt > b.updatedAt
     }
   }
 
@@ -463,6 +464,13 @@ final class AppViewModel: ObservableObject {
     let hasOrigin = remotes.stdout.split(separator: "\n").map(String.init).contains("origin")
     if !hasOrigin { return }
 
+    // Safety: never hard-reset if there are local changes (e.g. a newly-created task) —
+    // otherwise a transient git failure can appear to "delete" the user's work.
+    let status = try Git.run(["status", "--porcelain"], cwd: repoURL)
+    if status.exitCode == 0 && !status.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      return
+    }
+
     _ = try Git.run(["fetch", "origin"], cwd: repoURL)
     _ = try Git.run(["reset", "--hard", "origin/main"], cwd: repoURL)
     _ = try Git.run(["clean", "-fd"], cwd: repoURL)
@@ -531,7 +539,18 @@ final class AppViewModel: ObservableObject {
       .init(title: "Inbox", dropStatus: .inbox) { $0.status == .inbox },
       .init(title: "Active", dropStatus: .active) { $0.status == .active },
       .init(title: "Waiting on", dropStatus: .waitingOn) { $0.status == .waitingOn },
-      .init(title: "Completed", dropStatus: .completed) { $0.status == .completed },
+
+      // Split completed into two buckets:
+      // - Completed: work done but not (yet) explicitly approved
+      // - Done: approved + completed (easy to review what was just finished)
+      .init(title: "Completed", dropStatus: .completed) { t in
+        guard t.status == .completed else { return false }
+        return t.reviewState != .approved
+      },
+      .init(title: "Done", dropStatus: .completed) { t in
+        t.status == .completed && t.reviewState == .approved
+      },
+
       .init(title: "Rejected", dropStatus: .rejected) { $0.status == .rejected },
       .init(title: "Other", dropStatus: .other("inbox")) {
         switch $0.status {
