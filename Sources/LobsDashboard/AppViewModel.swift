@@ -56,11 +56,20 @@ final class AppViewModel: ObservableObject {
   }
 
   func approveSelected(autoPush: Bool) {
-    setSelectedStatus(.completed, autoPush: autoPush)
+    setSelectedReviewState(.approved, autoPush: autoPush)
+  }
+
+  func requestChangesSelected(autoPush: Bool) {
+    setSelectedReviewState(.changesRequested, autoPush: autoPush)
   }
 
   func rejectSelected(autoPush: Bool) {
-    setSelectedStatus(.rejected, autoPush: autoPush)
+    // Reject = reject the artifact/review.
+    setSelectedReviewState(.rejected, autoPush: autoPush)
+  }
+
+  func completeSelected(autoPush: Bool) {
+    setSelectedStatus(.completed, autoPush: autoPush)
   }
 
   func submitTaskToLobs(title: String, notes: String?, autoPush: Bool) {
@@ -85,28 +94,46 @@ final class AppViewModel: ObservableObject {
         return
       }
 
-      let msg = "Lobs: submit task \(task.id)"
-      let commit = try Git.run([
-        "commit",
-        "--author", "Lobs <thelobsbot@gmail.com>",
-        "-m", msg
-      ], cwd: repoURL)
-
-      if commit.exitCode != 0 {
-        throw NSError(domain: "Git", code: Int(commit.exitCode), userInfo: [NSLocalizedDescriptionKey: commit.stderr])
-      }
-
-      if autoPush {
-        let push = try Git.run(["push"], cwd: repoURL)
-        if push.exitCode != 0 {
-          throw NSError(domain: "Git", code: Int(push.exitCode), userInfo: [NSLocalizedDescriptionKey: push.stderr])
-        }
-      }
+      try commitAndMaybePush(
+        repoURL: repoURL,
+        message: "Lobs: submit task \(task.id)",
+        autoPush: autoPush
+      )
 
       reload()
 
     } catch {
       lastError = String(describing: error)
+    }
+  }
+
+  private func commitAndMaybePush(repoURL: URL, message: String, autoPush: Bool) throws {
+    _ = try Git.run(["add", "-A"], cwd: repoURL)
+
+    // Skip commit/push when no changes staged.
+    let stagedClean = try Git.run(["diff", "--cached", "--quiet"], cwd: repoURL)
+    if stagedClean.exitCode == 0 {
+      return
+    }
+
+    // Use a GitHub noreply-style email so commits do not get attributed to your personal account.
+    let author = "Lobs <lobs@users.noreply.github.com>"
+
+    let commit = try Git.run([
+      "commit",
+      "--author", author,
+      "-m", message
+    ], cwd: repoURL)
+
+    if commit.exitCode != 0 {
+      throw NSError(domain: "Git", code: Int(commit.exitCode), userInfo: [NSLocalizedDescriptionKey: commit.stderr])
+    }
+
+    if autoPush {
+      let push = try Git.run(["push"], cwd: repoURL)
+      if push.exitCode != 0 {
+        throw NSError(domain: "Git", code: Int(push.exitCode), userInfo: [NSLocalizedDescriptionKey: push.stderr])
+      }
     }
   }
 
@@ -117,36 +144,71 @@ final class AppViewModel: ObservableObject {
       let store = LobsControlStore(repoRoot: repoURL)
       try store.setStatus(taskId: id, status: status)
 
-      // Git commit (dashboard-generated = Lobs)
-      _ = try Git.run(["add", "-A"], cwd: repoURL)
-
-      // Skip commit/push when no changes staged.
-      let stagedClean = try Git.run(["diff", "--cached", "--quiet"], cwd: repoURL)
-      if stagedClean.exitCode == 0 {
-        reload()
-        return
-      }
-
-      let msg = "Lobs: set \(id) status=\(status.rawValue)"
-      let commit = try Git.run([
-        "commit",
-        "--author", "Lobs <thelobsbot@gmail.com>",
-        "-m", msg
-      ], cwd: repoURL)
-
-      if commit.exitCode != 0 {
-        throw NSError(domain: "Git", code: Int(commit.exitCode), userInfo: [NSLocalizedDescriptionKey: commit.stderr])
-      }
-
-      if autoPush {
-        let push = try Git.run(["push"], cwd: repoURL)
-        if push.exitCode != 0 {
-          throw NSError(domain: "Git", code: Int(push.exitCode), userInfo: [NSLocalizedDescriptionKey: push.stderr])
-        }
-      }
+      try commitAndMaybePush(
+        repoURL: repoURL,
+        message: "Lobs: set \(id) status=\(status.rawValue)",
+        autoPush: autoPush
+      )
 
       reload()
 
+    } catch {
+      lastError = String(describing: error)
+    }
+  }
+
+  private func setSelectedReviewState(_ reviewState: ReviewState, autoPush: Bool) {
+    guard let repoURL, let id = selectedTaskId else { return }
+
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.setReviewState(taskId: id, reviewState: reviewState)
+
+      try commitAndMaybePush(
+        repoURL: repoURL,
+        message: "Lobs: set \(id) reviewState=\(reviewState.rawValue)",
+        autoPush: autoPush
+      )
+
+      reload()
+
+    } catch {
+      lastError = String(describing: error)
+    }
+  }
+
+  // Drag-and-drop support
+  @Published var draggingTaskId: String? = nil
+
+  var columns: [AnyTaskColumn] {
+    [
+      .init(title: "Inbox", dropStatus: .inbox) { $0.status == .inbox },
+      .init(title: "Active", dropStatus: .active) { $0.status == .active },
+      .init(title: "Waiting on", dropStatus: .waitingOn) { $0.status == .waitingOn },
+      .init(title: "Completed", dropStatus: .completed) { $0.status == .completed },
+      .init(title: "Rejected", dropStatus: .rejected) { $0.status == .rejected },
+      .init(title: "Other", dropStatus: .other("inbox")) {
+        switch $0.status {
+        case .inbox, .active, .waitingOn, .completed, .rejected:
+          return false
+        case .other:
+          return true
+        }
+      },
+    ]
+  }
+
+  func moveTask(taskId: String, to status: TaskStatus) {
+    guard let repoURL else { return }
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.setStatus(taskId: taskId, status: status)
+      try commitAndMaybePush(
+        repoURL: repoURL,
+        message: "Lobs: move \(taskId) to \(status.rawValue)",
+        autoPush: true
+      )
+      reload()
     } catch {
       lastError = String(describing: error)
     }

@@ -38,6 +38,73 @@ enum TaskStatus: Hashable, Codable {
   }
 }
 
+enum WorkState: Hashable, Codable {
+  case notStarted
+  case inProgress
+  case blocked
+  case other(String)
+
+  var rawValue: String {
+    switch self {
+    case .notStarted: return "not_started"
+    case .inProgress: return "in_progress"
+    case .blocked: return "blocked"
+    case .other(let value): return value
+    }
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    let value = try container.decode(String.self)
+    switch value {
+    case "not_started": self = .notStarted
+    case "in_progress": self = .inProgress
+    case "blocked": self = .blocked
+    default: self = .other(value)
+    }
+  }
+
+  func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    try container.encode(rawValue)
+  }
+}
+
+enum ReviewState: Hashable, Codable {
+  case pending
+  case approved
+  case changesRequested
+  case rejected
+  case other(String)
+
+  var rawValue: String {
+    switch self {
+    case .pending: return "pending"
+    case .approved: return "approved"
+    case .changesRequested: return "changes_requested"
+    case .rejected: return "rejected"
+    case .other(let value): return value
+    }
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    let value = try container.decode(String.self)
+    switch value {
+    case "pending": self = .pending
+    case "approved": self = .approved
+    case "changes_requested": self = .changesRequested
+    case "rejected": self = .rejected
+    default: self = .other(value)
+    }
+  }
+
+  func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    try container.encode(rawValue)
+  }
+}
+
 enum TaskOwner: Hashable, Codable {
   case lobs
   case rafe
@@ -74,6 +141,11 @@ struct DashboardTask: Codable, Identifiable, Hashable {
   var owner: TaskOwner
   var createdAt: Date
   var updatedAt: Date
+
+  // Optional fields (schema evolves)
+  var workState: WorkState?
+  var reviewState: ReviewState?
+
   var artifactPath: String?
   var notes: String?
 }

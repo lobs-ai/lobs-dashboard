@@ -46,6 +46,22 @@ final class LobsControlStore {
     try saveTasks(file)
   }
 
+  func setWorkState(taskId: String, workState: WorkState?) throws {
+    var file = try loadTasks()
+    guard let idx = file.tasks.firstIndex(where: { $0.id == taskId }) else { return }
+    file.tasks[idx].workState = workState
+    file.tasks[idx].updatedAt = Date()
+    try saveTasks(file)
+  }
+
+  func setReviewState(taskId: String, reviewState: ReviewState?) throws {
+    var file = try loadTasks()
+    guard let idx = file.tasks.firstIndex(where: { $0.id == taskId }) else { return }
+    file.tasks[idx].reviewState = reviewState
+    file.tasks[idx].updatedAt = Date()
+    try saveTasks(file)
+  }
+
   func addTask(title: String, owner: TaskOwner, status: TaskStatus, notes: String?) throws -> DashboardTask {
     var file = try loadTasks()
     let now = Date()
@@ -56,6 +72,8 @@ final class LobsControlStore {
       owner: owner,
       createdAt: now,
       updatedAt: now,
+      workState: .notStarted,
+      reviewState: .pending,
       artifactPath: nil,
       notes: notes?.isEmpty == true ? nil : notes
     )
