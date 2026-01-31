@@ -55,6 +55,9 @@ struct ContentView: View {
           showSettings: $showSettings
         )
 
+        // Stats bar
+        StatsBar(vm: vm)
+
         Divider()
 
         // Kanban board
@@ -391,6 +394,55 @@ private struct SettingsPopover: View {
   }
 }
 
+// MARK: - Stats Bar
+
+private struct StatsBar: View {
+  @ObservedObject var vm: AppViewModel
+
+  private var inboxCount: Int { vm.tasks.filter { $0.status == .inbox }.count }
+  private var activeCount: Int { vm.tasks.filter { $0.status == .active }.count }
+  private var completedCount: Int { vm.tasks.filter { $0.status == .completed }.count }
+  private var blockedCount: Int { vm.tasks.filter { $0.workState == .blocked }.count }
+  private var totalCount: Int { vm.tasks.count }
+
+  var body: some View {
+    HStack(spacing: 16) {
+      StatPill(label: "Inbox", count: inboxCount, color: .blue)
+      StatPill(label: "Active", count: activeCount, color: .orange)
+      if blockedCount > 0 {
+        StatPill(label: "Blocked", count: blockedCount, color: .red)
+      }
+      StatPill(label: "Done", count: completedCount, color: .green)
+
+      Spacer()
+
+      Text("\(totalCount) tasks")
+        .font(.caption)
+        .foregroundStyle(.tertiary)
+    }
+    .padding(.horizontal, 16)
+    .padding(.vertical, 6)
+    .background(Theme.bg.opacity(0.5))
+  }
+}
+
+private struct StatPill: View {
+  let label: String
+  let count: Int
+  let color: Color
+
+  var body: some View {
+    HStack(spacing: 4) {
+      Circle()
+        .fill(color)
+        .frame(width: 6, height: 6)
+      Text("\(label): \(count)")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+  }
+}
+
 // MARK: - Error Banner
 
 private struct ErrorBanner: View {
@@ -660,6 +712,11 @@ private struct TaskTile: View {
           .foregroundStyle(.secondary)
           .lineLimit(2)
       }
+
+      // Relative timestamp
+      Text(relativeTime(task.updatedAt))
+        .font(.system(size: 9))
+        .foregroundStyle(.tertiary)
     }
     .padding(12)
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -862,6 +919,22 @@ private struct TaskDetailPopover: View {
       .padding(20)
     }
   }
+}
+
+// MARK: - Relative Time Helper
+
+private func relativeTime(_ date: Date) -> String {
+  let now = Date()
+  let seconds = now.timeIntervalSince(date)
+  if seconds < 60 { return "just now" }
+  let minutes = Int(seconds / 60)
+  if minutes < 60 { return "\(minutes)m ago" }
+  let hours = Int(seconds / 3600)
+  if hours < 24 { return "\(hours)h ago" }
+  let days = Int(seconds / 86400)
+  if days < 30 { return "\(days)d ago" }
+  let months = Int(seconds / 2_592_000)
+  return "\(months)mo ago"
 }
 
 // MARK: - Mini Tag (for cards)
