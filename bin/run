@@ -1,1 +1,1 @@
-swift run lobs-dashboard
+open .build/LobsDashboard.app
