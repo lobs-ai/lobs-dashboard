@@ -4,7 +4,16 @@ import SwiftUI
 @MainActor
 final class AppViewModel: ObservableObject {
   private let settings = UserDefaults.standard
+
+  // UserDefaults keys
   private let repoPathKey = "repoPath"
+  private let ownerFilterKey = "ownerFilter"
+  private let wipLimitActiveKey = "wipLimitActive"
+  private let completedShowRecentKey = "completedShowRecent"
+  private let autoArchiveCompletedKey = "autoArchiveCompleted"
+  private let archiveCompletedAfterDaysKey = "archiveCompletedAfterDays"
+  private let autoRefreshEnabledKey = "autoRefreshEnabled"
+  private let autoRefreshIntervalSecondsKey = "autoRefreshIntervalSeconds"
 
   @Published private(set) var repoPath: String = ""
 
@@ -21,24 +30,59 @@ final class AppViewModel: ObservableObject {
 
   // Kanban UX
   @Published var searchText: String = ""
-  @Published var ownerFilter: String = "all"
-  @Published var wipLimitActive: Int = 6
+  @Published var ownerFilter: String = "all" {
+    didSet { settings.set(ownerFilter, forKey: ownerFilterKey) }
+  }
+  @Published var wipLimitActive: Int = 6 {
+    didSet { settings.set(wipLimitActive, forKey: wipLimitActiveKey) }
+  }
 
   // Completed hygiene
-  @Published var completedShowRecent: Int = 30
-  @Published var autoArchiveCompleted: Bool = false
-  @Published var archiveCompletedAfterDays: Int = 30
+  @Published var completedShowRecent: Int = 30 {
+    didSet { settings.set(completedShowRecent, forKey: completedShowRecentKey) }
+  }
+  @Published var autoArchiveCompleted: Bool = false {
+    didSet { settings.set(autoArchiveCompleted, forKey: autoArchiveCompletedKey) }
+  }
+  @Published var archiveCompletedAfterDays: Int = 30 {
+    didSet { settings.set(archiveCompletedAfterDays, forKey: archiveCompletedAfterDaysKey) }
+  }
 
   // Popover state for task detail
   @Published var popoverTaskId: String? = nil
 
   // Auto-refresh
-  @Published var autoRefreshEnabled: Bool = true
-  @Published var autoRefreshIntervalSeconds: Int = 30
+  @Published var autoRefreshEnabled: Bool = true {
+    didSet { settings.set(autoRefreshEnabled, forKey: autoRefreshEnabledKey) }
+  }
+  @Published var autoRefreshIntervalSeconds: Int = 30 {
+    didSet { settings.set(autoRefreshIntervalSeconds, forKey: autoRefreshIntervalSecondsKey) }
+  }
   private var refreshTimer: Timer?
 
   init() {
     repoPath = settings.string(forKey: repoPathKey) ?? ""
+
+    // Load persisted settings (with safe defaults)
+    ownerFilter = settings.string(forKey: ownerFilterKey) ?? "all"
+
+    let wip = settings.integer(forKey: wipLimitActiveKey)
+    wipLimitActive = (wip == 0) ? 6 : wip
+
+    let csr = settings.integer(forKey: completedShowRecentKey)
+    completedShowRecent = (csr == 0) ? 30 : csr
+
+    autoArchiveCompleted = settings.bool(forKey: autoArchiveCompletedKey)
+
+    let days = settings.integer(forKey: archiveCompletedAfterDaysKey)
+    archiveCompletedAfterDays = (days == 0) ? 30 : days
+
+    // Default true if unset
+    autoRefreshEnabled = settings.object(forKey: autoRefreshEnabledKey) as? Bool ?? true
+
+    let interval = settings.integer(forKey: autoRefreshIntervalSecondsKey)
+    autoRefreshIntervalSeconds = (interval == 0) ? 30 : interval
+
     startAutoRefreshIfNeeded()
   }
 
@@ -50,6 +94,15 @@ final class AppViewModel: ObservableObject {
       Task { @MainActor [weak self] in
         self?.silentReload()
       }
+    }
+  }
+
+  private func sortTasksForUX(_ tasks: inout [DashboardTask]) {
+    // Match LobsControlStore stable ordering (status, then most-recent updated)
+    tasks.sort { (a, b) in
+      if a.status.rawValue != b.status.rawValue { return a.status.rawValue < b.status.rawValue }
+      if a.updatedAt != b.updatedAt { return a.updatedAt > b.updatedAt }
+      return a.createdAt > b.createdAt
     }
   }
 
@@ -287,32 +340,40 @@ final class AppViewModel: ObservableObject {
     let trimmedNotes = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmedTitle.isEmpty, let repoURL else { return }
 
-    // Optimistically add to local list.
+    // UX: when Rafe creates a task, that means "start work" → goes straight to Active.
     let now = Date()
     let newTask = DashboardTask(
       id: UUID().uuidString,
       title: trimmedTitle,
-      status: .inbox,
+      status: .active,
       owner: .lobs,
       createdAt: now,
       updatedAt: now,
       workState: .notStarted,
-      reviewState: .pending,
+      reviewState: .approved,
       artifactPath: nil,
       notes: trimmedNotes
     )
 
     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
       tasks.append(newTask)
+      sortTasksForUX(&tasks)
     }
+
+    // Ensure the newly-created task is selected for quick action.
+    selectedTaskId = newTask.id
+    popoverTaskId = newTask.id
 
     // Write to disk + async git.
     do {
       let store = LobsControlStore(repoRoot: repoURL)
       _ = try store.addTask(
+        id: newTask.id,
         title: trimmedTitle,
         owner: .lobs,
-        status: .inbox,
+        status: .active,
+        workState: .notStarted,
+        reviewState: .approved,
         notes: trimmedNotes
       )
     } catch {
