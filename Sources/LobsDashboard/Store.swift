@@ -11,6 +11,8 @@ final class LobsControlStore {
   private var tasksDirURL: URL { repoRoot.appendingPathComponent("state/tasks") }
   private var archiveDirURL: URL { repoRoot.appendingPathComponent("state/tasks-archive") }
 
+  private var projectsURL: URL { repoRoot.appendingPathComponent("state/projects.json") }
+
   private func decoder() -> JSONDecoder {
     let d = JSONDecoder()
     d.dateDecodingStrategy = .iso8601
@@ -27,6 +29,40 @@ final class LobsControlStore {
   private func taskFileURL(taskId: String) -> URL {
     tasksDirURL.appendingPathComponent("\(taskId).json")
   }
+
+  // MARK: - Projects
+
+  func loadProjects() throws -> ProjectsFile {
+    let fm = FileManager.default
+
+    // If missing, synthesize a default project (in-memory) but do not write until user creates/edits.
+    guard fm.fileExists(atPath: projectsURL.path) else {
+      let now = Date()
+      return ProjectsFile(
+        schemaVersion: 1,
+        generatedAt: now,
+        projects: [Project(id: "default", title: "Default", createdAt: now, updatedAt: now, notes: nil, archived: false)]
+      )
+    }
+
+    let data = try Data(contentsOf: projectsURL)
+    return try decoder().decode(ProjectsFile.self, from: data)
+  }
+
+  func saveProjects(_ file: ProjectsFile) throws {
+    var file = file
+    file.generatedAt = Date()
+
+    try FileManager.default.createDirectory(
+      at: projectsURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+
+    let data = try encoder().encode(file)
+    try data.write(to: projectsURL, options: [.atomic])
+  }
+
+  // MARK: - Tasks
 
   func loadTasks() throws -> TasksFile {
     // Prefer per-task files if the directory exists.
@@ -195,6 +231,7 @@ final class LobsControlStore {
     title: String,
     owner: TaskOwner,
     status: TaskStatus,
+    projectId: String? = nil,
     workState: WorkState? = .notStarted,
     reviewState: ReviewState? = .pending,
     notes: String?
@@ -209,6 +246,7 @@ final class LobsControlStore {
       updatedAt: now,
       workState: workState,
       reviewState: reviewState,
+      projectId: projectId,
       artifactPath: nil,
       notes: notes?.isEmpty == true ? nil : notes
     )

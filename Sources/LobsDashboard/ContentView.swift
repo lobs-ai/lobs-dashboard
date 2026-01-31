@@ -41,6 +41,7 @@ struct ContentView: View {
   @State private var showPicker = false
   @State private var autoPush = true
   @State private var showAddTask = false
+  @State private var showCreateProject = false
   @State private var showSettings = false
   @State private var showAllCompleted = false
   @State private var showAllRejected = false
@@ -56,6 +57,7 @@ struct ContentView: View {
           autoPush: $autoPush,
           showPicker: $showPicker,
           showAddTask: $showAddTask,
+          showCreateProject: $showCreateProject,
           showSettings: $showSettings
         )
 
@@ -119,6 +121,9 @@ struct ContentView: View {
     }
     .sheet(isPresented: $showAddTask) {
       AddTaskSheet(vm: vm, autoPush: $autoPush)
+    }
+    .sheet(isPresented: $showCreateProject) {
+      CreateProjectSheet(vm: vm)
     }
     .onAppear { vm.reloadIfPossible() }
     // Keyboard shortcuts (Task #84248F22)
@@ -193,6 +198,7 @@ private struct ToolbarArea: View {
   @Binding var autoPush: Bool
   @Binding var showPicker: Bool
   @Binding var showAddTask: Bool
+  @Binding var showCreateProject: Bool
   @Binding var showSettings: Bool
 
   var body: some View {
@@ -212,6 +218,39 @@ private struct ToolbarArea: View {
       }
 
       Spacer()
+
+      // Project
+      Menu {
+        ForEach(vm.projects.filter { ($0.archived ?? false) == false }) { p in
+          Button {
+            vm.selectedProjectId = p.id
+          } label: {
+            Label(p.title, systemImage: (vm.selectedProjectId == p.id) ? "checkmark" : "")
+          }
+        }
+
+        Divider()
+
+        Button {
+          showCreateProject = true
+        } label: {
+          Label("Create project…", systemImage: "plus")
+        }
+      } label: {
+        HStack(spacing: 6) {
+          Image(systemName: "folder")
+            .foregroundStyle(.secondary)
+            .font(.caption)
+          Text(vm.projects.first(where: { $0.id == vm.selectedProjectId })?.title ?? "Default")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Theme.subtle)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+      }
+      .menuStyle(.borderlessButton)
 
       // Search
       HStack(spacing: 6) {
@@ -1092,6 +1131,60 @@ private struct ActionButton: View {
     }
     .buttonStyle(.plain)
     .onHover { h in isHovering = h }
+  }
+}
+
+// MARK: - Create Project Sheet
+
+private struct CreateProjectSheet: View {
+  @ObservedObject var vm: AppViewModel
+
+  @Environment(\.dismiss) private var dismiss
+
+  @State private var title: String = ""
+  @State private var notes: String = ""
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      HStack {
+        Image(systemName: "folder.badge.plus")
+          .font(.title2)
+          .foregroundStyle(.linearGradient(
+            colors: [.blue, .purple],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+          ))
+        Text("Create project")
+          .font(.title3)
+          .fontWeight(.bold)
+        Spacer()
+      }
+
+      VStack(alignment: .leading, spacing: 10) {
+        TextField("Project name", text: $title)
+          .textFieldStyle(.roundedBorder)
+
+        TextField("Notes (optional)", text: $notes, axis: .vertical)
+          .textFieldStyle(.roundedBorder)
+          .lineLimit(6, reservesSpace: true)
+      }
+
+      HStack {
+        Button("Cancel") { dismiss() }
+          .keyboardShortcut(.cancelAction)
+
+        Spacer()
+
+        Button("Create") {
+          vm.createProject(title: title, notes: notes)
+          dismiss()
+        }
+        .keyboardShortcut(.defaultAction)
+        .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+      }
+    }
+    .padding(20)
+    .frame(width: 420)
   }
 }
 

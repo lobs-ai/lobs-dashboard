@@ -14,11 +14,18 @@ final class AppViewModel: ObservableObject {
   private let archiveCompletedAfterDaysKey = "archiveCompletedAfterDays"
   private let autoRefreshEnabledKey = "autoRefreshEnabled"
   private let autoRefreshIntervalSecondsKey = "autoRefreshIntervalSeconds"
+  private let selectedProjectIdKey = "selectedProjectId"
 
   @Published private(set) var repoPath: String = ""
 
   @Published var tasks: [DashboardTask] = []
   @Published var selectedTaskId: String? = nil
+
+  // Projects
+  @Published var projects: [Project] = []
+  @Published var selectedProjectId: String = "default" {
+    didSet { settings.set(selectedProjectId, forKey: selectedProjectIdKey) }
+  }
   @Published var artifactText: String = "(select a task)"
   @Published var lastError: String? = nil
 
@@ -62,6 +69,7 @@ final class AppViewModel: ObservableObject {
 
   init() {
     repoPath = settings.string(forKey: repoPathKey) ?? ""
+    selectedProjectId = settings.string(forKey: selectedProjectIdKey) ?? "default"
 
     // Load persisted settings (with safe defaults)
     ownerFilter = settings.string(forKey: ownerFilterKey) ?? "all"
@@ -113,6 +121,20 @@ final class AppViewModel: ObservableObject {
     do {
       try syncRepo(repoURL: repoURL)
       let store = LobsControlStore(repoRoot: repoURL)
+
+      // Projects
+      let pfile = try store.loadProjects()
+      if pfile.projects.map({ $0.id }) != projects.map({ $0.id }) {
+        projects = pfile.projects
+      }
+      if !projects.contains(where: { $0.id == "default" }) {
+        let now = Date()
+        projects.insert(Project(id: "default", title: "Default", createdAt: now, updatedAt: now, notes: nil, archived: false), at: 0)
+      }
+      if !projects.contains(where: { $0.id == selectedProjectId }) {
+        selectedProjectId = "default"
+      }
+
       if autoArchiveCompleted {
         try store.archiveCompleted(olderThanDays: archiveCompletedAfterDays)
       }
@@ -153,6 +175,17 @@ final class AppViewModel: ObservableObject {
       try syncRepo(repoURL: repoURL)
 
       let store = LobsControlStore(repoRoot: repoURL)
+
+      // Projects
+      let pfile = try store.loadProjects()
+      projects = pfile.projects
+      if !projects.contains(where: { $0.id == "default" }) {
+        let now = Date()
+        projects.insert(Project(id: "default", title: "Default", createdAt: now, updatedAt: now, notes: nil, archived: false), at: 0)
+      }
+      if !projects.contains(where: { $0.id == selectedProjectId }) {
+        selectedProjectId = "default"
+      }
 
       if autoArchiveCompleted {
         try store.archiveCompleted(olderThanDays: archiveCompletedAfterDays)
@@ -372,6 +405,7 @@ final class AppViewModel: ObservableObject {
       updatedAt: now,
       workState: .notStarted,
       reviewState: .approved,
+      projectId: selectedProjectId,
       artifactPath: nil,
       notes: trimmedNotes
     )
@@ -393,6 +427,7 @@ final class AppViewModel: ObservableObject {
         title: trimmedTitle,
         owner: .lobs,
         status: .active,
+        projectId: selectedProjectId,
         workState: .notStarted,
         reviewState: .approved,
         notes: trimmedNotes
@@ -416,6 +451,88 @@ final class AppViewModel: ObservableObject {
       }
       isGitBusy = false
     }
+  }
+
+  // MARK: - Projects
+
+  func createProject(title: String, notes: String?) {
+    let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    let trimmedNotes = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedTitle.isEmpty, let repoURL else { return }
+
+    let id = uniqueProjectId(for: trimmedTitle)
+    let now = Date()
+    let p = Project(
+      id: id,
+      title: trimmedTitle,
+      createdAt: now,
+      updatedAt: now,
+      notes: (trimmedNotes?.isEmpty == true) ? nil : trimmedNotes,
+      archived: false
+    )
+
+    // Local update
+    projects.append(p)
+    selectedProjectId = p.id
+
+    // Persist + git
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      var file = try store.loadProjects()
+      // If file was synthesized (missing on disk), it will only contain Default.
+      // Ensure default exists and then append.
+      if !file.projects.contains(where: { $0.id == "default" }) {
+        let dnow = Date()
+        file.projects.insert(Project(id: "default", title: "Default", createdAt: dnow, updatedAt: dnow, notes: nil, archived: false), at: 0)
+      }
+      file.projects.append(p)
+      try store.saveProjects(file)
+    } catch {
+      flashError("Failed to save project: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: create project \(p.id)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+        reload()
+      }
+      isGitBusy = false
+    }
+  }
+
+  private func uniqueProjectId(for title: String) -> String {
+    func slugify(_ s: String) -> String {
+      let lower = s.lowercased()
+      var out = ""
+      var prevDash = false
+      for ch in lower {
+        if ch.isLetter || ch.isNumber {
+          out.append(ch)
+          prevDash = false
+        } else {
+          if !prevDash {
+            out.append("-")
+            prevDash = true
+          }
+        }
+      }
+      out = out.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+      return out.isEmpty ? "project" : out
+    }
+
+    let base = slugify(title)
+    if !projects.contains(where: { $0.id == base }) { return base }
+    var i = 2
+    while projects.contains(where: { $0.id == "\(base)-\(i)" }) { i += 1 }
+    return "\(base)-\(i)"
   }
 
   func moveTask(taskId: String, to status: TaskStatus) {
@@ -531,6 +648,11 @@ final class AppViewModel: ObservableObject {
 
   var filteredTasks: [DashboardTask] {
     var out = tasks
+
+    // Project scoping
+    out = out.filter { t in
+      (t.projectId ?? "default") == selectedProjectId
+    }
 
     let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     if !q.isEmpty {

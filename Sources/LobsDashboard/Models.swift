@@ -157,8 +157,26 @@ struct DashboardTask: Codable, Identifiable, Hashable {
   /// This is intentionally separate from `status` so you can approve without completing (or vice versa).
   var reviewState: ReviewState?
 
+  /// Project/workstream this task belongs to. Missing implies "default".
+  var projectId: String?
+
   var artifactPath: String?
   var notes: String?
+}
+
+struct Project: Codable, Identifiable, Hashable {
+  var id: String
+  var title: String
+  var createdAt: Date
+  var updatedAt: Date
+  var notes: String?
+  var archived: Bool?
+}
+
+struct ProjectsFile: Codable {
+  var schemaVersion: Int
+  var generatedAt: Date
+  var projects: [Project]
 }
 
 struct TasksFile: Codable {
