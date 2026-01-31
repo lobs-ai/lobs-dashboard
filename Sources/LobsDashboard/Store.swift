@@ -9,6 +9,7 @@ final class LobsControlStore {
 
   private var tasksURL: URL { repoRoot.appendingPathComponent("state/tasks.json") }
   private var tasksDirURL: URL { repoRoot.appendingPathComponent("state/tasks") }
+  private var archiveDirURL: URL { repoRoot.appendingPathComponent("state/tasks-archive") }
 
   private func decoder() -> JSONDecoder {
     let d = JSONDecoder()
@@ -191,4 +192,46 @@ final class LobsControlStore {
     try saveTasks(file)
     return task
   }
+
+  func archiveTask(taskId: String) throws {
+    // Per-file mode: move the task JSON into state/tasks-archive/
+    if FileManager.default.fileExists(atPath: tasksDirURL.path) {
+      let src = taskFileURL(taskId: taskId)
+      if !FileManager.default.fileExists(atPath: src.path) { return }
+      try FileManager.default.createDirectory(at: archiveDirURL, withIntermediateDirectories: true)
+      let dst = archiveDirURL.appendingPathComponent("\(taskId).json")
+      // Replace if exists
+      _ = try? FileManager.default.removeItem(at: dst)
+      try FileManager.default.moveItem(at: src, to: dst)
+      return
+    }
+
+    // Legacy mode: remove from tasks.json
+    var file = try loadTasks()
+    file.tasks.removeAll { $0.id == taskId }
+    try saveTasks(file)
+  }
+
+  func archiveCompleted(olderThanDays days: Int) throws {
+    guard days > 0 else { return }
+    if !FileManager.default.fileExists(atPath: tasksDirURL.path) { return }
+
+    let items = try FileManager.default.contentsOfDirectory(
+      at: tasksDirURL,
+      includingPropertiesForKeys: nil,
+      options: [.skipsHiddenFiles]
+    )
+
+    let dec = decoder()
+    let cutoff = Date().addingTimeInterval(TimeInterval(-days * 24 * 3600))
+
+    for url in items where url.pathExtension.lowercased() == "json" {
+      let data = try Data(contentsOf: url)
+      let t = try dec.decode(DashboardTask.self, from: data)
+      if t.status.rawValue == "completed" && t.updatedAt < cutoff {
+        try archiveTask(taskId: t.id)
+      }
+    }
+  }
 }
+

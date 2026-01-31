@@ -13,6 +13,16 @@ final class AppViewModel: ObservableObject {
   @Published var artifactText: String = "(select a task)"
   @Published var lastError: String? = nil
 
+  // Kanban UX
+  @Published var searchText: String = ""
+  @Published var ownerFilter: String = "all" // "all" | "lobs" | "rafe" | "other"
+  @Published var wipLimitActive: Int = 6
+
+  // Completed hygiene
+  @Published var completedShowRecent: Int = 30
+  @Published var autoArchiveCompleted: Bool = false
+  @Published var archiveCompletedAfterDays: Int = 30
+
   init() {
     repoPath = settings.string(forKey: repoPathKey) ?? ""
   }
@@ -43,6 +53,12 @@ final class AppViewModel: ObservableObject {
       try syncRepo(repoURL: repoURL)
 
       let store = LobsControlStore(repoRoot: repoURL)
+
+      // Optional hygiene: archive old completed tasks.
+      if autoArchiveCompleted {
+        try store.archiveCompleted(olderThanDays: archiveCompletedAfterDays)
+      }
+
       let file = try store.loadTasks()
       tasks = file.tasks
       lastError = nil
@@ -199,6 +215,31 @@ final class AppViewModel: ObservableObject {
 
   // Drag-and-drop support
   @Published var draggingTaskId: String? = nil
+
+  var filteredTasks: [DashboardTask] {
+    var out = tasks
+
+    let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    if !q.isEmpty {
+      out = out.filter { t in
+        let hay = (t.title + "\n" + (t.notes ?? "")).lowercased()
+        return hay.contains(q)
+      }
+    }
+
+    switch ownerFilter {
+    case "lobs":
+      out = out.filter { if case .lobs = $0.owner { return true } else { return false } }
+    case "rafe":
+      out = out.filter { if case .rafe = $0.owner { return true } else { return false } }
+    case "other":
+      out = out.filter { if case .other = $0.owner { return true } else { return false } }
+    default:
+      break
+    }
+
+    return out
+  }
 
   var columns: [AnyTaskColumn] {
     [

@@ -21,6 +21,9 @@ struct ContentView: View {
 
   @State private var showAddTask = false
 
+  @State private var showAllCompleted = false
+  @State private var showAllRejected = false
+
   var selectedTask: DashboardTask? {
     guard let id = vm.selectedTaskId else { return nil }
     return vm.tasks.first(where: { $0.id == id })
@@ -54,6 +57,21 @@ struct ContentView: View {
               Label("Refresh", systemImage: "arrow.clockwise")
             }
             .help("Pull latest from GitHub and reload tasks")
+
+            TextField("Search", text: $vm.searchText)
+              .textFieldStyle(.roundedBorder)
+              .frame(width: 220)
+              .help("Search title + notes")
+
+            Menu {
+              Button("All") { vm.ownerFilter = "all" }
+              Button("Owner: Lobs") { vm.ownerFilter = "lobs" }
+              Button("Owner: Rafe") { vm.ownerFilter = "rafe" }
+              Button("Owner: Other") { vm.ownerFilter = "other" }
+            } label: {
+              Label("Filter", systemImage: "line.3.horizontal.decrease.circle")
+            }
+            .help("Filter tasks")
 
             Toggle(isOn: $autoPush) {
               Label("Auto-push", systemImage: autoPush ? "arrow.up.circle.fill" : "arrow.up.circle")
@@ -160,9 +178,11 @@ private struct BoardView: View {
         ForEach(vm.columns, id: \.title) { col in
           BoardColumn(
             title: col.title,
-            tasks: vm.tasks.filter(col.matches),
+            tasks: vm.filteredTasks.filter(col.matches),
             dropStatus: col.dropStatus,
-            vm: vm
+            vm: vm,
+            showAllCompleted: $showAllCompleted,
+            showAllRejected: $showAllRejected
           )
         }
       }
@@ -179,20 +199,71 @@ private struct BoardColumn: View {
 
   @ObservedObject var vm: AppViewModel
 
+  @Binding var showAllCompleted: Bool
+  @Binding var showAllRejected: Bool
+
   var body: some View {
+    let isCompleted = title.lowercased() == "completed"
+    let isRejected = title.lowercased() == "rejected"
+
+    let showAll = isCompleted ? showAllCompleted : (isRejected ? showAllRejected : true)
+    let visibleTasks = (isCompleted || isRejected) && !showAll
+      ? Array(tasks.sorted { $0.updatedAt > $1.updatedAt }.prefix(vm.completedShowRecent))
+      : tasks
+
+    let wipLimit = (title.lowercased() == "active") ? vm.wipLimitActive : 0
+
     VStack(alignment: .leading, spacing: 10) {
-      HStack {
+      HStack(alignment: .firstTextBaseline) {
         Text(title)
           .font(.headline)
+
+        if wipLimit > 0 && tasks.count > wipLimit {
+          Text("WIP")
+            .font(.caption2)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.orange.opacity(0.2))
+            .clipShape(Capsule())
+            .help("Active WIP limit exceeded")
+        }
+
         Spacer()
+
         Text("\(tasks.count)")
           .font(.caption)
+          .foregroundStyle(.secondary)
+
+        if isCompleted {
+          Button {
+            showAllCompleted.toggle()
+          } label: {
+            Image(systemName: showAllCompleted ? "chevron.down" : "chevron.right")
+          }
+          .buttonStyle(.plain)
+          .help(showAllCompleted ? "Show only recent" : "Show all")
+        }
+
+        if isRejected {
+          Button {
+            showAllRejected.toggle()
+          } label: {
+            Image(systemName: showAllRejected ? "chevron.down" : "chevron.right")
+          }
+          .buttonStyle(.plain)
+          .help(showAllRejected ? "Show only recent" : "Show all")
+        }
+      }
+
+      if (isCompleted || isRejected) && !showAll {
+        Text("Showing most recent \(min(vm.completedShowRecent, tasks.count))")
+          .font(.caption2)
           .foregroundStyle(.secondary)
       }
 
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 10) {
-          ForEach(tasks) { t in
+          ForEach(visibleTasks) { t in
             TaskTile(task: t, isSelected: vm.selectedTaskId == t.id)
               .onTapGesture { vm.selectTask(t) }
               .onDrag {
