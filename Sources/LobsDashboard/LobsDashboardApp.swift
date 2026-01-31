@@ -15,5 +15,8 @@ struct LobsDashboardApp: App {
           NSApp.activate(ignoringOtherApps: true)
         }
     }
+    // Set a reasonable initial window size; the `.frame(minWidth/minHeight)` only
+    // constrains resizing and does not guarantee the initial window dimensions.
+    .defaultSize(width: 1200, height: 800)
   }
 }
