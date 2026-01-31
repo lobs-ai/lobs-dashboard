@@ -147,7 +147,7 @@ final class AppViewModel: ObservableObject {
     }
 
     // Use a GitHub noreply-style email so commits do not get attributed to your personal account.
-    let author = "Lobs <lobs@users.noreply.github.com>"
+    let author = "Lobs <thelobsbot@gmail.com>"
 
     let commit = try Git.run([
       "commit",
