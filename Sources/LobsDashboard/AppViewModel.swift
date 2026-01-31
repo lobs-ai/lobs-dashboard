@@ -118,6 +118,7 @@ final class AppViewModel: ObservableObject {
         if let rs = t.reviewState {
           try store.setReviewState(taskId: t.id, reviewState: rs)
         }
+        try store.setWorkState(taskId: t.id, workState: t.workState)
       }
     } catch {
       flashError("Failed to save: \(error.localizedDescription)")
@@ -140,12 +141,26 @@ final class AppViewModel: ObservableObject {
 
   // MARK: - Actions (now optimistic + async)
 
+  // MARK: - Context-Aware Task Actions
+  //
+  // Flow: Inbox → (approve) → Active → (complete) → Completed
+  //       ↕ reject / request changes / reopen as needed
+
+  /// Approve: sets reviewState=approved AND moves to Active.
   func approveSelected(autoPush: Bool) {
     guard let id = selectedTaskId else { return }
-    optimisticUpdate(taskId: id, localMutation: { $0.reviewState = .approved }) { repoURL in
+    optimisticUpdate(taskId: id, localMutation: {
+      $0.reviewState = .approved
+      $0.status = .active
+      $0.workState = .notStarted
+    }) { repoURL in
+      // Also persist the status change to disk.
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.setStatus(taskId: id, status: .active)
+      try store.setWorkState(taskId: id, workState: .notStarted)
       try await self.asyncCommitAndMaybePush(
         repoURL: repoURL,
-        message: "Lobs: set \(id) reviewState=approved",
+        message: "Lobs: approve \(id) → active",
         autoPush: autoPush
       )
     }
@@ -164,21 +179,66 @@ final class AppViewModel: ObservableObject {
 
   func rejectSelected(autoPush: Bool) {
     guard let id = selectedTaskId else { return }
-    optimisticUpdate(taskId: id, localMutation: { $0.reviewState = .rejected }) { repoURL in
+    optimisticUpdate(taskId: id, localMutation: {
+      $0.reviewState = .rejected
+      $0.status = .rejected
+    }) { repoURL in
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.setStatus(taskId: id, status: .rejected)
       try await self.asyncCommitAndMaybePush(
         repoURL: repoURL,
-        message: "Lobs: set \(id) reviewState=rejected",
+        message: "Lobs: reject \(id)",
         autoPush: autoPush
       )
     }
   }
 
+  /// Mark an active task as completed (work is done).
   func completeSelected(autoPush: Bool) {
     guard let id = selectedTaskId else { return }
-    optimisticUpdate(taskId: id, localMutation: { $0.status = .completed }) { repoURL in
+    optimisticUpdate(taskId: id, localMutation: {
+      $0.status = .completed
+      $0.workState = nil
+    }) { repoURL in
       try await self.asyncCommitAndMaybePush(
         repoURL: repoURL,
-        message: "Lobs: set \(id) status=completed",
+        message: "Lobs: complete \(id)",
+        autoPush: autoPush
+      )
+    }
+  }
+
+  /// Reopen a completed/rejected task back to Active.
+  func reopenSelected(autoPush: Bool) {
+    guard let id = selectedTaskId else { return }
+    optimisticUpdate(taskId: id, localMutation: {
+      $0.status = .active
+      $0.workState = .notStarted
+      $0.reviewState = .approved
+    }) { repoURL in
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.setStatus(taskId: id, status: .active)
+      try store.setWorkState(taskId: id, workState: .notStarted)
+      try store.setReviewState(taskId: id, reviewState: .approved)
+      try await self.asyncCommitAndMaybePush(
+        repoURL: repoURL,
+        message: "Lobs: reopen \(id) → active",
+        autoPush: autoPush
+      )
+    }
+  }
+
+  /// Toggle blocked state on an active task.
+  func toggleBlockSelected(autoPush: Bool) {
+    guard let id = selectedTaskId else { return }
+    let currentlyBlocked = tasks.first(where: { $0.id == id })?.workState == .blocked
+    let newState: WorkState = currentlyBlocked ? .inProgress : .blocked
+    optimisticUpdate(taskId: id, localMutation: { $0.workState = newState }) { repoURL in
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.setWorkState(taskId: id, workState: newState)
+      try await self.asyncCommitAndMaybePush(
+        repoURL: repoURL,
+        message: "Lobs: set \(id) workState=\(newState.rawValue)",
         autoPush: autoPush
       )
     }

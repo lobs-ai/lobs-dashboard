@@ -770,40 +770,69 @@ private struct TaskDetailPopover: View {
 
         Divider()
 
-        // Review actions
+        // Context-aware actions based on task status
         VStack(alignment: .leading, spacing: 10) {
-          Text("Review")
+          Text("Actions")
             .font(.subheadline)
             .fontWeight(.bold)
 
-          HStack(spacing: 8) {
-            ActionButton(label: "Approve", icon: "checkmark.seal.fill", color: .green) {
-              vm.approveSelected(autoPush: autoPush)
+          switch task.status {
+          case .inbox:
+            // Inbox: approve (→ active), request changes, reject
+            HStack(spacing: 8) {
+              ActionButton(label: "Approve", icon: "checkmark.seal.fill", color: .green) {
+                vm.approveSelected(autoPush: autoPush)
+              }
+              ActionButton(label: "Changes", icon: "pencil.circle.fill", color: .orange) {
+                vm.requestChangesSelected(autoPush: autoPush)
+              }
+              ActionButton(label: "Reject", icon: "xmark.seal.fill", color: .red) {
+                vm.rejectSelected(autoPush: autoPush)
+              }
             }
-            ActionButton(label: "Changes", icon: "pencil.circle.fill", color: .orange) {
-              vm.requestChangesSelected(autoPush: autoPush)
-            }
-            ActionButton(label: "Reject", icon: "xmark.seal.fill", color: .red) {
-              vm.rejectSelected(autoPush: autoPush)
-            }
-          }
-        }
+            Text("Approve moves this task to Active for Lobs to work on.")
+              .font(.caption2)
+              .foregroundStyle(.secondary)
 
-        Divider()
-
-        // Status actions
-        VStack(alignment: .leading, spacing: 10) {
-          Text("Status")
-            .font(.subheadline)
-            .fontWeight(.bold)
-
-          HStack(spacing: 8) {
-            ActionButton(label: "Complete", icon: "checkmark.circle.fill", color: .green) {
-              vm.completeSelected(autoPush: autoPush)
+          case .active:
+            // Active: mark complete, toggle blocked
+            HStack(spacing: 8) {
+              ActionButton(label: "Mark Complete", icon: "checkmark.circle.fill", color: .green) {
+                vm.completeSelected(autoPush: autoPush)
+              }
+              ActionButton(
+                label: task.workState == .blocked ? "Unblock" : "Block",
+                icon: task.workState == .blocked ? "play.circle.fill" : "exclamationmark.octagon.fill",
+                color: task.workState == .blocked ? .blue : .red
+              ) {
+                vm.toggleBlockSelected(autoPush: autoPush)
+              }
             }
-            ActionButton(label: "Approve + Complete", icon: "checkmark.circle.badge.checkmark", color: .teal) {
-              vm.approveSelected(autoPush: autoPush)
-              vm.completeSelected(autoPush: autoPush)
+
+          case .completed, .rejected:
+            // Completed/Rejected: reopen
+            HStack(spacing: 8) {
+              ActionButton(label: "Reopen", icon: "arrow.counterclockwise.circle.fill", color: .blue) {
+                vm.reopenSelected(autoPush: autoPush)
+              }
+            }
+
+          case .waitingOn:
+            // Waiting: complete or move back to active
+            HStack(spacing: 8) {
+              ActionButton(label: "Mark Complete", icon: "checkmark.circle.fill", color: .green) {
+                vm.completeSelected(autoPush: autoPush)
+              }
+              ActionButton(label: "Reopen", icon: "arrow.counterclockwise.circle.fill", color: .blue) {
+                vm.reopenSelected(autoPush: autoPush)
+              }
+            }
+
+          case .other:
+            HStack(spacing: 8) {
+              ActionButton(label: "Reopen", icon: "arrow.counterclockwise.circle.fill", color: .blue) {
+                vm.reopenSelected(autoPush: autoPush)
+              }
             }
           }
         }
