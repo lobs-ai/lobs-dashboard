@@ -146,14 +146,19 @@ final class AppViewModel: ObservableObject {
       return
     }
 
-    // Use a GitHub noreply-style email so commits do not get attributed to your personal account.
+    // Ensure commits are attributed to Lobs, not the local machine user.
+    // Note: --author sets the author; committer is controlled by env vars (or git config).
     let author = "Lobs <thelobsbot@gmail.com>"
+    let committerEnv: [String: String] = [
+      "GIT_COMMITTER_NAME": "Lobs",
+      "GIT_COMMITTER_EMAIL": "thelobsbot@gmail.com",
+    ]
 
     let commit = try Git.run([
       "commit",
       "--author", author,
       "-m", message
-    ], cwd: repoURL)
+    ], cwd: repoURL, env: committerEnv)
 
     if commit.exitCode != 0 {
       throw NSError(domain: "Git", code: Int(commit.exitCode), userInfo: [NSLocalizedDescriptionKey: commit.stderr])

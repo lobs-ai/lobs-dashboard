@@ -9,7 +9,7 @@ struct LobsDashboardApp: App {
     WindowGroup {
       ContentView()
         .environmentObject(vm)
-        .frame(minWidth: 900, minHeight: 600)
+        .frame(minWidth: 1100, minHeight: 720)
         .onAppear {
           // Ensure the app becomes key so keyboard input goes to fields.
           NSApp.activate(ignoringOtherApps: true)

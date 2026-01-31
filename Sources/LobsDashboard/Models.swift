@@ -137,13 +137,24 @@ enum TaskOwner: Hashable, Codable {
 struct DashboardTask: Codable, Identifiable, Hashable {
   var id: String
   var title: String
+
+  /// Workflow status for the task itself (drives the Kanban columns: inbox/active/waiting_on/completed/etc).
+  ///
+  /// Important: `status=completed` means the task is done from a workflow perspective.
+  /// It does *not* imply the artifact has been approved.
   var status: TaskStatus
+
   var owner: TaskOwner
   var createdAt: Date
   var updatedAt: Date
 
   // Optional fields (schema evolves)
+
+  /// Whether work has started / is in progress / is blocked.
   var workState: WorkState?
+
+  /// Review state for the produced artifact (pending/approved/changes_requested/etc).
+  /// This is intentionally separate from `status` so you can approve without completing (or vice versa).
   var reviewState: ReviewState?
 
   var artifactPath: String?

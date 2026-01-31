@@ -37,7 +37,7 @@ struct ContentView: View {
         autoPush: $autoPush,
         showAddTask: $showAddTask
       )
-      .frame(minWidth: 260)
+      .frame(minWidth: 280, idealWidth: 320)
 
     } content: {
       BoardView(
@@ -86,10 +86,10 @@ struct ContentView: View {
 
     } detail: {
       InspectorView(vm: vm, selectedTask: selectedTask, autoPush: $autoPush)
-        .frame(minWidth: 360)
+        .frame(minWidth: 420, idealWidth: 460)
     }
-    // Fix “left panel is too small by default”.
-    .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 420)
+    // Defaults that feel better on first launch.
+    .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 480)
     .fileImporter(
       isPresented: $showPicker,
       allowedContentTypes: [.folder]
@@ -321,7 +321,7 @@ private struct InspectorView: View {
 
         Divider()
 
-        GroupBox("Review") {
+        GroupBox("Review (artifact)") {
           VStack(alignment: .leading, spacing: 10) {
             HStack {
               Button {
@@ -329,14 +329,14 @@ private struct InspectorView: View {
               } label: {
                 Label("Approve", systemImage: "checkmark.seal")
               }
-              .help("Marks reviewState=approved")
+              .help("Sets reviewState=approved (does not change status)")
 
               Button {
                 vm.requestChangesSelected(autoPush: autoPush)
               } label: {
                 Label("Request changes", systemImage: "pencil.and.outline")
               }
-              .help("Marks reviewState=changes_requested")
+              .help("Sets reviewState=changes_requested (does not change status)")
             }
 
             Button {
@@ -344,18 +344,22 @@ private struct InspectorView: View {
             } label: {
               Label("Reject", systemImage: "xmark.seal")
             }
-            .help("Marks reviewState=rejected")
+            .help("Sets reviewState=rejected (does not change status)")
+
+            Text("Review actions update reviewState only. Use Status actions to move the card on the board.")
+              .font(.caption)
+              .foregroundStyle(.secondary)
           }
         }
 
-        GroupBox("Completion") {
+        GroupBox("Status (workflow)") {
           VStack(alignment: .leading, spacing: 10) {
             Button {
               vm.completeSelected(autoPush: autoPush)
             } label: {
               Label("Mark complete", systemImage: "checkmark.circle")
             }
-            .help("Moves the task to status=completed")
+            .help("Sets status=completed (does not change reviewState)")
 
             Button {
               vm.approveSelected(autoPush: autoPush)
@@ -364,6 +368,10 @@ private struct InspectorView: View {
               Label("Approve + complete", systemImage: "checkmark.circle.badge.checkmark")
             }
             .help("Sets reviewState=approved then status=completed")
+
+            Text("Status moves the task between Inbox/Active/Completed/etc. Completing a task is separate from approving its artifact.")
+              .font(.caption)
+              .foregroundStyle(.secondary)
           }
         }
 
