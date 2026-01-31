@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
   name: "LobsDashboard",
   platforms: [
-    .macOS(.13)
+    .macOS(.v13)
   ],
   products: [
     .executable(name: "lobs-dashboard", targets: ["LobsDashboard"])

@@ -13,6 +13,13 @@ cd ~/lobs-dashboard
 swift run lobs-dashboard
 ```
 
+## Build a .app bundle (recommended)
+
+```bash
+./scripts/build-app.sh
+open .build/LobsDashboard.app
+```
+
 ## First-run usage
 - Click **Choose lobs-control…** and select your `lobs-control` folder.
 - Select a task to view its artifact.

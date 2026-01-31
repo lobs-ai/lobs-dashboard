@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_NAME="LobsDashboard"
+BUNDLE_ID="com.lobs.dashboard"
+CONFIG="${1:-release}"
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BUILD_DIR="${ROOT_DIR}/.build"
+APP_DIR="${BUILD_DIR}/${APP_NAME}.app"
+
+swift build -c "${CONFIG}" --product lobs-dashboard
+
+mkdir -p "${APP_DIR}/Contents/MacOS"
+mkdir -p "${APP_DIR}/Contents/Resources"
+
+cat > "${APP_DIR}/Contents/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleExecutable</key>
+  <string>lobs-dashboard</string>
+  <key>CFBundleIdentifier</key>
+  <string>${BUNDLE_ID}</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>${APP_NAME}</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.1</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>13.0</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+</dict>
+</plist>
+EOF
+
+cp "${BUILD_DIR}/${CONFIG}/lobs-dashboard" "${APP_DIR}/Contents/MacOS/"
+
+echo "Built ${APP_DIR}"

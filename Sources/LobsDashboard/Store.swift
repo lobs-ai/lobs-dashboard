@@ -45,4 +45,22 @@ final class LobsControlStore {
     file.tasks[idx].updatedAt = Date()
     try saveTasks(file)
   }
+
+  func addTask(title: String, owner: TaskOwner, status: TaskStatus, notes: String?) throws -> DashboardTask {
+    var file = try loadTasks()
+    let now = Date()
+    let task = DashboardTask(
+      id: UUID().uuidString,
+      title: title,
+      status: status,
+      owner: owner,
+      createdAt: now,
+      updatedAt: now,
+      artifactPath: nil,
+      notes: notes?.isEmpty == true ? nil : notes
+    )
+    file.tasks.append(task)
+    try saveTasks(file)
+    return task
+  }
 }

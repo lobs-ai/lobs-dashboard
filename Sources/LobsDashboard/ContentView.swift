@@ -4,6 +4,14 @@ struct ContentView: View {
   @EnvironmentObject var vm: AppViewModel
   @State private var showPicker = false
   @State private var autoPush = true
+  @State private var newTitle = ""
+  @State private var newNotes = ""
+  @FocusState private var focusedField: Field?
+
+  private enum Field {
+    case title
+    case notes
+  }
 
   var body: some View {
     NavigationSplitView {
@@ -44,7 +52,7 @@ struct ContentView: View {
             }
           }
         }
-        .onChange(of: vm.selectedTaskId) { _, _ in
+        .onChange(of: vm.selectedTaskId) { _ in
           vm.reload()
         }
 
@@ -53,6 +61,29 @@ struct ContentView: View {
       .padding()
     } detail: {
       VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 6) {
+          TextField("New task title…", text: $newTitle)
+            .textFieldStyle(.roundedBorder)
+            .focused($focusedField, equals: .title)
+          TextEditor(text: $newNotes)
+            .font(.system(.body))
+            .frame(minHeight: 80)
+            .overlay(
+              RoundedRectangle(cornerRadius: 6)
+                .stroke(Color.secondary.opacity(0.3))
+            )
+            .focused($focusedField, equals: .notes)
+          HStack {
+            Button("Submit to Lobs") {
+              vm.submitTaskToLobs(title: newTitle, notes: newNotes, autoPush: autoPush)
+              newTitle = ""
+              newNotes = ""
+              focusedField = .title
+            }
+            .disabled(newTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || vm.repoURL == nil)
+          }
+        }
+
         HStack {
           Button("✅ Approve") { vm.approveSelected(autoPush: autoPush) }
             .disabled(vm.selectedTaskId == nil)
@@ -81,6 +112,10 @@ struct ContentView: View {
       case .failure(let err):
         vm.lastError = String(describing: err)
       }
+    }
+    .onAppear {
+      vm.reloadIfPossible()
+      focusedField = .title
     }
   }
 }
