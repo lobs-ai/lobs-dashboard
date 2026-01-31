@@ -300,6 +300,26 @@ final class AppViewModel: ObservableObject {
     }
   }
 
+  /// Mark a completed task as Done (approved).
+  /// This does not change workflow `status` (it stays `.completed`) — it sets `reviewState=approved`.
+  func markDoneSelected(autoPush: Bool) {
+    guard let id = selectedTaskId else { return }
+    optimisticUpdate(taskId: id, localMutation: {
+      $0.status = .completed
+      $0.reviewState = .approved
+      if $0.workState == nil { $0.workState = .completed }
+    }) { repoURL in
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.setStatus(taskId: id, status: .completed)
+      try store.setReviewState(taskId: id, reviewState: .approved)
+      try await self.asyncCommitAndMaybePush(
+        repoURL: repoURL,
+        message: "Lobs: mark \(id) done",
+        autoPush: autoPush
+      )
+    }
+  }
+
   /// Reopen a completed/rejected task back to Active.
   func reopenSelected(autoPush: Bool) {
     guard let id = selectedTaskId else { return }

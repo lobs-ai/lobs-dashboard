@@ -1,5 +1,9 @@
 import SwiftUI
 
+#if os(macOS)
+import AppKit
+#endif
+
 // MARK: - Drop Delegate
 
 private struct TaskDropDelegate: DropDelegate {
@@ -139,6 +143,16 @@ private struct KeyboardShortcutReceiver: View {
   let onPrevTask: () -> Void
   let onSearch: () -> Void
 
+  #if os(macOS)
+  private func isTextInputActive() -> Bool {
+    guard let responder = NSApp.keyWindow?.firstResponder else { return false }
+    // Covers TextField, TextEditor, and multiline fields.
+    if responder is NSTextView { return true }
+    if responder is NSTextField { return true }
+    return false
+  }
+  #endif
+
   var body: some View {
     Group {
       Button("") { onNewTask() }
@@ -149,13 +163,23 @@ private struct KeyboardShortcutReceiver: View {
         .keyboardShortcut("r", modifiers: .command)
         .opacity(0)
 
-      Button("") { onNextTask() }
-        .keyboardShortcut(.downArrow, modifiers: [])
-        .opacity(0)
+      Button("") {
+        #if os(macOS)
+        if isTextInputActive() { return }
+        #endif
+        onNextTask()
+      }
+      .keyboardShortcut(.downArrow, modifiers: [])
+      .opacity(0)
 
-      Button("") { onPrevTask() }
-        .keyboardShortcut(.upArrow, modifiers: [])
-        .opacity(0)
+      Button("") {
+        #if os(macOS)
+        if isTextInputActive() { return }
+        #endif
+        onPrevTask()
+      }
+      .keyboardShortcut(.upArrow, modifiers: [])
+      .opacity(0)
     }
     .frame(width: 0, height: 0)
     .allowsHitTesting(false)
@@ -903,8 +927,19 @@ private struct TaskDetailPopover: View {
               }
             }
 
-          case .completed, .rejected:
-            // Completed/Rejected: reopen
+          case .completed:
+            // Completed: either mark as Done (approved) or reopen.
+            HStack(spacing: 8) {
+              ActionButton(label: "Mark Done", icon: "checkmark.seal.fill", color: .green) {
+                vm.markDoneSelected(autoPush: autoPush)
+              }
+              ActionButton(label: "Reopen", icon: "arrow.counterclockwise.circle.fill", color: .blue) {
+                vm.reopenSelected(autoPush: autoPush)
+              }
+            }
+
+          case .rejected:
+            // Rejected: reopen
             HStack(spacing: 8) {
               ActionButton(label: "Reopen", icon: "arrow.counterclockwise.circle.fill", color: .blue) {
                 vm.reopenSelected(autoPush: autoPush)
