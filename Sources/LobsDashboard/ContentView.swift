@@ -818,14 +818,22 @@ private struct TaskDetailPopover: View {
   @Binding var autoPush: Bool
   let artifactText: String
 
+  @State private var editTitle: String = ""
+  @State private var editNotes: String = ""
+
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 16) {
         // Header
         VStack(alignment: .leading, spacing: 8) {
-          Text(task.title)
+          TextField("Title", text: $editTitle)
             .font(.title3)
             .fontWeight(.bold)
+            .textFieldStyle(.plain)
+            .onAppear {
+              editTitle = task.title
+              editNotes = task.notes ?? ""
+            }
 
           HStack(spacing: 6) {
             DetailTag(text: task.owner.rawValue, icon: "person", color: .purple)
@@ -838,12 +846,22 @@ private struct TaskDetailPopover: View {
             }
           }
 
-          if let notes = task.notes, !notes.isEmpty {
-            Text(notes)
-              .font(.callout)
+          VStack(alignment: .leading, spacing: 6) {
+            Text("Notes")
+              .font(.caption)
               .foregroundStyle(.secondary)
-              .padding(.top, 4)
+
+            TextField("Add notes…", text: $editNotes, axis: .vertical)
+              .textFieldStyle(.roundedBorder)
+              .lineLimit(6, reservesSpace: true)
           }
+
+          Button {
+            vm.editTask(taskId: task.id, title: editTitle, notes: editNotes, autoPush: autoPush)
+          } label: {
+            Label("Save", systemImage: "square.and.arrow.down")
+          }
+          .buttonStyle(.bordered)
         }
 
         Divider()

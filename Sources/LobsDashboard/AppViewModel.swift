@@ -407,6 +407,24 @@ final class AppViewModel: ObservableObject {
     }
   }
 
+  func editTask(taskId: String, title: String, notes: String?, autoPush: Bool) {
+    optimisticUpdate(taskId: taskId, localMutation: {
+      let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
+      if !t.isEmpty { $0.title = t }
+      let n = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+      $0.notes = (n?.isEmpty == true) ? nil : n
+      $0.updatedAt = Date()
+    }) { repoURL in
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.setTitleAndNotes(taskId: taskId, title: title, notes: notes)
+      try await self.asyncCommitAndMaybePush(
+        repoURL: repoURL,
+        message: "Lobs: edit \(taskId)",
+        autoPush: autoPush
+      )
+    }
+  }
+
   // MARK: - Async Git Helpers
 
   private func asyncCommitAndMaybePush(repoURL: URL, message: String, autoPush: Bool) async throws {

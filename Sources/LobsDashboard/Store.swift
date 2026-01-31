@@ -165,6 +165,30 @@ final class LobsControlStore {
     try saveTasks(file)
   }
 
+  func setTitleAndNotes(taskId: String, title: String, notes: String?) throws {
+    let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    let cleanNotes = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    if FileManager.default.fileExists(atPath: tasksDirURL.path) {
+      let url = taskFileURL(taskId: taskId)
+      let data = try Data(contentsOf: url)
+      var task = try decoder().decode(DashboardTask.self, from: data)
+      task.title = cleanTitle.isEmpty ? task.title : cleanTitle
+      task.notes = (cleanNotes?.isEmpty == true) ? nil : cleanNotes
+      task.updatedAt = Date()
+      let out = try encoder().encode(task)
+      try out.write(to: url, options: [.atomic])
+      return
+    }
+
+    var file = try loadTasks()
+    guard let idx = file.tasks.firstIndex(where: { $0.id == taskId }) else { return }
+    if !cleanTitle.isEmpty { file.tasks[idx].title = cleanTitle }
+    file.tasks[idx].notes = (cleanNotes?.isEmpty == true) ? nil : cleanNotes
+    file.tasks[idx].updatedAt = Date()
+    try saveTasks(file)
+  }
+
   func addTask(
     id: String = UUID().uuidString,
     title: String,
