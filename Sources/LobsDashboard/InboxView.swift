@@ -70,7 +70,7 @@ struct InboxView: View {
         HStack(spacing: 6) {
           Image(systemName: "magnifyingglass")
             .foregroundStyle(.secondary)
-            .font(.caption)
+            .font(.footnote)
           TextField("Search docs…", text: $searchText)
             .textFieldStyle(.plain)
             .frame(width: 160)
@@ -87,7 +87,7 @@ struct InboxView: View {
           HStack(spacing: 4) {
             Image(systemName: showReadItems ? "eye" : "eye.slash")
             Text(showReadItems ? "All" : "Unread")
-              .font(.caption)
+              .font(.footnote)
           }
           .padding(.horizontal, 10)
           .padding(.vertical, 6)
@@ -124,10 +124,10 @@ struct InboxView: View {
                   .font(.system(size: 36))
                   .foregroundStyle(.quaternary)
                 Text("No documents")
-                  .font(.subheadline)
+                  .font(.callout)
                   .foregroundStyle(.secondary)
                 Text("Design docs and artifacts will appear here")
-                  .font(.caption)
+                  .font(.footnote)
                   .foregroundStyle(.tertiary)
               }
               .frame(maxWidth: .infinity)
@@ -159,7 +159,7 @@ struct InboxView: View {
               .font(.system(size: 40))
               .foregroundStyle(.quaternary)
             Text("Select a document to read")
-              .font(.subheadline)
+              .font(.callout)
               .foregroundStyle(.tertiary)
           }
           .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -189,13 +189,13 @@ private struct InboxItemRow: View {
 
         VStack(alignment: .leading, spacing: 4) {
           Text(item.title)
-            .font(.subheadline)
+            .font(.callout)
             .fontWeight(item.isRead ? .regular : .semibold)
             .foregroundStyle(.primary)
             .lineLimit(2)
 
           Text(item.summary)
-            .font(.caption)
+            .font(.footnote)
             .foregroundStyle(.secondary)
             .lineLimit(2)
 
@@ -204,9 +204,9 @@ private struct InboxItemRow: View {
             let isInbox = item.relativePath.hasPrefix("inbox/")
             HStack(spacing: 3) {
               Image(systemName: isInbox ? "tray" : "doc.text")
-                .font(.system(size: 8))
+                .font(.system(size: 9))
               Text(isInbox ? "Inbox" : "Artifact")
-                .font(.system(size: 9, weight: .medium))
+                .font(.system(size: 11, weight: .medium))
             }
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
@@ -215,7 +215,7 @@ private struct InboxItemRow: View {
             .clipShape(Capsule())
 
             Text(relativeTime(item.modifiedAt))
-              .font(.system(size: 9))
+              .font(.system(size: 11))
               .foregroundStyle(.tertiary)
           }
         }
@@ -223,7 +223,7 @@ private struct InboxItemRow: View {
         Spacer()
 
         Image(systemName: "chevron.right")
-          .font(.caption2)
+          .font(.footnote)
           .foregroundStyle(.quaternary)
       }
       .padding(10)
@@ -259,7 +259,7 @@ private struct DocumentViewer: View {
           HStack(spacing: 8) {
             HStack(spacing: 3) {
               Image(systemName: "doc.text")
-                .font(.system(size: 10))
+                .font(.system(size: 11))
               Text(item.filename)
                 .font(.system(size: 11, design: .monospaced))
             }

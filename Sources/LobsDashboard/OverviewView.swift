@@ -126,7 +126,7 @@ struct OverviewView: View {
 
             if recentActivity.isEmpty {
               Text("No recent activity")
-                .font(.caption)
+                .font(.footnote)
                 .foregroundStyle(.secondary)
                 .padding(.vertical, 20)
                 .frame(maxWidth: .infinity)
@@ -163,7 +163,7 @@ struct OverviewView: View {
                 .fontWeight(.bold)
               if vm.unreadInboxCount > 0 {
                 Text("\(vm.unreadInboxCount)")
-                  .font(.caption2)
+                  .font(.footnote)
                   .fontWeight(.bold)
                   .foregroundStyle(.white)
                   .padding(.horizontal, 6)
@@ -175,7 +175,7 @@ struct OverviewView: View {
 
             if vm.inboxItems.isEmpty {
               Text("No inbox items")
-                .font(.caption)
+                .font(.footnote)
                 .foregroundStyle(.secondary)
                 .padding(.vertical, 20)
                 .frame(maxWidth: .infinity)
@@ -250,10 +250,10 @@ private struct StatCard: View {
     VStack(spacing: 8) {
       HStack(spacing: 6) {
         Image(systemName: icon)
-          .font(.caption)
+          .font(.footnote)
           .foregroundStyle(color)
         Text(label)
-          .font(.caption)
+          .font(.footnote)
           .foregroundStyle(.secondary)
       }
       Text(value)
@@ -334,7 +334,7 @@ private struct ProjectCard: View {
             .foregroundStyle(project.resolvedType == .research ? .orange : .blue)
 
           Text(project.title)
-            .font(.subheadline)
+            .font(.callout)
             .fontWeight(.bold)
             .lineLimit(1)
 
@@ -342,12 +342,12 @@ private struct ProjectCard: View {
 
           // Health indicator
           Image(systemName: health.icon)
-            .font(.caption)
+            .font(.footnote)
             .foregroundStyle(health.color)
 
           // Type badge
           Text(project.resolvedType.rawValue.capitalized)
-            .font(.system(size: 9, weight: .medium))
+            .font(.system(size: 11, weight: .medium))
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(project.resolvedType == .research ? Color.orange.opacity(0.15) : Color.blue.opacity(0.15))
@@ -367,7 +367,7 @@ private struct ProjectCard: View {
           }
           Spacer()
           Text("\(totalCount) total")
-            .font(.caption2)
+            .font(.footnote)
             .foregroundStyle(.tertiary)
         }
 
@@ -375,10 +375,10 @@ private struct ProjectCard: View {
         if let last = lastActivity {
           HStack(spacing: 4) {
             Image(systemName: "clock")
-              .font(.system(size: 9))
+              .font(.system(size: 11))
               .foregroundStyle(.tertiary)
             Text("Last activity: \(relativeTime(last))")
-              .font(.caption2)
+              .font(.footnote)
               .foregroundStyle(.tertiary)
           }
         }
@@ -386,7 +386,7 @@ private struct ProjectCard: View {
         // Notes preview
         if let notes = project.notes, !notes.isEmpty {
           Text(notes)
-            .font(.caption)
+            .font(.footnote)
             .foregroundStyle(.secondary)
             .lineLimit(2)
         }
@@ -421,7 +421,7 @@ private struct CountBadge: View {
         .fill(color)
         .frame(width: 5, height: 5)
       Text("\(count) \(label)")
-        .font(.caption2)
+        .font(.footnote)
         .foregroundStyle(.secondary)
     }
   }
@@ -440,18 +440,18 @@ private struct ActivityRow: View {
       HStack(spacing: 10) {
         // Status icon
         statusIcon
-          .font(.caption)
+          .font(.footnote)
           .frame(width: 24)
 
         VStack(alignment: .leading, spacing: 2) {
           Text(task.title)
-            .font(.caption)
+            .font(.footnote)
             .fontWeight(.medium)
             .lineLimit(1)
 
           HStack(spacing: 6) {
             Text(task.owner.rawValue)
-              .font(.system(size: 9, weight: .medium))
+              .font(.system(size: 11, weight: .medium))
               .padding(.horizontal, 5)
               .padding(.vertical, 1)
               .background(Color.purple.opacity(0.1))
@@ -459,7 +459,7 @@ private struct ActivityRow: View {
               .clipShape(Capsule())
 
             Text(task.status.rawValue.replacingOccurrences(of: "_", with: " "))
-              .font(.system(size: 9))
+              .font(.system(size: 11))
               .foregroundStyle(.tertiary)
           }
         }
@@ -467,7 +467,7 @@ private struct ActivityRow: View {
         Spacer()
 
         Text(relativeTime(task.updatedAt))
-          .font(.system(size: 9))
+          .font(.system(size: 11))
           .foregroundStyle(.tertiary)
       }
       .padding(.horizontal, 12)
@@ -515,18 +515,18 @@ private struct InboxRow: View {
     Button(action: onTap) {
       HStack(spacing: 10) {
         Image(systemName: item.isRead ? "doc.text" : "doc.text.fill")
-          .font(.caption)
+          .font(.footnote)
           .foregroundStyle(item.isRead ? .secondary : Color.blue)
           .frame(width: 24)
 
         VStack(alignment: .leading, spacing: 2) {
           Text(item.title)
-            .font(.caption)
+            .font(.footnote)
             .fontWeight(item.isRead ? .regular : .semibold)
             .lineLimit(1)
 
           Text(item.summary)
-            .font(.caption2)
+            .font(.footnote)
             .foregroundStyle(.secondary)
             .lineLimit(1)
         }
@@ -534,7 +534,7 @@ private struct InboxRow: View {
         Spacer()
 
         Text(relativeTime(item.modifiedAt))
-          .font(.system(size: 9))
+          .font(.system(size: 11))
           .foregroundStyle(.tertiary)
       }
       .padding(.horizontal, 12)
@@ -596,7 +596,7 @@ private struct OverviewTaskDetailSheet: View {
           // Editable title
           VStack(alignment: .leading, spacing: 4) {
             Text("Title")
-              .font(.caption)
+              .font(.footnote)
               .foregroundStyle(.secondary)
             TextField("Title", text: $editTitle)
               .textFieldStyle(.roundedBorder)
@@ -609,7 +609,7 @@ private struct OverviewTaskDetailSheet: View {
           // Editable notes
           VStack(alignment: .leading, spacing: 4) {
             Text("Notes")
-              .font(.caption)
+              .font(.footnote)
               .foregroundStyle(.secondary)
             TextField("Add notes…", text: $editNotes, axis: .vertical)
               .textFieldStyle(.roundedBorder)
@@ -620,10 +620,10 @@ private struct OverviewTaskDetailSheet: View {
           if let projectId = task.projectId {
             HStack(spacing: 6) {
               Image(systemName: "folder")
-                .font(.caption)
+                .font(.footnote)
                 .foregroundStyle(.secondary)
               Text(vm.projects.first(where: { $0.id == projectId })?.title ?? projectId)
-                .font(.caption)
+                .font(.footnote)
                 .foregroundStyle(.secondary)
             }
           }
@@ -631,10 +631,10 @@ private struct OverviewTaskDetailSheet: View {
           // Timestamps
           VStack(alignment: .leading, spacing: 4) {
             Text("Created: \(task.createdAt.formatted())")
-              .font(.system(size: 10))
+              .font(.system(size: 11))
               .foregroundStyle(.tertiary)
             Text("Updated: \(task.updatedAt.formatted())")
-              .font(.system(size: 10))
+              .font(.system(size: 11))
               .foregroundStyle(.tertiary)
           }
 
@@ -697,7 +697,7 @@ private struct OverviewDetailTag: View {
 
   var body: some View {
     Text(text)
-      .font(.system(size: 10, weight: .medium))
+      .font(.system(size: 11, weight: .medium))
       .padding(.horizontal, 7)
       .padding(.vertical, 3)
       .background(color.opacity(0.12))

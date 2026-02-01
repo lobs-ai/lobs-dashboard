@@ -78,10 +78,10 @@ struct ResearchBoardView: View {
                   Image(systemName: "questionmark.bubble")
                     .foregroundStyle(.orange)
                   Text("Open Requests")
-                    .font(.subheadline)
+                    .font(.callout)
                     .fontWeight(.bold)
                   Text("\(openRequests.count)")
-                    .font(.caption2)
+                    .font(.footnote)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(Color.orange.opacity(0.15))
@@ -104,10 +104,10 @@ struct ResearchBoardView: View {
                   Image(systemName: "square.grid.2x2")
                     .foregroundStyle(.blue)
                   Text("Research Tiles")
-                    .font(.subheadline)
+                    .font(.callout)
                     .fontWeight(.bold)
                   Text("\(filteredTiles.count)")
-                    .font(.caption2)
+                    .font(.footnote)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(Color.blue.opacity(0.15))
@@ -142,10 +142,10 @@ struct ResearchBoardView: View {
                   Image(systemName: "checkmark.bubble")
                     .foregroundStyle(.green)
                   Text("Completed Requests")
-                    .font(.subheadline)
+                    .font(.callout)
                     .fontWeight(.bold)
                   Text("\(completedRequests.count)")
-                    .font(.caption2)
+                    .font(.footnote)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(Color.green.opacity(0.15))
@@ -166,7 +166,7 @@ struct ResearchBoardView: View {
                   .font(.title3)
                   .foregroundStyle(.secondary)
                 Text("Add tiles or ask Lobs to research something")
-                  .font(.caption)
+                  .font(.footnote)
                   .foregroundStyle(.tertiary)
                 HStack(spacing: 12) {
                   Button {
@@ -203,7 +203,7 @@ struct ResearchBoardView: View {
             .font(.system(size: 30))
             .foregroundStyle(.quaternary)
           Text("Select a tile to view details")
-            .font(.caption)
+            .font(.footnote)
             .foregroundStyle(.tertiary)
         }
         .frame(minWidth: 300, idealWidth: 350)
@@ -251,7 +251,7 @@ private struct ResearchFilterBar: View {
       HStack(spacing: 6) {
         Image(systemName: "magnifyingglass")
           .foregroundStyle(.secondary)
-          .font(.caption)
+          .font(.footnote)
         TextField("Search tiles…", text: $searchText)
           .textFieldStyle(.plain)
           .frame(width: 160)
@@ -298,10 +298,10 @@ private struct FilterChip: View {
       HStack(spacing: 4) {
         if let icon {
           Image(systemName: icon)
-            .font(.caption2)
+            .font(.footnote)
         }
         Text(label)
-          .font(.caption)
+          .font(.footnote)
           .fontWeight(isActive ? .semibold : .regular)
       }
       .padding(.horizontal, 10)
@@ -326,10 +326,10 @@ private struct TileCard: View {
       // Type badge + title
       HStack(spacing: 6) {
         Image(systemName: tileTypeIcon(tile.type))
-          .font(.caption)
+          .font(.footnote)
           .foregroundStyle(tileTypeColor(tile.type))
         Text(tileTypeLabel(tile.type))
-          .font(.system(size: 10, weight: .medium))
+          .font(.system(size: 11, weight: .medium))
           .foregroundStyle(tileTypeColor(tile.type))
           .padding(.horizontal, 6)
           .padding(.vertical, 2)
@@ -338,13 +338,13 @@ private struct TileCard: View {
         Spacer()
         if let author = tile.author {
           Text(author)
-            .font(.system(size: 9))
+            .font(.system(size: 11))
             .foregroundStyle(.tertiary)
         }
       }
 
       Text(tile.title)
-        .font(.subheadline)
+        .font(.callout)
         .fontWeight(.medium)
         .lineLimit(2)
 
@@ -354,13 +354,13 @@ private struct TileCard: View {
         case .link:
           if let url = tile.url {
             Text(url)
-              .font(.caption)
+              .font(.footnote)
               .foregroundStyle(.blue)
               .lineLimit(1)
           }
           if let summary = tile.summary {
             Text(summary)
-              .font(.caption)
+              .font(.footnote)
               .foregroundStyle(.secondary)
               .lineLimit(3)
           }
@@ -368,7 +368,7 @@ private struct TileCard: View {
         case .note:
           if let content = tile.content {
             Text(content)
-              .font(.caption)
+              .font(.footnote)
               .foregroundStyle(.secondary)
               .lineLimit(4)
           }
@@ -376,7 +376,7 @@ private struct TileCard: View {
         case .finding:
           if let claim = tile.claim {
             Text(claim)
-              .font(.caption)
+              .font(.footnote)
               .italic()
               .foregroundStyle(.secondary)
               .lineLimit(3)
@@ -384,7 +384,7 @@ private struct TileCard: View {
           if let confidence = tile.confidence {
             HStack(spacing: 4) {
               Text("Confidence:")
-                .font(.system(size: 9))
+                .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
               ConfidenceBar(value: confidence)
             }
@@ -395,7 +395,7 @@ private struct TileCard: View {
             HStack(spacing: 4) {
               ForEach(options.prefix(3), id: \.name) { opt in
                 Text(opt.name)
-                  .font(.system(size: 10, weight: .medium))
+                  .font(.system(size: 11, weight: .medium))
                   .padding(.horizontal, 6)
                   .padding(.vertical, 2)
                   .background(RTheme.subtle)
@@ -403,7 +403,7 @@ private struct TileCard: View {
               }
               if options.count > 3 {
                 Text("+\(options.count - 3)")
-                  .font(.system(size: 9))
+                  .font(.system(size: 11))
                   .foregroundStyle(.tertiary)
               }
             }
@@ -416,7 +416,7 @@ private struct TileCard: View {
         HStack(spacing: 4) {
           ForEach(tags.prefix(4), id: \.self) { tag in
             Text("#\(tag)")
-              .font(.system(size: 9))
+              .font(.system(size: 11))
               .foregroundStyle(.blue)
           }
         }
@@ -424,7 +424,7 @@ private struct TileCard: View {
 
       // Timestamp
       Text(relativeTime(tile.updatedAt))
-        .font(.system(size: 9))
+        .font(.system(size: 11))
         .foregroundStyle(.quaternary)
     }
     .padding(12)
@@ -463,7 +463,7 @@ private struct ConfidenceBar: View {
       .frame(width: 50, height: 6)
 
       Text("\(Int(value * 100))%")
-        .font(.system(size: 9, weight: .medium, design: .monospaced))
+        .font(.system(size: 11, weight: .medium, design: .monospaced))
         .foregroundStyle(.secondary)
     }
   }
@@ -490,12 +490,12 @@ private struct RequestCard: View {
           .fill(requestStatusColor(request.status))
           .frame(width: 8, height: 8)
         Text(request.prompt)
-          .font(.subheadline)
+          .font(.callout)
           .fontWeight(.medium)
           .lineLimit(2)
         Spacer()
         Text(request.status.rawValue.replacingOccurrences(of: "_", with: " "))
-          .font(.system(size: 10, weight: .medium))
+          .font(.system(size: 11, weight: .medium))
           .padding(.horizontal, 7)
           .padding(.vertical, 2)
           .background(requestStatusColor(request.status).opacity(0.12))
@@ -505,7 +505,7 @@ private struct RequestCard: View {
 
       if let response = request.response, !response.isEmpty {
         Text(response)
-          .font(.caption)
+          .font(.footnote)
           .foregroundStyle(.secondary)
           .lineLimit(4)
           .padding(8)
@@ -517,14 +517,14 @@ private struct RequestCard: View {
       HStack {
         if let author = request.author {
           Text("by \(author)")
-            .font(.system(size: 9))
+            .font(.system(size: 11))
             .foregroundStyle(.tertiary)
         }
         Text("·")
-          .font(.system(size: 9))
+          .font(.system(size: 11))
           .foregroundStyle(.quaternary)
         Text(relativeTime(request.createdAt))
-          .font(.system(size: 9))
+          .font(.system(size: 11))
           .foregroundStyle(.quaternary)
       }
     }
@@ -568,13 +568,13 @@ private struct TileDetailView: View {
           Image(systemName: tileTypeIcon(tile.type))
             .foregroundStyle(tileTypeColor(tile.type))
           Text(tileTypeLabel(tile.type))
-            .font(.caption)
+            .font(.footnote)
             .fontWeight(.bold)
             .foregroundStyle(tileTypeColor(tile.type))
           Spacer()
           Button(action: onClose) {
             Image(systemName: "xmark")
-              .font(.caption)
+              .font(.footnote)
               .foregroundStyle(.secondary)
           }
           .buttonStyle(.plain)
@@ -593,7 +593,7 @@ private struct TileDetailView: View {
         case .link:
           VStack(alignment: .leading, spacing: 8) {
             Text("URL")
-              .font(.caption)
+              .font(.footnote)
               .foregroundStyle(.secondary)
             TextField("https://…", text: $editUrl)
               .textFieldStyle(.roundedBorder)
@@ -611,7 +611,7 @@ private struct TileDetailView: View {
             }
 
             Text("Summary")
-              .font(.caption)
+              .font(.footnote)
               .foregroundStyle(.secondary)
             TextField("Summary…", text: $editSummary, axis: .vertical)
               .textFieldStyle(.roundedBorder)
@@ -621,7 +621,7 @@ private struct TileDetailView: View {
         case .note:
           VStack(alignment: .leading, spacing: 8) {
             Text("Content")
-              .font(.caption)
+              .font(.footnote)
               .foregroundStyle(.secondary)
             TextField("Write your notes…", text: $editContent, axis: .vertical)
               .textFieldStyle(.roundedBorder)
@@ -631,7 +631,7 @@ private struct TileDetailView: View {
         case .finding:
           VStack(alignment: .leading, spacing: 8) {
             Text("Claim")
-              .font(.caption)
+              .font(.footnote)
               .foregroundStyle(.secondary)
             TextField("State the finding…", text: $editClaim, axis: .vertical)
               .textFieldStyle(.roundedBorder)
@@ -639,11 +639,11 @@ private struct TileDetailView: View {
 
             HStack {
               Text("Confidence")
-                .font(.caption)
+                .font(.footnote)
                 .foregroundStyle(.secondary)
               Slider(value: $editConfidence, in: 0...1, step: 0.05)
               Text("\(Int(editConfidence * 100))%")
-                .font(.caption)
+                .font(.footnote)
                 .monospacedDigit()
                 .frame(width: 35, alignment: .trailing)
             }
@@ -651,15 +651,15 @@ private struct TileDetailView: View {
             if let evidence = tile.evidence, !evidence.isEmpty {
               VStack(alignment: .leading, spacing: 4) {
                 Text("Evidence")
-                  .font(.caption)
+                  .font(.footnote)
                   .foregroundStyle(.secondary)
                 ForEach(evidence, id: \.self) { e in
                   HStack(spacing: 4) {
                     Image(systemName: "checkmark.circle.fill")
-                      .font(.system(size: 9))
+                      .font(.system(size: 11))
                       .foregroundStyle(.green)
                     Text(e)
-                      .font(.caption)
+                      .font(.footnote)
                   }
                 }
               }
@@ -668,15 +668,15 @@ private struct TileDetailView: View {
             if let counterpoints = tile.counterpoints, !counterpoints.isEmpty {
               VStack(alignment: .leading, spacing: 4) {
                 Text("Counterpoints")
-                  .font(.caption)
+                  .font(.footnote)
                   .foregroundStyle(.secondary)
                 ForEach(counterpoints, id: \.self) { c in
                   HStack(spacing: 4) {
                     Image(systemName: "xmark.circle.fill")
-                      .font(.system(size: 9))
+                      .font(.system(size: 11))
                       .foregroundStyle(.red)
                     Text(c)
-                      .font(.caption)
+                      .font(.footnote)
                   }
                 }
               }
@@ -687,7 +687,7 @@ private struct TileDetailView: View {
           if let options = tile.options {
             VStack(alignment: .leading, spacing: 12) {
               Text("Options")
-                .font(.caption)
+                .font(.footnote)
                 .foregroundStyle(.secondary)
               ForEach(options, id: \.name) { opt in
                 ComparisonOptionView(option: opt)
@@ -701,7 +701,7 @@ private struct TileDetailView: View {
         // Tags
         VStack(alignment: .leading, spacing: 4) {
           Text("Tags (comma-separated)")
-            .font(.caption)
+            .font(.footnote)
             .foregroundStyle(.secondary)
           TextField("tag1, tag2, …", text: $editTags)
             .textFieldStyle(.roundedBorder)
@@ -740,7 +740,7 @@ private struct TileDetailView: View {
         if showAskLobs {
           VStack(alignment: .leading, spacing: 8) {
             Text("Ask Lobs about this tile")
-              .font(.caption)
+              .font(.footnote)
               .foregroundStyle(.secondary)
             TextField("What should Lobs investigate?", text: $askPrompt, axis: .vertical)
               .textFieldStyle(.roundedBorder)
@@ -769,7 +769,7 @@ private struct TileDetailView: View {
           Divider()
           VStack(alignment: .leading, spacing: 8) {
             Text("Related Requests")
-              .font(.caption)
+              .font(.footnote)
               .fontWeight(.bold)
               .foregroundStyle(.secondary)
             ForEach(relatedRequests) { req in
@@ -782,14 +782,14 @@ private struct TileDetailView: View {
         Divider()
         VStack(alignment: .leading, spacing: 4) {
           Text("ID: \(tile.id)")
-            .font(.system(size: 9, design: .monospaced))
+            .font(.system(size: 11, design: .monospaced))
             .foregroundStyle(.quaternary)
             .textSelection(.enabled)
           Text("Created: \(tile.createdAt.formatted())")
-            .font(.system(size: 9))
+            .font(.system(size: 11))
             .foregroundStyle(.quaternary)
           Text("Updated: \(tile.updatedAt.formatted())")
-            .font(.system(size: 9))
+            .font(.system(size: 11))
             .foregroundStyle(.quaternary)
         }
       }
@@ -838,16 +838,16 @@ private struct ComparisonOptionView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
       Text(option.name)
-        .font(.subheadline)
+        .font(.callout)
         .fontWeight(.semibold)
 
       if let pros = option.pros, !pros.isEmpty {
         ForEach(pros, id: \.self) { pro in
           HStack(spacing: 4) {
             Image(systemName: "plus.circle.fill")
-              .font(.system(size: 9))
+              .font(.system(size: 11))
               .foregroundStyle(.green)
-            Text(pro).font(.caption)
+            Text(pro).font(.footnote)
           }
         }
       }
@@ -856,9 +856,9 @@ private struct ComparisonOptionView: View {
         ForEach(cons, id: \.self) { con in
           HStack(spacing: 4) {
             Image(systemName: "minus.circle.fill")
-              .font(.system(size: 9))
+              .font(.system(size: 11))
               .foregroundStyle(.red)
-            Text(con).font(.caption)
+            Text(con).font(.footnote)
           }
         }
       }
@@ -866,21 +866,21 @@ private struct ComparisonOptionView: View {
       HStack(spacing: 12) {
         if let cost = option.cost {
           HStack(spacing: 2) {
-            Text("Cost:").font(.system(size: 9)).foregroundStyle(.tertiary)
-            Text(cost).font(.system(size: 9, weight: .medium))
+            Text("Cost:").font(.system(size: 11)).foregroundStyle(.tertiary)
+            Text(cost).font(.system(size: 11, weight: .medium))
           }
         }
         if let risk = option.risk {
           HStack(spacing: 2) {
-            Text("Risk:").font(.system(size: 9)).foregroundStyle(.tertiary)
-            Text(risk).font(.system(size: 9, weight: .medium))
+            Text("Risk:").font(.system(size: 11)).foregroundStyle(.tertiary)
+            Text(risk).font(.system(size: 11, weight: .medium))
           }
         }
       }
 
       if let notes = option.notes {
         Text(notes)
-          .font(.caption)
+          .font(.footnote)
           .foregroundStyle(.secondary)
       }
     }
@@ -922,7 +922,7 @@ private struct AddTileSheet: View {
       // Type picker
       VStack(alignment: .leading, spacing: 6) {
         Text("Type")
-          .font(.caption)
+          .font(.footnote)
           .foregroundStyle(.secondary)
         Picker("Type", selection: $tileType) {
           ForEach(ResearchTileType.allCases, id: \.self) { type in
@@ -955,7 +955,7 @@ private struct AddTileSheet: View {
 
       case .comparison:
         Text("You can add comparison options after creating the tile.")
-          .font(.caption)
+          .font(.footnote)
           .foregroundStyle(.secondary)
       }
 
@@ -1009,7 +1009,7 @@ private struct AddRequestSheet: View {
 
       VStack(alignment: .leading, spacing: 6) {
         Text("What should Lobs investigate?")
-          .font(.caption)
+          .font(.footnote)
           .foregroundStyle(.secondary)
         TextField("Describe what you want researched…", text: $prompt, axis: .vertical)
           .textFieldStyle(.roundedBorder)
@@ -1020,7 +1020,7 @@ private struct AddRequestSheet: View {
       if !vm.researchTiles.isEmpty {
         VStack(alignment: .leading, spacing: 6) {
           Text("Related tile (optional)")
-            .font(.caption)
+            .font(.footnote)
             .foregroundStyle(.secondary)
           Picker("Tile", selection: $selectedTileId) {
             Text("None").tag(nil as String?)

@@ -108,7 +108,7 @@ struct ContentView: View {
           ProgressView()
             .scaleEffect(0.6)
           Text("Syncing…")
-            .font(.caption)
+            .font(.footnote)
             .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 12)
@@ -366,13 +366,13 @@ private struct ToolbarArea: View {
         HStack(spacing: 6) {
           Image(systemName: vm.isResearchProject ? "doc.text.magnifyingglass" : "folder")
             .foregroundStyle(vm.isResearchProject ? .orange : .secondary)
-            .font(.caption)
+            .font(.footnote)
           Text(vm.projects.first(where: { $0.id == vm.selectedProjectId })?.title ?? "Default")
-            .font(.caption)
+            .font(.footnote)
             .foregroundStyle(.secondary)
           if vm.isResearchProject {
             Text("Research")
-              .font(.system(size: 9, weight: .medium))
+              .font(.system(size: 11, weight: .medium))
               .padding(.horizontal, 5)
               .padding(.vertical, 1)
               .background(Color.orange.opacity(0.15))
@@ -391,7 +391,7 @@ private struct ToolbarArea: View {
       HStack(spacing: 6) {
         Image(systemName: "magnifyingglass")
           .foregroundStyle(.secondary)
-          .font(.caption)
+          .font(.footnote)
         TextField("Search tasks… (⌘F)", text: $vm.searchText)
           .textFieldStyle(.plain)
           .frame(width: 180)
@@ -421,7 +421,7 @@ private struct ToolbarArea: View {
           Image(systemName: "line.3.horizontal.decrease.circle")
           if vm.ownerFilter != "all" {
             Text(vm.ownerFilter.capitalized)
-              .font(.caption)
+              .font(.footnote)
           }
         }
         .padding(.horizontal, 8)
@@ -444,7 +444,7 @@ private struct ToolbarArea: View {
             .clipShape(RoundedRectangle(cornerRadius: 8))
           if vm.unreadInboxCount > 0 {
             Text("\(vm.unreadInboxCount)")
-              .font(.system(size: 9, weight: .bold))
+              .font(.system(size: 11, weight: .bold))
               .foregroundStyle(.white)
               .padding(.horizontal, 4)
               .padding(.vertical, 1)
@@ -528,17 +528,17 @@ private struct SettingsPopover: View {
       GroupBox {
         VStack(alignment: .leading, spacing: 8) {
           Label("Repository", systemImage: "folder.badge.gear")
-            .font(.subheadline)
+            .font(.callout)
             .fontWeight(.semibold)
 
           if let repo = vm.repoURL {
             Text(repo.path)
-              .font(.caption)
+              .font(.footnote)
               .foregroundStyle(.secondary)
               .lineLimit(2)
           } else {
             Text("Not configured")
-              .font(.caption)
+              .font(.footnote)
               .foregroundStyle(.orange)
           }
 
@@ -555,7 +555,7 @@ private struct SettingsPopover: View {
       GroupBox {
         VStack(alignment: .leading, spacing: 8) {
           Label("Sync", systemImage: "arrow.triangle.2.circlepath")
-            .font(.subheadline)
+            .font(.callout)
             .fontWeight(.semibold)
 
           Toggle("Auto-push on changes", isOn: $autoPush)
@@ -576,12 +576,12 @@ private struct SettingsPopover: View {
           if vm.autoArchiveCompleted {
             HStack {
               Text("Archive after")
-                .font(.caption)
+                .font(.footnote)
               TextField("", value: $vm.archiveCompletedAfterDays, format: .number)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 50)
               Text("days")
-                .font(.caption)
+                .font(.footnote)
             }
           }
         }
@@ -591,15 +591,15 @@ private struct SettingsPopover: View {
       GroupBox {
         VStack(alignment: .leading, spacing: 8) {
           Label("Display", systemImage: "eye")
-            .font(.subheadline)
+            .font(.callout)
             .fontWeight(.semibold)
 
           HStack {
             Text("WIP limit (Active)")
-              .font(.caption)
+              .font(.footnote)
             Stepper(value: $vm.wipLimitActive, in: 1...20) {
               Text("\(vm.wipLimitActive)")
-                .font(.caption)
+                .font(.footnote)
                 .monospacedDigit()
             }
           }
@@ -612,10 +612,10 @@ private struct SettingsPopover: View {
         GroupBox {
           VStack(alignment: .leading, spacing: 4) {
             Label("Error", systemImage: "exclamationmark.triangle")
-              .font(.subheadline)
+              .font(.callout)
               .foregroundStyle(.red)
             Text(err)
-              .font(.caption)
+              .font(.footnote)
               .foregroundStyle(.secondary)
               .textSelection(.enabled)
           }
@@ -662,7 +662,7 @@ private struct StatsBar: View {
       Spacer()
 
       Text("\(totalCount) tasks")
-        .font(.caption)
+        .font(.footnote)
         .foregroundStyle(.tertiary)
     }
     .padding(.horizontal, 16)
@@ -682,7 +682,7 @@ private struct StatPill: View {
         .fill(color)
         .frame(width: 6, height: 6)
       Text("\(label): \(count)")
-        .font(.caption)
+        .font(.footnote)
         .foregroundStyle(.secondary)
     }
   }
@@ -699,14 +699,14 @@ private struct ErrorBanner: View {
       Image(systemName: "exclamationmark.triangle.fill")
         .foregroundStyle(.orange)
       Text(message)
-        .font(.caption)
+        .font(.footnote)
         .lineLimit(2)
       Spacer()
       Button {
         dismiss()
       } label: {
         Image(systemName: "xmark")
-          .font(.caption2)
+          .font(.footnote)
           .foregroundStyle(.secondary)
       }
       .buttonStyle(.plain)
@@ -797,12 +797,12 @@ private struct BoardColumn: View {
           .frame(width: 8, height: 8)
 
         Text(title)
-          .font(.subheadline)
+          .font(.callout)
           .fontWeight(.bold)
           .foregroundStyle(.primary)
 
         Text("\(tasks.count)")
-          .font(.caption2)
+          .font(.footnote)
           .fontWeight(.medium)
           .padding(.horizontal, 7)
           .padding(.vertical, 2)
@@ -811,7 +811,7 @@ private struct BoardColumn: View {
 
         if wipLimit > 0 && tasks.count > wipLimit {
           Text("WIP")
-            .font(.caption2)
+            .font(.footnote)
             .fontWeight(.bold)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
@@ -829,7 +829,7 @@ private struct BoardColumn: View {
             }
           } label: {
             Image(systemName: showAllDone ? "chevron.up" : "chevron.down")
-              .font(.caption2)
+              .font(.footnote)
               .foregroundStyle(.secondary)
           }
           .buttonStyle(.plain)
@@ -842,7 +842,7 @@ private struct BoardColumn: View {
             }
           } label: {
             Image(systemName: showAllRejected ? "chevron.up" : "chevron.down")
-              .font(.caption2)
+              .font(.footnote)
               .foregroundStyle(.secondary)
           }
           .buttonStyle(.plain)
@@ -867,7 +867,7 @@ private struct BoardColumn: View {
 
           if (isDone || isRejected) && !showAll && tasks.count > vm.completedShowRecent {
             Text("+\(tasks.count - vm.completedShowRecent) more")
-              .font(.caption2)
+              .font(.footnote)
               .foregroundStyle(.secondary)
               .frame(maxWidth: .infinity)
               .padding(.vertical, 4)
@@ -921,7 +921,7 @@ private struct TaskTile: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       Text(task.title)
-        .font(.subheadline)
+        .font(.callout)
         .fontWeight(.medium)
         .lineLimit(3)
 
@@ -939,14 +939,14 @@ private struct TaskTile: View {
 
       if let notes = task.notes, !notes.isEmpty {
         Text(notes)
-          .font(.caption)
+          .font(.footnote)
           .foregroundStyle(.secondary)
           .lineLimit(2)
       }
 
       // Relative timestamp
       Text(relativeTime(task.updatedAt))
-        .font(.system(size: 9))
+        .font(.system(size: 11))
         .foregroundStyle(.tertiary)
     }
     .padding(12)
@@ -1079,11 +1079,11 @@ private struct TaskDetailPopover: View {
           VStack(alignment: .leading, spacing: 6) {
             HStack {
               Text("Notes")
-                .font(.caption)
+                .font(.footnote)
                 .foregroundStyle(.secondary)
               Spacer()
               Text("Shift+Enter for new line")
-                .font(.caption2)
+                .font(.footnote)
                 .foregroundStyle(.tertiary)
             }
 
@@ -1128,7 +1128,7 @@ private struct TaskDetailPopover: View {
         // Context-aware actions based on task status
         VStack(alignment: .leading, spacing: 10) {
           Text("Actions")
-            .font(.subheadline)
+            .font(.callout)
             .fontWeight(.bold)
 
           switch task.status {
@@ -1146,7 +1146,7 @@ private struct TaskDetailPopover: View {
               }
             }
             Text("Approve moves this task to Active for Lobs to work on.")
-              .font(.caption2)
+              .font(.footnote)
               .foregroundStyle(.secondary)
 
           case .active:
@@ -1215,7 +1215,7 @@ private struct TaskDetailPopover: View {
 
           VStack(alignment: .leading, spacing: 6) {
             Text("Artifact")
-              .font(.subheadline)
+              .font(.callout)
               .fontWeight(.bold)
 
             ScrollView {
@@ -1277,7 +1277,7 @@ private struct MiniTag: View {
 
   var body: some View {
     Text(text)
-      .font(.system(size: 10, weight: .medium))
+      .font(.system(size: 11, weight: .medium))
       .padding(.horizontal, 7)
       .padding(.vertical, 3)
       .background(color.opacity(0.12))
@@ -1296,9 +1296,9 @@ private struct DetailTag: View {
   var body: some View {
     HStack(spacing: 3) {
       Image(systemName: icon)
-        .font(.system(size: 9))
+        .font(.system(size: 11))
       Text(text)
-        .font(.system(size: 10, weight: .medium))
+        .font(.system(size: 11, weight: .medium))
     }
     .padding(.horizontal, 7)
     .padding(.vertical, 3)
@@ -1322,9 +1322,9 @@ private struct ActionButton: View {
     Button(action: action) {
       HStack(spacing: 4) {
         Image(systemName: icon)
-          .font(.caption2)
+          .font(.footnote)
         Text(label)
-          .font(.caption)
+          .font(.footnote)
           .fontWeight(.medium)
       }
       .padding(.horizontal, 10)
@@ -1369,7 +1369,7 @@ private struct CreateProjectSheet: View {
         // Project type picker
         VStack(alignment: .leading, spacing: 6) {
           Text("Project Type")
-            .font(.caption)
+            .font(.footnote)
             .foregroundStyle(.secondary)
 
           Picker("Type", selection: $projectType) {
@@ -1382,7 +1382,7 @@ private struct CreateProjectSheet: View {
             ? "Track tasks through columns: Active, Waiting, Done."
             : "Collect research tiles, notes, links, findings. Ask Lobs to investigate."
           )
-            .font(.caption)
+            .font(.footnote)
             .foregroundStyle(.tertiary)
             .animation(.easeInOut(duration: 0.15), value: projectType)
         }
@@ -1509,7 +1509,7 @@ private struct AddTaskSheet: View {
 
       VStack(alignment: .leading, spacing: 8) {
         Text("Title")
-          .font(.subheadline)
+          .font(.callout)
           .fontWeight(.medium)
         TextField("What needs to be done?", text: $title)
           .textFieldStyle(.roundedBorder)
@@ -1518,10 +1518,10 @@ private struct AddTaskSheet: View {
 
       VStack(alignment: .leading, spacing: 8) {
         Text("Notes")
-          .font(.subheadline)
+          .font(.callout)
           .fontWeight(.medium)
         Text("Shift+Enter for new line")
-          .font(.caption2)
+          .font(.footnote)
           .foregroundStyle(.tertiary)
         SpellCheckingTextEditor(
           text: $notes,
@@ -1541,7 +1541,7 @@ private struct AddTaskSheet: View {
 
       HStack {
         Text("⌘N to open · Enter to create · Shift+Enter for new line")
-          .font(.caption)
+          .font(.footnote)
           .foregroundStyle(.tertiary)
 
         Spacer()
