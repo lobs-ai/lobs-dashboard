@@ -1491,6 +1491,11 @@ private struct AddTaskSheet: View {
 
   @State private var title: String = ""
   @State private var notes: String = ""
+  @State private var selectedProjectId: String = ""
+
+  private var activeProjects: [Project] {
+    vm.projects.filter { ($0.archived ?? false) == false }
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
@@ -1505,6 +1510,23 @@ private struct AddTaskSheet: View {
         Text("New Task")
           .font(.title2)
           .fontWeight(.bold)
+      }
+
+      // Project picker
+      VStack(alignment: .leading, spacing: 8) {
+        Text("Project")
+          .font(.callout)
+          .fontWeight(.medium)
+        Picker("Project", selection: $selectedProjectId) {
+          ForEach(activeProjects) { project in
+            HStack(spacing: 6) {
+              Image(systemName: project.resolvedType == .research ? "doc.text.magnifyingglass" : "rectangle.split.3x1")
+              Text(project.title)
+            }
+            .tag(project.id)
+          }
+        }
+        .labelsHidden()
       }
 
       VStack(alignment: .leading, spacing: 8) {
@@ -1530,7 +1552,10 @@ private struct AddTaskSheet: View {
           onSubmit: {
             let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return }
+            let prevProject = vm.selectedProjectId
+            vm.selectedProjectId = selectedProjectId
             vm.submitTaskToLobs(title: title, notes: notes.isEmpty ? nil : notes, autoPush: autoPush)
+            if vm.showOverview { vm.selectedProjectId = prevProject }
             dismiss()
           }
         )
@@ -1550,7 +1575,10 @@ private struct AddTaskSheet: View {
           .keyboardShortcut(.cancelAction)
 
         Button {
+          let prevProject = vm.selectedProjectId
+          vm.selectedProjectId = selectedProjectId
           vm.submitTaskToLobs(title: title, notes: notes.isEmpty ? nil : notes, autoPush: autoPush)
+          if vm.showOverview { vm.selectedProjectId = prevProject }
           dismiss()
         } label: {
           Text("Create Task")
@@ -1562,7 +1590,10 @@ private struct AddTaskSheet: View {
       }
     }
     .padding(24)
-    .frame(minWidth: 480, minHeight: 280)
+    .frame(minWidth: 480, minHeight: 320)
+    .onAppear {
+      selectedProjectId = vm.selectedProjectId
+    }
   }
 }
 
