@@ -20,6 +20,8 @@ struct ResearchBoardView: View {
   @State private var showAddTile = false
   @State private var showAddRequest = false
   @State private var selectedTile: ResearchTile? = nil
+  @State private var pendingRequestTileId: String? = nil
+  @State private var pendingRequestPrompt: String = ""
   @State private var filterType: ResearchTileType? = nil
   @State private var searchText: String = ""
 
@@ -118,10 +120,17 @@ struct ResearchBoardView: View {
 
                 LazyVGrid(columns: columns, spacing: 16) {
                   ForEach(filteredTiles) { tile in
-                    TileCard(tile: tile)
-                      .onTapGesture {
-                        selectedTile = tile
+                    TileCard(
+                      tile: tile,
+                      onAskFollowUp: {
+                        pendingRequestTileId = tile.id
+                        pendingRequestPrompt = "Follow up on: \(tile.title)"
+                        showAddRequest = true
                       }
+                    )
+                    .onTapGesture {
+                      selectedTile = tile
+                    }
                   }
                 }
                 .padding(.horizontal, 20)
@@ -214,7 +223,15 @@ struct ResearchBoardView: View {
       AddTileSheet(vm: vm)
     }
     .sheet(isPresented: $showAddRequest) {
-      AddRequestSheet(vm: vm)
+      AddRequestSheet(
+        vm: vm,
+        initialPrompt: pendingRequestPrompt,
+        initialTileId: pendingRequestTileId
+      )
+      .onDisappear {
+        pendingRequestTileId = nil
+        pendingRequestPrompt = ""
+      }
     }
   }
 }
@@ -318,6 +335,7 @@ private struct FilterChip: View {
 
 private struct TileCard: View {
   let tile: ResearchTile
+  let onAskFollowUp: () -> Void
 
   @State private var isHovering = false
 
@@ -336,6 +354,21 @@ private struct TileCard: View {
           .background(tileTypeColor(tile.type).opacity(0.12))
           .clipShape(Capsule())
         Spacer()
+
+        if isHovering {
+          Button {
+            onAskFollowUp()
+          } label: {
+            Image(systemName: "questionmark.bubble")
+              .font(.footnote)
+              .padding(6)
+              .background(RTheme.subtle)
+              .clipShape(RoundedRectangle(cornerRadius: 8))
+          }
+          .buttonStyle(.plain)
+          .help("Ask follow-up")
+        }
+
         if let author = tile.author {
           Text(author)
             .font(.system(size: 11))
@@ -374,19 +407,66 @@ private struct TileCard: View {
           }
 
         case .finding:
-          if let claim = tile.claim {
-            Text(claim)
-              .font(.footnote)
-              .italic()
-              .foregroundStyle(.secondary)
-              .lineLimit(3)
+          if let claim = tile.claim, !claim.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+              Text("Claim")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+              Text(claim)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .lineLimit(4)
+            }
           }
+
           if let confidence = tile.confidence {
-            HStack(spacing: 4) {
-              Text("Confidence:")
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
+            HStack(spacing: 6) {
+              Text("Confidence")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
               ConfidenceBar(value: confidence)
+            }
+          }
+
+          if let summary = tile.summary, !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+              Text("Summary")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+              ForEach(topBullets(summary, max: 3), id: \.self) { line in
+                Text("• \(line)")
+                  .font(.system(size: 11))
+                  .foregroundStyle(.secondary)
+                  .lineLimit(2)
+              }
+            }
+          }
+
+          if let evidence = tile.evidence, !evidence.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+              Text("Evidence")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+              ForEach(evidence.prefix(2), id: \.self) { e in
+                Text("• \(e)")
+                  .font(.system(size: 11))
+                  .foregroundStyle(.secondary)
+                  .lineLimit(2)
+              }
+            }
+          }
+
+          if let counter = tile.counterpoints, !counter.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+              Text("Counterpoints")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+              ForEach(counter.prefix(2), id: \.self) { c in
+                Text("• \(c)")
+                  .font(.system(size: 11))
+                  .foregroundStyle(.secondary)
+                  .lineLimit(2)
+              }
             }
           }
 
@@ -986,6 +1066,9 @@ private struct AddTileSheet: View {
 
 private struct AddRequestSheet: View {
   @ObservedObject var vm: AppViewModel
+  let initialPrompt: String = ""
+  let initialTileId: String? = nil
+
   @Environment(\.dismiss) private var dismiss
 
   @State private var prompt: String = ""
@@ -1046,6 +1129,10 @@ private struct AddRequestSheet: View {
     }
     .padding(20)
     .frame(width: 480)
+    .onAppear {
+      prompt = initialPrompt
+      selectedTileId = initialTileId
+    }
   }
 }
 
@@ -1097,4 +1184,34 @@ private func relativeTime(_ date: Date) -> String {
   let days = Int(seconds / 86400)
   if days < 30 { return "\(days)d ago" }
   return "\(Int(seconds / 2_592_000))mo ago"
+}
+
+private func topBullets(_ text: String, max: Int) -> [String] {
+  var lines = text
+    .split(separator: "\n", omittingEmptySubsequences: true)
+    .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+    .filter { !$0.isEmpty }
+
+  if lines.isEmpty { return [] }
+
+  // If it's a single long paragraph, try a naive sentence split.
+  if lines.count == 1 {
+    let s = lines[0]
+    if s.count > 140 {
+      lines = s
+        .split(separator: ".")
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+    }
+  }
+
+  func normalize(_ s: String) -> String {
+    var out = s
+    for prefix in ["- ", "* ", "• "] {
+      if out.hasPrefix(prefix) { out = String(out.dropFirst(prefix.count)) }
+    }
+    return out.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  return Array(lines.prefix(max)).map(normalize).filter { !$0.isEmpty }
 }
