@@ -19,6 +19,7 @@ struct OverviewView: View {
   var onSelectProject: (String) -> Void
 
   @State private var detailTask: DashboardTask? = nil
+  @State private var showInboxSheet: Bool = false
 
   private var allTasks: [DashboardTask] { vm.tasks }
 
@@ -181,7 +182,10 @@ struct OverviewView: View {
             } else {
               VStack(spacing: 0) {
                 ForEach(Array(vm.inboxItems.prefix(8).enumerated()), id: \.element.id) { idx, item in
-                  InboxRow(item: item)
+                  InboxRow(item: item, onTap: {
+                    vm.markInboxItemRead(item)
+                    showInboxSheet = true
+                  })
                   if idx < min(vm.inboxItems.count, 8) - 1 {
                     Divider().padding(.leading, 36)
                   }
@@ -204,6 +208,10 @@ struct OverviewView: View {
     .sheet(item: $detailTask) { task in
       OverviewTaskDetailSheet(task: task, vm: vm)
         .frame(minWidth: 480, minHeight: 500)
+    }
+    .sheet(isPresented: $showInboxSheet) {
+      InboxView(vm: vm, isPresented: $showInboxSheet)
+        .frame(minWidth: 900, minHeight: 600)
     }
   }
 }
@@ -499,34 +507,42 @@ private struct ActivityRow: View {
 
 private struct InboxRow: View {
   let item: InboxItem
+  let onTap: () -> Void
+
+  @State private var isHovering = false
 
   var body: some View {
-    HStack(spacing: 10) {
-      Image(systemName: item.isRead ? "doc.text" : "doc.text.fill")
-        .font(.caption)
-        .foregroundStyle(item.isRead ? .secondary : Color.blue)
-        .frame(width: 24)
-
-      VStack(alignment: .leading, spacing: 2) {
-        Text(item.title)
+    Button(action: onTap) {
+      HStack(spacing: 10) {
+        Image(systemName: item.isRead ? "doc.text" : "doc.text.fill")
           .font(.caption)
-          .fontWeight(item.isRead ? .regular : .semibold)
-          .lineLimit(1)
+          .foregroundStyle(item.isRead ? .secondary : Color.blue)
+          .frame(width: 24)
 
-        Text(item.summary)
-          .font(.caption2)
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
+        VStack(alignment: .leading, spacing: 2) {
+          Text(item.title)
+            .font(.caption)
+            .fontWeight(item.isRead ? .regular : .semibold)
+            .lineLimit(1)
+
+          Text(item.summary)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+        }
+
+        Spacer()
+
+        Text(relativeTime(item.modifiedAt))
+          .font(.system(size: 9))
+          .foregroundStyle(.tertiary)
       }
-
-      Spacer()
-
-      Text(relativeTime(item.modifiedAt))
-        .font(.system(size: 9))
-        .foregroundStyle(.tertiary)
+      .padding(.horizontal, 12)
+      .padding(.vertical, 8)
+      .background(isHovering ? OTheme.subtle : Color.clear)
     }
-    .padding(.horizontal, 12)
-    .padding(.vertical, 8)
+    .buttonStyle(.plain)
+    .onHover { h in isHovering = h }
   }
 }
 
