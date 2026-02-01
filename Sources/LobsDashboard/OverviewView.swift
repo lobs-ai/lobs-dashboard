@@ -130,17 +130,20 @@ struct OverviewView: View {
                 .padding(.vertical, 20)
                 .frame(maxWidth: .infinity)
             } else {
-              VStack(spacing: 0) {
-                ForEach(Array(recentActivity.enumerated()), id: \.element.id) { idx, task in
-                  ActivityRow(task: task, onTap: {
-                    vm.selectTask(task)
-                    detailTask = task
-                  })
-                  if idx < recentActivity.count - 1 {
-                    Divider().padding(.leading, 36)
+              ScrollView {
+                VStack(spacing: 0) {
+                  ForEach(Array(recentActivity.enumerated()), id: \.element.id) { idx, task in
+                    ActivityRow(task: task, onTap: {
+                      vm.selectTask(task)
+                      detailTask = task
+                    })
+                    if idx < recentActivity.count - 1 {
+                      Divider().padding(.leading, 36)
+                    }
                   }
                 }
               }
+              .frame(maxHeight: 400)
               .background(OTheme.cardBg)
               .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
               .overlay(
