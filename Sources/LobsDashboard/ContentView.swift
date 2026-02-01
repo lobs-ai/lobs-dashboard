@@ -45,6 +45,7 @@ struct ContentView: View {
   @State private var showCreateProject = false
   @State private var editingProject: Project? = nil
   @State private var showSettings = false
+  @State private var showInbox = false
   @State private var showAllDone = false
   @State private var showAllRejected = false
   @State private var quickAddText = ""
@@ -61,7 +62,8 @@ struct ContentView: View {
           showAddTask: $showAddTask,
           showCreateProject: $showCreateProject,
           editingProject: $editingProject,
-          showSettings: $showSettings
+          showSettings: $showSettings,
+          showInbox: $showInbox
         )
 
         // Stats bar
@@ -135,6 +137,10 @@ struct ContentView: View {
     }
     .sheet(item: $editingProject) { project in
       EditProjectSheet(vm: vm, project: project)
+    }
+    .sheet(isPresented: $showInbox) {
+      InboxView(vm: vm, isPresented: $showInbox)
+        .frame(minWidth: 900, minHeight: 600)
     }
     .onAppear { vm.reloadIfPossible() }
     // Keyboard shortcuts (Task #84248F22)
@@ -234,6 +240,7 @@ private struct ToolbarArea: View {
   @Binding var showCreateProject: Bool
   @Binding var editingProject: Project?
   @Binding var showSettings: Bool
+  @Binding var showInbox: Bool
 
   var body: some View {
     HStack(spacing: 12) {
@@ -405,6 +412,31 @@ private struct ToolbarArea: View {
       }
       .menuStyle(.borderlessButton)
       .fixedSize()
+
+      // Inbox button
+      Button {
+        showInbox = true
+      } label: {
+        ZStack(alignment: .topTrailing) {
+          Image(systemName: "tray.full")
+            .font(.body)
+            .padding(6)
+            .background(Theme.subtle)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+          if vm.unreadInboxCount > 0 {
+            Text("\(vm.unreadInboxCount)")
+              .font(.system(size: 9, weight: .bold))
+              .foregroundStyle(.white)
+              .padding(.horizontal, 4)
+              .padding(.vertical, 1)
+              .background(Color.blue)
+              .clipShape(Capsule())
+              .offset(x: 4, y: -4)
+          }
+        }
+      }
+      .buttonStyle(.plain)
+      .help("Inbox — Design Docs & Artifacts")
 
       // Action buttons
       ToolbarButton(icon: "plus", label: "New task", shortcut: "⌘N") {

@@ -257,6 +257,19 @@ struct ResearchRequest: Codable, Identifiable, Hashable {
   var updatedAt: Date
 }
 
+// MARK: - Inbox Item (Design Docs)
+
+struct InboxItem: Identifiable, Hashable {
+  var id: String          // filename
+  var title: String       // derived from filename or first heading
+  var filename: String
+  var relativePath: String
+  var content: String
+  var modifiedAt: Date
+  var isRead: Bool        // tracked locally
+  var summary: String     // first ~200 chars or first paragraph
+}
+
 struct ProjectsFile: Codable {
   var schemaVersion: Int
   var generatedAt: Date

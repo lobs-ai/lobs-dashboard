@@ -27,6 +27,15 @@ final class AppViewModel: ObservableObject {
   @Published var researchRequests: [ResearchRequest] = []
   @Published var selectedTileId: String? = nil
 
+  // Inbox (Design Docs)
+  @Published var inboxItems: [InboxItem] = []
+  @Published var readItemIds: Set<String> = [] {
+    didSet {
+      settings.set(Array(readItemIds), forKey: "readInboxItemIds")
+    }
+  }
+  @Published var showInbox: Bool = false
+
   // Projects
   @Published var projects: [Project] = []
   @Published var selectedProjectId: String = "default" {
@@ -103,6 +112,9 @@ final class AppViewModel: ObservableObject {
     let interval = settings.integer(forKey: autoRefreshIntervalSecondsKey)
     autoRefreshIntervalSeconds = (interval == 0) ? 30 : interval
 
+    // Inbox read state
+    readItemIds = Set(settings.stringArray(forKey: "readInboxItemIds") ?? [])
+
     startAutoRefreshIfNeeded()
   }
 
@@ -168,6 +180,7 @@ final class AppViewModel: ObservableObject {
 
       // Refresh research data too
       loadResearchData(store: store)
+      loadInboxItems(store: store)
     } catch {
       // Silent — don't overwrite errors from user actions.
     }
@@ -221,6 +234,7 @@ final class AppViewModel: ObservableObject {
 
       // Load research data if applicable
       loadResearchData(store: store)
+      loadInboxItems(store: store)
 
     } catch {
       lastError = String(describing: error)
@@ -241,6 +255,41 @@ final class AppViewModel: ObservableObject {
     } catch {
       flashError("Failed to load research data: \(error.localizedDescription)")
     }
+  }
+
+  // MARK: - Inbox
+
+  func loadInboxItems(store: LobsControlStore? = nil) {
+    guard let repoURL else { return }
+    let s = store ?? LobsControlStore(repoRoot: repoURL)
+    do {
+      var items = try s.loadInboxItems()
+      // Apply read state
+      for i in items.indices {
+        items[i].isRead = readItemIds.contains(items[i].id)
+      }
+      inboxItems = items
+    } catch {
+      flashError("Failed to load inbox: \(error.localizedDescription)")
+    }
+  }
+
+  func markInboxItemRead(_ item: InboxItem) {
+    readItemIds.insert(item.id)
+    if let idx = inboxItems.firstIndex(where: { $0.id == item.id }) {
+      inboxItems[idx].isRead = true
+    }
+  }
+
+  func markInboxItemUnread(_ item: InboxItem) {
+    readItemIds.remove(item.id)
+    if let idx = inboxItems.firstIndex(where: { $0.id == item.id }) {
+      inboxItems[idx].isRead = false
+    }
+  }
+
+  var unreadInboxCount: Int {
+    inboxItems.filter { !$0.isRead }.count
   }
 
   func selectTask(_ task: DashboardTask) {

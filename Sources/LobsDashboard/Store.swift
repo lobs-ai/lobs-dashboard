@@ -345,6 +345,97 @@ final class LobsControlStore {
     }
   }
 
+  // MARK: - Inbox (Design Docs)
+
+  private var artifactsDirURL: URL { repoRoot.appendingPathComponent("artifacts") }
+  private var inboxDirURL: URL { repoRoot.appendingPathComponent("inbox") }
+
+  func loadInboxItems() throws -> [InboxItem] {
+    var items: [InboxItem] = []
+    let fm = FileManager.default
+
+    // Scan both artifacts/ and inbox/ directories
+    let dirs: [(URL, String)] = [
+      (inboxDirURL, "inbox"),
+      (artifactsDirURL, "artifacts"),
+    ]
+
+    for (dir, prefix) in dirs {
+      guard fm.fileExists(atPath: dir.path) else { continue }
+      let files = try fm.contentsOfDirectory(
+        at: dir,
+        includingPropertiesForKeys: [.contentModificationDateKey],
+        options: [.skipsHiddenFiles]
+      )
+
+      for fileURL in files {
+        let ext = fileURL.pathExtension.lowercased()
+        guard ext == "md" || ext == "txt" || ext == "markdown" else { continue }
+
+        let filename = fileURL.lastPathComponent
+        // Skip README files
+        guard filename.lowercased() != "readme.md" else { continue }
+
+        let content = try String(contentsOf: fileURL, encoding: .utf8)
+        let attrs = try fm.attributesOfItem(atPath: fileURL.path)
+        let modDate = (attrs[.modificationDate] as? Date) ?? Date()
+
+        // Derive title from first heading or filename
+        let title = extractTitle(from: content, filename: filename)
+        let summary = extractSummary(from: content)
+
+        let item = InboxItem(
+          id: "\(prefix)/\(filename)",
+          title: title,
+          filename: filename,
+          relativePath: "\(prefix)/\(filename)",
+          content: content,
+          modifiedAt: modDate,
+          isRead: false,
+          summary: summary
+        )
+        items.append(item)
+      }
+    }
+
+    // Sort by modification date, newest first
+    items.sort { $0.modifiedAt > $1.modifiedAt }
+    return items
+  }
+
+  private func extractTitle(from content: String, filename: String) -> String {
+    // Look for first markdown heading
+    for line in content.split(separator: "\n", omittingEmptySubsequences: true) {
+      let trimmed = line.trimmingCharacters(in: .whitespaces)
+      if trimmed.hasPrefix("# ") {
+        return String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+      }
+    }
+    // Fall back to filename without extension, prettified
+    let base = (filename as NSString).deletingPathExtension
+    return base.replacingOccurrences(of: "-", with: " ").capitalized
+  }
+
+  private func extractSummary(from content: String) -> String {
+    // Skip headings, get first meaningful paragraph
+    var lines: [String] = []
+    var charCount = 0
+    for line in content.split(separator: "\n", omittingEmptySubsequences: false) {
+      let trimmed = line.trimmingCharacters(in: .whitespaces)
+      if trimmed.hasPrefix("#") { continue }
+      if trimmed.isEmpty && lines.isEmpty { continue }
+      if trimmed.isEmpty && !lines.isEmpty { break } // end of first paragraph
+      lines.append(trimmed)
+      charCount += trimmed.count
+      if charCount > 200 { break }
+    }
+    let result = lines.joined(separator: " ")
+    if result.count > 200 {
+      return String(result.prefix(200)) + "…"
+    }
+    return result
+  }
+
   // MARK: - Research Tiles
 
   func loadTiles(projectId: String) throws -> [ResearchTile] {
