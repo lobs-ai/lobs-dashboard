@@ -18,6 +18,8 @@ struct OverviewView: View {
   @ObservedObject var vm: AppViewModel
   var onSelectProject: (String) -> Void
 
+  @State private var detailTask: DashboardTask? = nil
+
   private var allTasks: [DashboardTask] { vm.tasks }
 
   private var activeProjects: [Project] {
@@ -129,8 +131,8 @@ struct OverviewView: View {
               VStack(spacing: 0) {
                 ForEach(Array(recentActivity.enumerated()), id: \.element.id) { idx, task in
                   ActivityRow(task: task, onTap: {
-                    onSelectProject(task.projectId ?? "default")
                     vm.selectTask(task)
+                    detailTask = task
                   })
                   if idx < recentActivity.count - 1 {
                     Divider().padding(.leading, 36)
@@ -194,6 +196,10 @@ struct OverviewView: View {
       .padding(24)
     }
     .background(OTheme.boardBg)
+    .sheet(item: $detailTask) { task in
+      OverviewTaskDetailSheet(task: task, vm: vm)
+        .frame(minWidth: 480, minHeight: 500)
+    }
   }
 }
 
@@ -516,6 +522,166 @@ private struct InboxRow: View {
     }
     .padding(.horizontal, 12)
     .padding(.vertical, 8)
+  }
+}
+
+// MARK: - Overview Task Detail Sheet
+
+/// A lightweight detail sheet shown when clicking a task from the Overview screen.
+/// This avoids navigating away from the home screen.
+private struct OverviewTaskDetailSheet: View {
+  let task: DashboardTask
+  @ObservedObject var vm: AppViewModel
+
+  @Environment(\.dismiss) private var dismiss
+  @State private var editTitle: String = ""
+  @State private var editNotes: String = ""
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      // Header
+      HStack(spacing: 10) {
+        statusIcon
+          .font(.title3)
+        VStack(alignment: .leading, spacing: 2) {
+          Text(task.title)
+            .font(.title3)
+            .fontWeight(.bold)
+          HStack(spacing: 6) {
+            OverviewDetailTag(text: task.owner.rawValue, color: .purple)
+            OverviewDetailTag(text: task.status.rawValue.replacingOccurrences(of: "_", with: " "), color: .blue)
+            if let ws = task.workState {
+              OverviewDetailTag(text: ws.rawValue.replacingOccurrences(of: "_", with: " "), color: .indigo)
+            }
+            if let rs = task.reviewState {
+              OverviewDetailTag(text: rs.rawValue.replacingOccurrences(of: "_", with: " "), color: .green)
+            }
+          }
+        }
+        Spacer()
+        Button { dismiss() } label: {
+          Image(systemName: "xmark.circle.fill")
+            .font(.title3)
+            .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+      }
+      .padding(20)
+
+      Divider()
+
+      ScrollView {
+        VStack(alignment: .leading, spacing: 16) {
+          // Editable title
+          VStack(alignment: .leading, spacing: 4) {
+            Text("Title")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            TextField("Title", text: $editTitle)
+              .textFieldStyle(.roundedBorder)
+              .onAppear {
+                editTitle = task.title
+                editNotes = task.notes ?? ""
+              }
+          }
+
+          // Editable notes
+          VStack(alignment: .leading, spacing: 4) {
+            Text("Notes")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            TextField("Add notes…", text: $editNotes, axis: .vertical)
+              .textFieldStyle(.roundedBorder)
+              .lineLimit(6, reservesSpace: true)
+          }
+
+          // Project info
+          if let projectId = task.projectId {
+            HStack(spacing: 6) {
+              Image(systemName: "folder")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+              Text(vm.projects.first(where: { $0.id == projectId })?.title ?? projectId)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+          }
+
+          // Timestamps
+          VStack(alignment: .leading, spacing: 4) {
+            Text("Created: \(task.createdAt.formatted())")
+              .font(.system(size: 10))
+              .foregroundStyle(.tertiary)
+            Text("Updated: \(task.updatedAt.formatted())")
+              .font(.system(size: 10))
+              .foregroundStyle(.tertiary)
+          }
+
+          Divider()
+
+          // Actions
+          HStack(spacing: 8) {
+            Button {
+              vm.editTask(taskId: task.id, title: editTitle, notes: editNotes.isEmpty ? nil : editNotes, autoPush: true)
+              dismiss()
+            } label: {
+              Label("Save", systemImage: "square.and.arrow.down")
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+
+            Button {
+              dismiss()
+              // Navigate to the board for full context
+              vm.selectedProjectId = task.projectId ?? "default"
+              vm.showOverview = false
+              vm.selectTask(task)
+            } label: {
+              Label("Open in Board", systemImage: "rectangle.split.3x1")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+
+            Spacer()
+          }
+        }
+        .padding(20)
+      }
+    }
+    .background(OTheme.bg)
+  }
+
+  @ViewBuilder
+  private var statusIcon: some View {
+    switch task.status {
+    case .active:
+      Image(systemName: "bolt.circle.fill").foregroundStyle(.orange)
+    case .completed:
+      Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+    case .inbox:
+      Image(systemName: "tray.circle.fill").foregroundStyle(.blue)
+    case .rejected:
+      Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+    case .waitingOn:
+      Image(systemName: "clock.circle.fill").foregroundStyle(.yellow)
+    case .other:
+      Image(systemName: "questionmark.circle.fill").foregroundStyle(.gray)
+    }
+  }
+}
+
+private struct OverviewDetailTag: View {
+  let text: String
+  let color: Color
+
+  var body: some View {
+    Text(text)
+      .font(.system(size: 10, weight: .medium))
+      .padding(.horizontal, 7)
+      .padding(.vertical, 3)
+      .background(color.opacity(0.12))
+      .foregroundStyle(color)
+      .clipShape(Capsule())
   }
 }
 
