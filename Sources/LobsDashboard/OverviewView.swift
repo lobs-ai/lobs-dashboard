@@ -101,7 +101,9 @@ struct OverviewView: View {
             .fontWeight(.bold)
 
           LazyVGrid(columns: [
-            GridItem(.adaptive(minimum: 280, maximum: 400), spacing: 16)
+            GridItem(.flexible(minimum: 280, maximum: .infinity), spacing: 16),
+            GridItem(.flexible(minimum: 280, maximum: .infinity), spacing: 16),
+            GridItem(.flexible(minimum: 280, maximum: .infinity), spacing: 16)
           ], spacing: 16) {
             ForEach(activeProjects) { project in
               ProjectCard(
@@ -379,7 +381,7 @@ private struct ProjectCard: View {
         }
       }
       .padding(16)
-      .frame(maxWidth: .infinity, alignment: .leading)
+      .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
       .background(
         RoundedRectangle(cornerRadius: OTheme.cardRadius)
           .fill(OTheme.cardBg)
