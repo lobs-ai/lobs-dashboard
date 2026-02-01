@@ -154,16 +154,6 @@ private struct KeyboardShortcutReceiver: View {
   let onPrevTask: () -> Void
   let onSearch: () -> Void
 
-  #if os(macOS)
-  private func isTextInputActive() -> Bool {
-    guard let responder = NSApp.keyWindow?.firstResponder else { return false }
-    // Covers TextField, TextEditor, and multiline fields.
-    if responder is NSTextView { return true }
-    if responder is NSTextField { return true }
-    return false
-  }
-  #endif
-
   var body: some View {
     Group {
       Button("") { onNewTask() }
@@ -173,29 +163,61 @@ private struct KeyboardShortcutReceiver: View {
       Button("") { onRefresh() }
         .keyboardShortcut("r", modifiers: .command)
         .opacity(0)
-
-      Button("") {
-        #if os(macOS)
-        if isTextInputActive() { return }
-        #endif
-        onNextTask()
-      }
-      .keyboardShortcut(.downArrow, modifiers: [])
-      .opacity(0)
-
-      Button("") {
-        #if os(macOS)
-        if isTextInputActive() { return }
-        #endif
-        onPrevTask()
-      }
-      .keyboardShortcut(.upArrow, modifiers: [])
-      .opacity(0)
     }
     .frame(width: 0, height: 0)
     .allowsHitTesting(false)
+    #if os(macOS)
+    .background(
+      ArrowKeyMonitor(onDown: onNextTask, onUp: onPrevTask)
+    )
+    #endif
   }
 }
+
+#if os(macOS)
+/// Uses NSEvent local monitor so arrow keys pass through to text fields
+/// and are only intercepted when no text input is focused.
+private struct ArrowKeyMonitor: NSViewRepresentable {
+  let onDown: () -> Void
+  let onUp: () -> Void
+
+  func makeNSView(context: Context) -> NSView {
+    let view = NSView()
+    context.coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+      // Let text fields handle their own key events
+      if let responder = NSApp.keyWindow?.firstResponder,
+         responder is NSTextView || responder is NSTextField {
+        return event
+      }
+      switch event.keyCode {
+      case 125: // down arrow
+        DispatchQueue.main.async { self.onDown() }
+        return nil // consume
+      case 126: // up arrow
+        DispatchQueue.main.async { self.onUp() }
+        return nil // consume
+      default:
+        return event
+      }
+    }
+    return view
+  }
+
+  func updateNSView(_ nsView: NSView, context: Context) {}
+
+  static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+    if let monitor = coordinator.monitor {
+      NSEvent.removeMonitor(monitor)
+    }
+  }
+
+  func makeCoordinator() -> Coordinator { Coordinator() }
+
+  class Coordinator {
+    var monitor: Any?
+  }
+}
+#endif
 
 // MARK: - Toolbar Area
 
