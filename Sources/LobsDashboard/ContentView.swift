@@ -45,7 +45,7 @@ struct ContentView: View {
   @State private var showCreateProject = false
   @State private var editingProject: Project? = nil
   @State private var showSettings = false
-  @State private var showAllCompleted = false
+  @State private var showAllDone = false
   @State private var showAllRejected = false
   @State private var quickAddText = ""
 
@@ -72,7 +72,7 @@ struct ContentView: View {
         // Kanban board
         BoardView(
           vm: vm,
-          showAllCompleted: $showAllCompleted,
+          showAllDone: $showAllDone,
           showAllRejected: $showAllRejected,
           autoPush: $autoPush,
           quickAddText: $quickAddText
@@ -562,11 +562,8 @@ private struct StatsBar: View {
 
   private var inboxCount: Int { vm.tasks.filter { $0.status == .inbox }.count }
   private var activeCount: Int { vm.tasks.filter { $0.status == .active }.count }
-  private var completedCount: Int {
-    vm.tasks.filter { $0.status == .completed && $0.reviewState != .approved }.count
-  }
   private var doneCount: Int {
-    vm.tasks.filter { $0.status == .completed && $0.reviewState == .approved }.count
+    vm.tasks.filter { $0.status == .completed }.count
   }
   private var blockedCount: Int { vm.tasks.filter { $0.workState == .blocked }.count }
   private var totalCount: Int { vm.tasks.count }
@@ -585,9 +582,6 @@ private struct StatsBar: View {
       StatPill(label: "Active", count: activeCount, color: .orange)
       if blockedCount > 0 {
         StatPill(label: "Blocked", count: blockedCount, color: .red)
-      }
-      if completedCount > 0 {
-        StatPill(label: "Completed", count: completedCount, color: .green)
       }
       StatPill(label: "Done", count: doneCount, color: .green)
 
@@ -659,7 +653,7 @@ private struct ErrorBanner: View {
 
 private struct BoardView: View {
   @ObservedObject var vm: AppViewModel
-  @Binding var showAllCompleted: Bool
+  @Binding var showAllDone: Bool
   @Binding var showAllRejected: Bool
   @Binding var autoPush: Bool
   @Binding var quickAddText: String
@@ -674,7 +668,7 @@ private struct BoardView: View {
             dropStatus: col.dropStatus,
             vm: vm,
             autoPush: $autoPush,
-            showAllCompleted: $showAllCompleted,
+            showAllDone: $showAllDone,
             showAllRejected: $showAllRejected,
             quickAddText: $quickAddText
           )
@@ -694,7 +688,7 @@ private struct BoardColumn: View {
 
   @ObservedObject var vm: AppViewModel
   @Binding var autoPush: Bool
-  @Binding var showAllCompleted: Bool
+  @Binding var showAllDone: Bool
   @Binding var showAllRejected: Bool
   @Binding var quickAddText: String
 
@@ -705,7 +699,6 @@ private struct BoardColumn: View {
     case "inbox": return .blue
     case "active": return .orange
     case "waiting on": return .yellow
-    case "completed": return .green
     case "done": return .green
     case "rejected": return .red
     default: return .gray
@@ -713,10 +706,10 @@ private struct BoardColumn: View {
   }
 
   var body: some View {
-    let isCompletedLike = title.lowercased() == "completed" || title.lowercased() == "done"
+    let isDone = title.lowercased() == "done"
     let isRejected = title.lowercased() == "rejected"
-    let showAll = isCompletedLike ? showAllCompleted : (isRejected ? showAllRejected : true)
-    let visibleTasks = (isCompletedLike || isRejected) && !showAll
+    let showAll = isDone ? showAllDone : (isRejected ? showAllRejected : true)
+    let visibleTasks = (isDone || isRejected) && !showAll
       ? Array(tasks.sorted { $0.createdAt > $1.createdAt }.prefix(vm.completedShowRecent))
       : tasks
 
@@ -755,13 +748,13 @@ private struct BoardColumn: View {
 
         Spacer()
 
-        if isCompletedLike {
+        if isDone {
           Button {
             withAnimation(.easeInOut(duration: 0.2)) {
-              showAllCompleted.toggle()
+              showAllDone.toggle()
             }
           } label: {
-            Image(systemName: showAllCompleted ? "chevron.up" : "chevron.down")
+            Image(systemName: showAllDone ? "chevron.up" : "chevron.down")
               .font(.caption2)
               .foregroundStyle(.secondary)
           }
@@ -798,7 +791,7 @@ private struct BoardColumn: View {
               }
           }
 
-          if (isCompletedLike || isRejected) && !showAll && tasks.count > vm.completedShowRecent {
+          if (isDone || isRejected) && !showAll && tasks.count > vm.completedShowRecent {
             Text("+\(tasks.count - vm.completedShowRecent) more")
               .font(.caption2)
               .foregroundStyle(.secondary)
