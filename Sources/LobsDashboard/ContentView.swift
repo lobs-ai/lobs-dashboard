@@ -391,7 +391,7 @@ private struct SettingsPopover: View {
   @ObservedObject var vm: AppViewModel
   @Binding var autoPush: Bool
   @Binding var showPicker: Bool
-  @State private var showIconPicker = false
+  // App icon is bundled; no icon picker.
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
@@ -481,52 +481,7 @@ private struct SettingsPopover: View {
         }
       }
 
-      // App Icon
-      GroupBox {
-        VStack(alignment: .leading, spacing: 8) {
-          Label("App Icon", systemImage: "app.badge.fill")
-            .font(.subheadline)
-            .fontWeight(.semibold)
-
-          HStack(spacing: 12) {
-            if let iconPath = vm.appIconPath,
-               let img = NSImage(contentsOfFile: iconPath) {
-              Image(nsImage: img)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 48, height: 48)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            } else {
-              RoundedRectangle(cornerRadius: 10)
-                .fill(Color.primary.opacity(0.06))
-                .frame(width: 48, height: 48)
-                .overlay(
-                  Image(systemName: "app")
-                    .font(.title2)
-                    .foregroundStyle(.secondary)
-                )
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-              Button {
-                showIconPicker = true
-              } label: {
-                Label("Choose Image…", systemImage: "photo")
-              }
-              .controlSize(.small)
-
-              if vm.appIconPath != nil {
-                Button(role: .destructive) {
-                  vm.clearAppIcon()
-                } label: {
-                  Label("Reset to Default", systemImage: "arrow.counterclockwise")
-                }
-                .controlSize(.small)
-              }
-            }
-          }
-        }
-      }
+      // App Icon is bundled (Resources/AppIcon.png)
 
       if let err = vm.lastError {
         GroupBox {
@@ -544,14 +499,8 @@ private struct SettingsPopover: View {
     }
     .padding(16)
     .frame(width: 300)
-    .fileImporter(
-      isPresented: $showIconPicker,
-      allowedContentTypes: [.png, .jpeg, .heic, .tiff, .bmp, .gif, .image]
-    ) { result in
-      if case .success(let url) = result {
-        vm.setAppIcon(from: url)
-      }
-    }
+
+    // App icon is bundled; no icon picker.
   }
 }
 
