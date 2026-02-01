@@ -69,14 +69,19 @@ struct ContentView: View {
 
         Divider()
 
-        // Kanban board
-        BoardView(
-          vm: vm,
-          showAllDone: $showAllDone,
-          showAllRejected: $showAllRejected,
-          autoPush: $autoPush,
-          quickAddText: $quickAddText
-        )
+        // Switch view based on project type
+        if vm.isResearchProject {
+          ResearchBoardView(vm: vm)
+        } else {
+          // Kanban board
+          BoardView(
+            vm: vm,
+            showAllDone: $showAllDone,
+            showAllRejected: $showAllRejected,
+            autoPush: $autoPush,
+            quickAddText: $quickAddText
+          )
+        }
       }
       .background(Theme.boardBg)
 
@@ -254,7 +259,13 @@ private struct ToolbarArea: View {
           Button {
             vm.selectedProjectId = p.id
           } label: {
-            Label(p.title, systemImage: (vm.selectedProjectId == p.id) ? "checkmark" : "")
+            HStack {
+              if vm.selectedProjectId == p.id {
+                Image(systemName: "checkmark")
+              }
+              Image(systemName: p.resolvedType == .research ? "doc.text.magnifyingglass" : "rectangle.split.3x1")
+              Text(p.title)
+            }
           }
         }
 
@@ -295,12 +306,21 @@ private struct ToolbarArea: View {
         }
       } label: {
         HStack(spacing: 6) {
-          Image(systemName: "folder")
-            .foregroundStyle(.secondary)
+          Image(systemName: vm.isResearchProject ? "doc.text.magnifyingglass" : "folder")
+            .foregroundStyle(vm.isResearchProject ? .orange : .secondary)
             .font(.caption)
           Text(vm.projects.first(where: { $0.id == vm.selectedProjectId })?.title ?? "Default")
             .font(.caption)
             .foregroundStyle(.secondary)
+          if vm.isResearchProject {
+            Text("Research")
+              .font(.system(size: 9, weight: .medium))
+              .padding(.horizontal, 5)
+              .padding(.vertical, 1)
+              .background(Color.orange.opacity(0.15))
+              .foregroundStyle(.orange)
+              .clipShape(Capsule())
+          }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -1230,6 +1250,7 @@ private struct CreateProjectSheet: View {
 
   @State private var title: String = ""
   @State private var notes: String = ""
+  @State private var projectType: ProjectType = .kanban
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
@@ -1248,6 +1269,34 @@ private struct CreateProjectSheet: View {
       }
 
       VStack(alignment: .leading, spacing: 10) {
+        // Project type picker
+        VStack(alignment: .leading, spacing: 6) {
+          Text("Project Type")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+          Picker("Type", selection: $projectType) {
+            HStack(spacing: 6) {
+              Image(systemName: "rectangle.split.3x1")
+              Text("Kanban")
+            }.tag(ProjectType.kanban)
+
+            HStack(spacing: 6) {
+              Image(systemName: "doc.text.magnifyingglass")
+              Text("Research")
+            }.tag(ProjectType.research)
+          }
+          .pickerStyle(.segmented)
+
+          Text(projectType == .kanban
+            ? "Track tasks through columns: Active, Waiting, Done."
+            : "Collect research tiles, notes, links, findings. Ask Lobs to investigate."
+          )
+            .font(.caption)
+            .foregroundStyle(.tertiary)
+            .animation(.easeInOut(duration: 0.15), value: projectType)
+        }
+
         TextField("Project name", text: $title)
           .textFieldStyle(.roundedBorder)
 
@@ -1263,7 +1312,7 @@ private struct CreateProjectSheet: View {
         Spacer()
 
         Button("Create") {
-          vm.createProject(title: title, notes: notes)
+          vm.createProject(title: title, notes: notes, type: projectType)
           dismiss()
         }
         .keyboardShortcut(.defaultAction)

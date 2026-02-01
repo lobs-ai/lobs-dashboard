@@ -22,10 +22,18 @@ final class AppViewModel: ObservableObject {
   @Published var tasks: [DashboardTask] = []
   @Published var selectedTaskId: String? = nil
 
+  // Research
+  @Published var researchTiles: [ResearchTile] = []
+  @Published var researchRequests: [ResearchRequest] = []
+  @Published var selectedTileId: String? = nil
+
   // Projects
   @Published var projects: [Project] = []
   @Published var selectedProjectId: String = "default" {
-    didSet { settings.set(selectedProjectId, forKey: selectedProjectIdKey) }
+    didSet {
+      settings.set(selectedProjectId, forKey: selectedProjectIdKey)
+      loadResearchData()
+    }
   }
   @Published var artifactText: String = "(select a task)"
   @Published var lastError: String? = nil
@@ -98,6 +106,14 @@ final class AppViewModel: ObservableObject {
     startAutoRefreshIfNeeded()
   }
 
+  var selectedProject: Project? {
+    projects.first(where: { $0.id == selectedProjectId })
+  }
+
+  var isResearchProject: Bool {
+    selectedProject?.resolvedType == .research
+  }
+
   func startAutoRefreshIfNeeded() {
     refreshTimer?.invalidate()
     refreshTimer = nil
@@ -149,6 +165,9 @@ final class AppViewModel: ObservableObject {
         tasks = file.tasks
         try loadArtifactForSelected(store: store)
       }
+
+      // Refresh research data too
+      loadResearchData(store: store)
     } catch {
       // Silent — don't overwrite errors from user actions.
     }
@@ -200,8 +219,27 @@ final class AppViewModel: ObservableObject {
       lastError = nil
       try loadArtifactForSelected(store: store)
 
+      // Load research data if applicable
+      loadResearchData(store: store)
+
     } catch {
       lastError = String(describing: error)
+    }
+  }
+
+  func loadResearchData(store: LobsControlStore? = nil) {
+    guard let repoURL else { return }
+    let s = store ?? LobsControlStore(repoRoot: repoURL)
+    guard isResearchProject else {
+      researchTiles = []
+      researchRequests = []
+      return
+    }
+    do {
+      researchTiles = try s.loadTiles(projectId: selectedProjectId)
+      researchRequests = try s.loadRequests(projectId: selectedProjectId)
+    } catch {
+      flashError("Failed to load research data: \(error.localizedDescription)")
     }
   }
 
@@ -459,7 +497,7 @@ final class AppViewModel: ObservableObject {
 
   // MARK: - Projects
 
-  func createProject(title: String, notes: String?) {
+  func createProject(title: String, notes: String?, type: ProjectType = .kanban) {
     let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
     let trimmedNotes = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmedTitle.isEmpty, let repoURL else { return }
@@ -472,7 +510,8 @@ final class AppViewModel: ObservableObject {
       createdAt: now,
       updatedAt: now,
       notes: (trimmedNotes?.isEmpty == true) ? nil : trimmedNotes,
-      archived: false
+      archived: false,
+      type: type
     )
 
     // Local update
@@ -718,6 +757,190 @@ final class AppViewModel: ObservableObject {
         message: "Lobs: edit \(taskId)",
         autoPush: autoPush
       )
+    }
+  }
+
+  // MARK: - Research Tiles
+
+  func addTile(type: ResearchTileType, title: String, url: String? = nil, content: String? = nil, claim: String? = nil) {
+    guard let repoURL else { return }
+    let now = Date()
+    let tile = ResearchTile(
+      id: UUID().uuidString,
+      projectId: selectedProjectId,
+      type: type,
+      title: title,
+      tags: nil,
+      status: .active,
+      author: "rafe",
+      createdAt: now,
+      updatedAt: now,
+      url: url,
+      summary: nil,
+      snapshot: nil,
+      content: content,
+      claim: claim,
+      confidence: nil,
+      evidence: nil,
+      counterpoints: nil,
+      options: nil
+    )
+
+    researchTiles.insert(tile, at: 0)
+
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.saveTile(tile)
+    } catch {
+      flashError("Failed to save tile: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: add \(type.rawValue) tile \(tile.id)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
+    }
+  }
+
+  func updateTile(_ tile: ResearchTile) {
+    guard let repoURL else { return }
+    var updated = tile
+    updated.updatedAt = Date()
+
+    if let idx = researchTiles.firstIndex(where: { $0.id == tile.id }) {
+      researchTiles[idx] = updated
+    }
+
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.saveTile(updated)
+    } catch {
+      flashError("Failed to save tile: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: update tile \(tile.id)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
+    }
+  }
+
+  func removeTile(_ tile: ResearchTile) {
+    guard let repoURL else { return }
+    researchTiles.removeAll { $0.id == tile.id }
+
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.deleteTile(projectId: tile.projectId, tileId: tile.id)
+    } catch {
+      flashError("Failed to delete tile: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: delete tile \(tile.id)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
+    }
+  }
+
+  // MARK: - Research Requests
+
+  func addRequest(prompt: String, tileId: String? = nil) {
+    guard let repoURL else { return }
+    let now = Date()
+    let req = ResearchRequest(
+      id: UUID().uuidString,
+      projectId: selectedProjectId,
+      tileId: tileId,
+      prompt: prompt,
+      status: .open,
+      response: nil,
+      author: "rafe",
+      createdAt: now,
+      updatedAt: now
+    )
+
+    researchRequests.insert(req, at: 0)
+
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.saveRequest(req)
+    } catch {
+      flashError("Failed to save request: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: add research request \(req.id)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
+    }
+  }
+
+  func updateRequest(_ request: ResearchRequest) {
+    guard let repoURL else { return }
+    var updated = request
+    updated.updatedAt = Date()
+
+    if let idx = researchRequests.firstIndex(where: { $0.id == request.id }) {
+      researchRequests[idx] = updated
+    }
+
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.saveRequest(updated)
+    } catch {
+      flashError("Failed to save request: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: update request \(request.id)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
     }
   }
 

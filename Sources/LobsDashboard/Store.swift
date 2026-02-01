@@ -12,6 +12,15 @@ final class LobsControlStore {
   private var archiveDirURL: URL { repoRoot.appendingPathComponent("state/tasks-archive") }
 
   private var projectsURL: URL { repoRoot.appendingPathComponent("state/projects.json") }
+  private var researchDirURL: URL { repoRoot.appendingPathComponent("state/research") }
+
+  private func tilesDirURL(projectId: String) -> URL {
+    researchDirURL.appendingPathComponent(projectId).appendingPathComponent("tiles")
+  }
+
+  private func requestsDirURL(projectId: String) -> URL {
+    researchDirURL.appendingPathComponent(projectId).appendingPathComponent("requests")
+  }
 
   private func decoder() -> JSONDecoder {
     let d = JSONDecoder()
@@ -333,6 +342,78 @@ final class LobsControlStore {
       if t.status.rawValue == "completed" && t.updatedAt < cutoff {
         try archiveTask(taskId: t.id)
       }
+    }
+  }
+
+  // MARK: - Research Tiles
+
+  func loadTiles(projectId: String) throws -> [ResearchTile] {
+    let dir = tilesDirURL(projectId: projectId)
+    guard FileManager.default.fileExists(atPath: dir.path) else { return [] }
+
+    let items = try FileManager.default.contentsOfDirectory(
+      at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+    )
+
+    let dec = decoder()
+    var tiles: [ResearchTile] = []
+    for url in items where url.pathExtension.lowercased() == "json" {
+      let data = try Data(contentsOf: url)
+      let tile = try dec.decode(ResearchTile.self, from: data)
+      tiles.append(tile)
+    }
+    tiles.sort { $0.createdAt > $1.createdAt }
+    return tiles
+  }
+
+  func saveTile(_ tile: ResearchTile) throws {
+    let dir = tilesDirURL(projectId: tile.projectId)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let url = dir.appendingPathComponent("\(tile.id).json")
+    let data = try encoder().encode(tile)
+    try data.write(to: url, options: [.atomic])
+  }
+
+  func deleteTile(projectId: String, tileId: String) throws {
+    let url = tilesDirURL(projectId: projectId).appendingPathComponent("\(tileId).json")
+    if FileManager.default.fileExists(atPath: url.path) {
+      try FileManager.default.removeItem(at: url)
+    }
+  }
+
+  // MARK: - Research Requests
+
+  func loadRequests(projectId: String) throws -> [ResearchRequest] {
+    let dir = requestsDirURL(projectId: projectId)
+    guard FileManager.default.fileExists(atPath: dir.path) else { return [] }
+
+    let items = try FileManager.default.contentsOfDirectory(
+      at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+    )
+
+    let dec = decoder()
+    var requests: [ResearchRequest] = []
+    for url in items where url.pathExtension.lowercased() == "json" {
+      let data = try Data(contentsOf: url)
+      let req = try dec.decode(ResearchRequest.self, from: data)
+      requests.append(req)
+    }
+    requests.sort { $0.createdAt > $1.createdAt }
+    return requests
+  }
+
+  func saveRequest(_ request: ResearchRequest) throws {
+    let dir = requestsDirURL(projectId: request.projectId)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let url = dir.appendingPathComponent("\(request.id).json")
+    let data = try encoder().encode(request)
+    try data.write(to: url, options: [.atomic])
+  }
+
+  func deleteRequest(projectId: String, requestId: String) throws {
+    let url = requestsDirURL(projectId: projectId).appendingPathComponent("\(requestId).json")
+    if FileManager.default.fileExists(atPath: url.path) {
+      try FileManager.default.removeItem(at: url)
     }
   }
 }

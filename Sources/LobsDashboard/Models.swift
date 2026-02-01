@@ -164,6 +164,11 @@ struct DashboardTask: Codable, Identifiable, Hashable {
   var notes: String?
 }
 
+enum ProjectType: String, Codable, CaseIterable, Hashable {
+  case kanban
+  case research
+}
+
 struct Project: Codable, Identifiable, Hashable {
   var id: String
   var title: String
@@ -171,6 +176,85 @@ struct Project: Codable, Identifiable, Hashable {
   var updatedAt: Date
   var notes: String?
   var archived: Bool?
+  var type: ProjectType?
+
+  /// Resolved type (defaults to kanban for backwards compatibility).
+  var resolvedType: ProjectType { type ?? .kanban }
+}
+
+// MARK: - Research Tile Types
+
+enum ResearchTileType: String, Codable, CaseIterable, Hashable {
+  case link
+  case note
+  case finding
+  case comparison
+}
+
+enum ResearchTileStatus: String, Codable, Hashable {
+  case active
+  case archived
+}
+
+struct ResearchTile: Codable, Identifiable, Hashable {
+  var id: String
+  var projectId: String
+  var type: ResearchTileType
+  var title: String
+  var tags: [String]?
+  var status: ResearchTileStatus?
+  var author: String?   // "rafe" or "lobs"
+  var createdAt: Date
+  var updatedAt: Date
+
+  // Link tile fields
+  var url: String?
+  var summary: String?
+  var snapshot: String?
+
+  // Note tile fields
+  var content: String?
+
+  // Finding tile fields
+  var claim: String?
+  var confidence: Double?
+  var evidence: [String]?
+  var counterpoints: [String]?
+
+  // Comparison tile fields
+  var options: [ComparisonOption]?
+
+  var resolvedStatus: ResearchTileStatus { status ?? .active }
+}
+
+struct ComparisonOption: Codable, Hashable {
+  var name: String
+  var pros: [String]?
+  var cons: [String]?
+  var cost: String?
+  var risk: String?
+  var notes: String?
+}
+
+// MARK: - Research Requests
+
+enum ResearchRequestStatus: String, Codable, Hashable {
+  case open
+  case inProgress = "in_progress"
+  case done
+  case blocked
+}
+
+struct ResearchRequest: Codable, Identifiable, Hashable {
+  var id: String
+  var projectId: String
+  var tileId: String?       // If attached to a specific tile
+  var prompt: String
+  var status: ResearchRequestStatus
+  var response: String?
+  var author: String?       // who created the request
+  var createdAt: Date
+  var updatedAt: Date
 }
 
 struct ProjectsFile: Codable {
