@@ -562,7 +562,7 @@ final class AppViewModel: ObservableObject {
         // Hold task data in memory, pull to resolve conflicts, then re-write and retry.
         do {
           let store = LobsControlStore(repoRoot: repoURL)
-          let taskData = try JSONEncoder().encode(newTask)
+          let _ = try JSONEncoder().encode(newTask)
 
           // Pull --rebase (this may remove our new file, but we have it in memory)
           _ = try await Git.runAsync(["pull", "--rebase"], cwd: repoURL)

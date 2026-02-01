@@ -493,7 +493,7 @@ private struct InboxRow: View {
     HStack(spacing: 10) {
       Image(systemName: item.isRead ? "doc.text" : "doc.text.fill")
         .font(.caption)
-        .foregroundStyle(item.isRead ? .secondary : .blue)
+        .foregroundStyle(item.isRead ? .secondary : Color.blue)
         .frame(width: 24)
 
       VStack(alignment: .leading, spacing: 2) {
