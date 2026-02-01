@@ -347,9 +347,28 @@ final class AppViewModel: ObservableObject {
       do {
         try await gitWork(repoURL)
       } catch {
-        flashError("Git sync failed: \(error.localizedDescription)")
-        // Reload from disk to get true state.
-        reload()
+        // Hold updated task in memory, pull --rebase, re-apply, retry.
+        do {
+          let taskSnapshot: DashboardTask? = tasks.first(where: { $0.id == taskId })
+          _ = try await Git.runAsync(["pull", "--rebase"], cwd: repoURL)
+
+          // Re-persist from memory after pull
+          if let snapshot = taskSnapshot {
+            let store = LobsControlStore(repoRoot: repoURL)
+            try store.setStatus(taskId: snapshot.id, status: snapshot.status)
+            if let ws = snapshot.workState {
+              try store.setWorkState(taskId: snapshot.id, workState: ws)
+            }
+            if let rs = snapshot.reviewState {
+              try store.setReviewState(taskId: snapshot.id, reviewState: rs)
+            }
+          }
+
+          try await gitWork(repoURL)
+        } catch {
+          flashError("Git sync failed after retry: \(error.localizedDescription)")
+          reload()
+        }
       }
       isGitBusy = false
     }
@@ -537,8 +556,36 @@ final class AppViewModel: ObservableObject {
           autoPush: autoPush
         )
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
-        reload()
+        // Hold task data in memory, pull to resolve conflicts, then re-write and retry.
+        do {
+          let store = LobsControlStore(repoRoot: repoURL)
+          let taskData = try JSONEncoder().encode(newTask)
+
+          // Pull --rebase (this may remove our new file, but we have it in memory)
+          _ = try await Git.runAsync(["pull", "--rebase"], cwd: repoURL)
+
+          // Re-write the task file from memory
+          _ = try store.addTask(
+            id: newTask.id,
+            title: newTask.title,
+            owner: newTask.owner,
+            status: newTask.status,
+            projectId: newTask.projectId,
+            workState: newTask.workState,
+            reviewState: newTask.reviewState,
+            notes: newTask.notes
+          )
+
+          // Re-attempt commit + push
+          try await asyncCommitAndMaybePush(
+            repoURL: repoURL,
+            message: "Lobs: submit task \(newTask.id)",
+            autoPush: autoPush
+          )
+        } catch {
+          flashError("Git sync failed after retry: \(error.localizedDescription)")
+          reload()
+        }
       }
       isGitBusy = false
     }
@@ -1058,8 +1105,17 @@ final class AppViewModel: ObservableObject {
     if autoPush {
       let push = try await Git.runAsync(["push"], cwd: repoURL)
       if push.exitCode != 0 {
-        throw NSError(domain: "Git", code: Int(push.exitCode),
-                      userInfo: [NSLocalizedDescriptionKey: push.stderr])
+        // Push failed — pull --rebase and retry once.
+        let pull = try await Git.runAsync(["pull", "--rebase"], cwd: repoURL)
+        if pull.exitCode != 0 {
+          throw NSError(domain: "Git", code: Int(pull.exitCode),
+                        userInfo: [NSLocalizedDescriptionKey: "Pull --rebase failed: \(pull.stderr)"])
+        }
+        let retry = try await Git.runAsync(["push"], cwd: repoURL)
+        if retry.exitCode != 0 {
+          throw NSError(domain: "Git", code: Int(retry.exitCode),
+                        userInfo: [NSLocalizedDescriptionKey: retry.stderr])
+        }
       }
     }
   }
@@ -1106,8 +1162,17 @@ final class AppViewModel: ObservableObject {
     if autoPush {
       let push = try Git.run(["push"], cwd: repoURL)
       if push.exitCode != 0 {
-        throw NSError(domain: "Git", code: Int(push.exitCode),
-                      userInfo: [NSLocalizedDescriptionKey: push.stderr])
+        // Push failed — pull --rebase and retry once.
+        let pull = try Git.run(["pull", "--rebase"], cwd: repoURL)
+        if pull.exitCode != 0 {
+          throw NSError(domain: "Git", code: Int(pull.exitCode),
+                        userInfo: [NSLocalizedDescriptionKey: "Pull --rebase failed: \(pull.stderr)"])
+        }
+        let retry = try Git.run(["push"], cwd: repoURL)
+        if retry.exitCode != 0 {
+          throw NSError(domain: "Git", code: Int(retry.exitCode),
+                        userInfo: [NSLocalizedDescriptionKey: retry.stderr])
+        }
       }
     }
   }
