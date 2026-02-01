@@ -45,6 +45,7 @@ struct ContentView: View {
   @State private var showCreateProject = false
   @State private var editingProject: Project? = nil
   @State private var showSettings = false
+  @State private var showAllDone = false
   @State private var showAllRejected = false
   @State private var quickAddText = ""
 
@@ -71,6 +72,7 @@ struct ContentView: View {
         // Kanban board
         BoardView(
           vm: vm,
+          showAllDone: $showAllDone,
           showAllRejected: $showAllRejected,
           autoPush: $autoPush,
           quickAddText: $quickAddText
@@ -442,6 +444,21 @@ private struct SettingsPopover: View {
               vm.startAutoRefreshIfNeeded()
             }
 
+          Toggle("Auto-archive completed tasks", isOn: $vm.autoArchiveCompleted)
+            .toggleStyle(.switch)
+            .controlSize(.small)
+
+          if vm.autoArchiveCompleted {
+            HStack {
+              Text("Archive after")
+                .font(.caption)
+              TextField("", value: $vm.archiveCompletedAfterDays, format: .number)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 50)
+              Text("days")
+                .font(.caption)
+            }
+          }
         }
       }
 
@@ -494,6 +511,9 @@ private struct StatsBar: View {
 
   private var inboxCount: Int { vm.tasks.filter { $0.status == .inbox }.count }
   private var activeCount: Int { vm.tasks.filter { $0.status == .active }.count }
+  private var doneCount: Int {
+    vm.tasks.filter { $0.status == .completed }.count
+  }
   private var blockedCount: Int { vm.tasks.filter { $0.workState == .blocked }.count }
   private var totalCount: Int { vm.tasks.count }
 
@@ -512,6 +532,8 @@ private struct StatsBar: View {
       if blockedCount > 0 {
         StatPill(label: "Blocked", count: blockedCount, color: .red)
       }
+      StatPill(label: "Done", count: doneCount, color: .green)
+
       Spacer()
 
       Text("\(totalCount) tasks")
@@ -580,6 +602,7 @@ private struct ErrorBanner: View {
 
 private struct BoardView: View {
   @ObservedObject var vm: AppViewModel
+  @Binding var showAllDone: Bool
   @Binding var showAllRejected: Bool
   @Binding var autoPush: Bool
   @Binding var quickAddText: String
@@ -594,6 +617,7 @@ private struct BoardView: View {
             dropStatus: col.dropStatus,
             vm: vm,
             autoPush: $autoPush,
+            showAllDone: $showAllDone,
             showAllRejected: $showAllRejected,
             quickAddText: $quickAddText
           )
@@ -613,6 +637,7 @@ private struct BoardColumn: View {
 
   @ObservedObject var vm: AppViewModel
   @Binding var autoPush: Bool
+  @Binding var showAllDone: Bool
   @Binding var showAllRejected: Bool
   @Binding var quickAddText: String
 
@@ -623,16 +648,18 @@ private struct BoardColumn: View {
     case "inbox": return .blue
     case "active": return .orange
     case "waiting on": return .yellow
+    case "done": return .green
     case "rejected": return .red
     default: return .gray
     }
   }
 
   var body: some View {
+    let isDone = title.lowercased() == "done"
     let isRejected = title.lowercased() == "rejected"
-    let showAll = isRejected ? showAllRejected : true
-    let visibleTasks = isRejected && !showAll
-      ? Array(tasks.sorted { $0.createdAt > $1.createdAt }.prefix(10))
+    let showAll = isDone ? showAllDone : (isRejected ? showAllRejected : true)
+    let visibleTasks = (isDone || isRejected) && !showAll
+      ? Array(tasks.sorted { $0.createdAt > $1.createdAt }.prefix(vm.completedShowRecent))
       : tasks
 
     let wipLimit = (title.lowercased() == "active") ? vm.wipLimitActive : 0
@@ -670,6 +697,19 @@ private struct BoardColumn: View {
 
         Spacer()
 
+        if isDone {
+          Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+              showAllDone.toggle()
+            }
+          } label: {
+            Image(systemName: showAllDone ? "chevron.up" : "chevron.down")
+              .font(.caption2)
+              .foregroundStyle(.secondary)
+          }
+          .buttonStyle(.plain)
+        }
+
         if isRejected {
           Button {
             withAnimation(.easeInOut(duration: 0.2)) {
@@ -700,8 +740,8 @@ private struct BoardColumn: View {
               }
           }
 
-          if isRejected && !showAll && tasks.count > 10 {
-            Text("+\(tasks.count - 10) more")
+          if (isDone || isRejected) && !showAll && tasks.count > vm.completedShowRecent {
+            Text("+\(tasks.count - vm.completedShowRecent) more")
               .font(.caption2)
               .foregroundStyle(.secondary)
               .frame(maxWidth: .infinity)

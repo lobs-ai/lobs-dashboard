@@ -10,6 +10,9 @@ final class AppViewModel: ObservableObject {
   private let repoPathKey = "repoPath"
   private let ownerFilterKey = "ownerFilter"
   private let wipLimitActiveKey = "wipLimitActive"
+  private let completedShowRecentKey = "completedShowRecent"
+  private let autoArchiveCompletedKey = "autoArchiveCompleted"
+  private let archiveCompletedAfterDaysKey = "archiveCompletedAfterDays"
   private let autoRefreshEnabledKey = "autoRefreshEnabled"
   private let autoRefreshIntervalSecondsKey = "autoRefreshIntervalSeconds"
   private let selectedProjectIdKey = "selectedProjectId"
@@ -45,6 +48,17 @@ final class AppViewModel: ObservableObject {
     didSet { settings.set(wipLimitActive, forKey: wipLimitActiveKey) }
   }
 
+  // Completed hygiene
+  @Published var completedShowRecent: Int = 30 {
+    didSet { settings.set(completedShowRecent, forKey: completedShowRecentKey) }
+  }
+  @Published var autoArchiveCompleted: Bool = false {
+    didSet { settings.set(autoArchiveCompleted, forKey: autoArchiveCompletedKey) }
+  }
+  @Published var archiveCompletedAfterDays: Int = 30 {
+    didSet { settings.set(archiveCompletedAfterDays, forKey: archiveCompletedAfterDaysKey) }
+  }
+
   // Popover state for task detail
   @Published var popoverTaskId: String? = nil
 
@@ -66,6 +80,14 @@ final class AppViewModel: ObservableObject {
 
     let wip = settings.integer(forKey: wipLimitActiveKey)
     wipLimitActive = (wip == 0) ? 6 : wip
+
+    let csr = settings.integer(forKey: completedShowRecentKey)
+    completedShowRecent = (csr == 0) ? 30 : csr
+
+    autoArchiveCompleted = settings.bool(forKey: autoArchiveCompletedKey)
+
+    let days = settings.integer(forKey: archiveCompletedAfterDaysKey)
+    archiveCompletedAfterDays = (days == 0) ? 30 : days
 
     // Default true if unset
     autoRefreshEnabled = settings.object(forKey: autoRefreshEnabledKey) as? Bool ?? true
@@ -117,6 +139,9 @@ final class AppViewModel: ObservableObject {
         selectedProjectId = "default"
       }
 
+      if autoArchiveCompleted {
+        try store.archiveCompleted(olderThanDays: archiveCompletedAfterDays)
+      }
       let file = try store.loadTasks()
       // Only update if something changed (avoid UI flicker).
       if file.tasks.map({ $0.id }).sorted() != tasks.map({ $0.id }).sorted()
@@ -164,6 +189,10 @@ final class AppViewModel: ObservableObject {
       }
       if !projects.contains(where: { $0.id == selectedProjectId }) {
         selectedProjectId = "default"
+      }
+
+      if autoArchiveCompleted {
+        try store.archiveCompleted(olderThanDays: archiveCompletedAfterDays)
       }
 
       let file = try store.loadTasks()
@@ -816,6 +845,10 @@ final class AppViewModel: ObservableObject {
     [
       .init(title: "Active", dropStatus: .active) { $0.status == .active },
       .init(title: "Waiting on", dropStatus: .waitingOn) { $0.status == .waitingOn },
+
+      .init(title: "Done", dropStatus: .completed) { t in
+        t.status == .completed
+      },
 
       .init(title: "Rejected", dropStatus: .rejected) { $0.status == .rejected },
       .init(title: "Other", dropStatus: .other("inbox")) {
