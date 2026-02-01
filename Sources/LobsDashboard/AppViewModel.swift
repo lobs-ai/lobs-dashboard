@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SwiftUI
 
@@ -7,6 +8,7 @@ final class AppViewModel: ObservableObject {
 
   // UserDefaults keys
   private let repoPathKey = "repoPath"
+  private let appIconPathKey = "appIconPath"
   private let ownerFilterKey = "ownerFilter"
   private let wipLimitActiveKey = "wipLimitActive"
   private let completedShowRecentKey = "completedShowRecent"
@@ -908,5 +910,48 @@ final class AppViewModel: ObservableObject {
     } else {
       selectTask(visible[visible.count - 1])
     }
+  }
+
+  // MARK: - App Icon
+
+  var appIconPath: String? {
+    settings.string(forKey: appIconPathKey)
+  }
+
+  func setAppIcon(from url: URL) {
+    guard url.startAccessingSecurityScopedResource() else { return }
+    defer { url.stopAccessingSecurityScopedResource() }
+
+    guard let image = NSImage(contentsOf: url) else {
+      flashError("Could not load image from \(url.lastPathComponent)")
+      return
+    }
+
+    // Save a copy to App Support so we can reload on launch
+    let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+      .appendingPathComponent("LobsDashboard", isDirectory: true)
+    try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
+    let dest = appSupport.appendingPathComponent("AppIcon.png")
+
+    if let tiff = image.tiffRepresentation,
+       let rep = NSBitmapImageRep(data: tiff),
+       let png = rep.representation(using: .png, properties: [:]) {
+      try? png.write(to: dest)
+    }
+
+    settings.set(dest.path, forKey: appIconPathKey)
+    NSApplication.shared.applicationIconImage = image
+  }
+
+  func clearAppIcon() {
+    settings.removeObject(forKey: appIconPathKey)
+    NSApplication.shared.applicationIconImage = nil  // reverts to default
+  }
+
+  func restoreAppIcon() {
+    guard let path = appIconPath else { return }
+    let url = URL(fileURLWithPath: path)
+    guard let image = NSImage(contentsOf: url) else { return }
+    NSApplication.shared.applicationIconImage = image
   }
 }

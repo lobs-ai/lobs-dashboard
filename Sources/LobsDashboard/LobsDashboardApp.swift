@@ -13,6 +13,8 @@ struct LobsDashboardApp: App {
         .onAppear {
           // Ensure the app becomes key so keyboard input goes to fields.
           NSApp.activate(ignoringOtherApps: true)
+          // Restore custom app icon if set
+          vm.restoreAppIcon()
         }
     }
     // Set a reasonable initial window size; the `.frame(minWidth/minHeight)` only

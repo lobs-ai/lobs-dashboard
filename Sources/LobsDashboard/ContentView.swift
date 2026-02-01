@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 #if os(macOS)
 import AppKit
@@ -390,6 +391,7 @@ private struct SettingsPopover: View {
   @ObservedObject var vm: AppViewModel
   @Binding var autoPush: Bool
   @Binding var showPicker: Bool
+  @State private var showIconPicker = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
@@ -479,6 +481,53 @@ private struct SettingsPopover: View {
         }
       }
 
+      // App Icon
+      GroupBox {
+        VStack(alignment: .leading, spacing: 8) {
+          Label("App Icon", systemImage: "app.badge.fill")
+            .font(.subheadline)
+            .fontWeight(.semibold)
+
+          HStack(spacing: 12) {
+            if let iconPath = vm.appIconPath,
+               let img = NSImage(contentsOfFile: iconPath) {
+              Image(nsImage: img)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 48, height: 48)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            } else {
+              RoundedRectangle(cornerRadius: 10)
+                .fill(Color.primary.opacity(0.06))
+                .frame(width: 48, height: 48)
+                .overlay(
+                  Image(systemName: "app")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
+                )
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+              Button {
+                showIconPicker = true
+              } label: {
+                Label("Choose Image…", systemImage: "photo")
+              }
+              .controlSize(.small)
+
+              if vm.appIconPath != nil {
+                Button(role: .destructive) {
+                  vm.clearAppIcon()
+                } label: {
+                  Label("Reset to Default", systemImage: "arrow.counterclockwise")
+                }
+                .controlSize(.small)
+              }
+            }
+          }
+        }
+      }
+
       if let err = vm.lastError {
         GroupBox {
           VStack(alignment: .leading, spacing: 4) {
@@ -495,6 +544,14 @@ private struct SettingsPopover: View {
     }
     .padding(16)
     .frame(width: 300)
+    .fileImporter(
+      isPresented: $showIconPicker,
+      allowedContentTypes: [.png, .jpeg, .heic, .tiff, .bmp, .gif, .image]
+    ) { result in
+      if case .success(let url) = result {
+        vm.setAppIcon(from: url)
+      }
+    }
   }
 }
 
@@ -848,8 +905,11 @@ private struct TaskTile: View {
       showDetail = true
     }
     .popover(isPresented: $showDetail, arrowEdge: .trailing) {
-      TaskDetailPopover(task: task, vm: vm, autoPush: $autoPush, artifactText: vm.artifactText)
-        .frame(width: 400, height: 500)
+      TaskDetailPopover(task: task, vm: vm, autoPush: $autoPush, artifactText: vm.artifactText) {
+        showDetail = false
+        TaskDetailWindowController.open(task: task, vm: vm, artifactText: vm.artifactText)
+      }
+      .frame(width: 400, height: 500)
     }
   }
 
@@ -907,6 +967,7 @@ private struct TaskDetailPopover: View {
   @ObservedObject var vm: AppViewModel
   @Binding var autoPush: Bool
   let artifactText: String
+  var onPopOut: (() -> Void)? = nil
 
   @State private var editTitle: String = ""
   @State private var editNotes: String = ""
@@ -959,12 +1020,26 @@ private struct TaskDetailPopover: View {
               .onChange(of: editNotes) { _ in scheduleAutosave() }
           }
 
-          Button {
-            vm.editTask(taskId: task.id, title: editTitle, notes: editNotes, autoPush: autoPush)
-          } label: {
-            Label("Save", systemImage: "square.and.arrow.down")
+          HStack(spacing: 8) {
+            Button {
+              vm.editTask(taskId: task.id, title: editTitle, notes: editNotes, autoPush: autoPush)
+            } label: {
+              Label("Save", systemImage: "square.and.arrow.down")
+            }
+            .buttonStyle(.bordered)
+
+            Spacer()
+
+            if let onPopOut {
+              Button {
+                onPopOut()
+              } label: {
+                Label("Pop Out", systemImage: "arrow.up.left.and.arrow.down.right")
+              }
+              .buttonStyle(.bordered)
+              .help("Open in separate window for easier editing")
+            }
           }
-          .buttonStyle(.bordered)
         }
 
         Divider()
@@ -994,7 +1069,7 @@ private struct TaskDetailPopover: View {
               .foregroundStyle(.secondary)
 
           case .active:
-            // Active: mark complete, toggle blocked
+            // Active: mark complete, toggle blocked, move to waiting
             HStack(spacing: 8) {
               ActionButton(label: "Mark Complete", icon: "checkmark.circle.fill", color: .green) {
                 vm.completeSelected(autoPush: autoPush)
@@ -1005,6 +1080,9 @@ private struct TaskDetailPopover: View {
                 color: task.workState == .blocked ? .blue : .red
               ) {
                 vm.toggleBlockSelected(autoPush: autoPush)
+              }
+              ActionButton(label: "Waiting On", icon: "person.badge.clock", color: .yellow) {
+                vm.moveTask(taskId: task.id, to: .waitingOn)
               }
             }
 
@@ -1028,8 +1106,11 @@ private struct TaskDetailPopover: View {
             }
 
           case .waitingOn:
-            // Waiting: complete or move back to active
+            // Waiting: move back to active, complete, or reopen
             HStack(spacing: 8) {
+              ActionButton(label: "Back to Active", icon: "arrow.forward.circle.fill", color: .orange) {
+                vm.moveTask(taskId: task.id, to: .active)
+              }
               ActionButton(label: "Mark Complete", icon: "checkmark.circle.fill", color: .green) {
                 vm.completeSelected(autoPush: autoPush)
               }
@@ -1367,5 +1448,47 @@ private struct AddTaskSheet: View {
     }
     .padding(24)
     .frame(minWidth: 480, minHeight: 280)
+  }
+}
+
+// MARK: - Task Detail Window (Pop Out)
+
+/// Opens a task detail view in a standalone NSWindow for easier editing.
+final class TaskDetailWindowController {
+  private static var openWindows: [String: NSWindow] = [:]
+
+  static func open(task: DashboardTask, vm: AppViewModel, artifactText: String) {
+    // If already open for this task, bring to front
+    if let existing = openWindows[task.id], existing.isVisible {
+      existing.makeKeyAndOrderFront(nil)
+      return
+    }
+
+    let autoPushState = Binding<Bool>(get: { true }, set: { _ in })
+
+    let content = TaskDetailPopover(
+      task: task,
+      vm: vm,
+      autoPush: autoPushState,
+      artifactText: artifactText
+    )
+    .frame(minWidth: 450, minHeight: 550)
+    .padding(4)
+
+    let hostingView = NSHostingView(rootView: content)
+
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 480, height: 600),
+      styleMask: [.titled, .closable, .resizable, .miniaturizable],
+      backing: .buffered,
+      defer: false
+    )
+    window.title = task.title
+    window.contentView = hostingView
+    window.center()
+    window.isReleasedWhenClosed = false
+    window.makeKeyAndOrderFront(nil)
+
+    openWindows[task.id] = window
   }
 }
