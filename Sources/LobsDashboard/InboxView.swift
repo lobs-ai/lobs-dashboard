@@ -247,6 +247,8 @@ private struct DocumentViewer: View {
   let item: InboxItem
   @ObservedObject var vm: AppViewModel
 
+  @State private var responseText: String = ""
+
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       // Document header
@@ -314,6 +316,44 @@ private struct DocumentViewer: View {
 
       Divider()
 
+      // Response editor
+      VStack(alignment: .leading, spacing: 10) {
+        HStack {
+          Text("Response")
+            .font(.callout)
+            .fontWeight(.semibold)
+
+          Spacer()
+
+          Button("Save") {
+            vm.saveInboxResponse(docId: item.id, response: responseText)
+          }
+          .disabled(responseText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+
+        ZStack(alignment: .topLeading) {
+          TextEditor(text: $responseText)
+            .font(.system(.body, design: .monospaced))
+            .frame(minHeight: 110)
+            .padding(6)
+            .background(ITheme.cardBg)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+
+          if responseText.isEmpty {
+            Text("Write a short response for Lobs…")
+              .foregroundStyle(.tertiary)
+              .padding(.horizontal, 14)
+              .padding(.vertical, 14)
+              .allowsHitTesting(false)
+          }
+        }
+      }
+      .padding(.horizontal, 20)
+      .padding(.vertical, 14)
+      .background(ITheme.bg.opacity(0.5))
+
+      Divider()
+
       // Document content
       ScrollView {
         Text(item.content)
@@ -324,6 +364,9 @@ private struct DocumentViewer: View {
       }
     }
     .background(ITheme.bg)
+    .onAppear {
+      responseText = vm.inboxResponseText(docId: item.id)
+    }
   }
 }
 

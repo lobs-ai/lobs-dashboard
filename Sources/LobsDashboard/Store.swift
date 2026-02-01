@@ -349,6 +349,9 @@ final class LobsControlStore {
 
   private var artifactsDirURL: URL { repoRoot.appendingPathComponent("artifacts") }
   private var inboxDirURL: URL { repoRoot.appendingPathComponent("inbox") }
+  private var inboxResponsesDirURL: URL {
+    repoRoot.appendingPathComponent("state").appendingPathComponent("inbox-responses")
+  }
 
   func loadInboxItems() throws -> [InboxItem] {
     var items: [InboxItem] = []
@@ -401,6 +404,69 @@ final class LobsControlStore {
     // Sort by modification date, newest first
     items.sort { $0.modifiedAt > $1.modifiedAt }
     return items
+  }
+
+  func loadInboxResponses() throws -> [InboxResponse] {
+    guard FileManager.default.fileExists(atPath: inboxResponsesDirURL.path) else { return [] }
+
+    var out: [InboxResponse] = []
+    let dec = decoder()
+
+    guard let e = FileManager.default.enumerator(at: inboxResponsesDirURL, includingPropertiesForKeys: nil) else {
+      return []
+    }
+
+    for case let url as URL in e {
+      guard url.pathExtension.lowercased() == "json" else { continue }
+      let data = try Data(contentsOf: url)
+      let r = try dec.decode(InboxResponse.self, from: data)
+      out.append(r)
+    }
+
+    out.sort { $0.updatedAt > $1.updatedAt }
+    return out
+  }
+
+  func loadInboxResponse(docId: String) throws -> InboxResponse? {
+    let url = inboxResponsesDirURL
+      .appendingPathComponent(docId)
+      .appendingPathExtension("json")
+    guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+    let data = try Data(contentsOf: url)
+    return try decoder().decode(InboxResponse.self, from: data)
+  }
+
+  @discardableResult
+  func saveInboxResponse(docId: String, response: String) throws -> InboxResponse {
+    let now = Date()
+    var existing = try loadInboxResponse(docId: docId)
+
+    if existing == nil {
+      existing = InboxResponse(
+        id: UUID().uuidString,
+        docId: docId,
+        response: response,
+        createdAt: now,
+        updatedAt: now
+      )
+    } else {
+      existing!.response = response
+      existing!.updatedAt = now
+    }
+
+    let url = inboxResponsesDirURL
+      .appendingPathComponent(docId)
+      .appendingPathExtension("json")
+
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(),
+      withIntermediateDirectories: true,
+      attributes: nil
+    )
+
+    let data = try encoder().encode(existing!)
+    try data.write(to: url, options: [.atomic])
+    return existing!
   }
 
   private func extractTitle(from content: String, filename: String) -> String {

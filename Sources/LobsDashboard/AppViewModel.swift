@@ -35,6 +35,7 @@ final class AppViewModel: ObservableObject {
     }
   }
   @Published var showInbox: Bool = false
+  @Published var inboxResponsesByDocId: [String: InboxResponse] = [:]
 
   // Projects
   @Published var projects: [Project] = []
@@ -272,6 +273,9 @@ final class AppViewModel: ObservableObject {
         items[i].isRead = readItemIds.contains(items[i].id)
       }
       inboxItems = items
+
+      let responses = try s.loadInboxResponses()
+      inboxResponsesByDocId = Dictionary(uniqueKeysWithValues: responses.map { ($0.docId, $0) })
     } catch {
       flashError("Failed to load inbox: \(error.localizedDescription)")
     }
@@ -293,6 +297,37 @@ final class AppViewModel: ObservableObject {
 
   var unreadInboxCount: Int {
     inboxItems.filter { !$0.isRead }.count
+  }
+
+  func inboxResponseText(docId: String) -> String {
+    inboxResponsesByDocId[docId]?.response ?? ""
+  }
+
+  func saveInboxResponse(docId: String, response: String) {
+    guard let repoURL else { return }
+
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      let saved = try store.saveInboxResponse(docId: docId, response: response)
+      inboxResponsesByDocId[docId] = saved
+    } catch {
+      flashError("Failed to save inbox response: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: respond to inbox \(docId)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
+    }
   }
 
   func selectTask(_ task: DashboardTask) {
