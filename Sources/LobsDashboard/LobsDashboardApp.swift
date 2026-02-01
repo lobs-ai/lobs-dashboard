@@ -18,6 +18,16 @@ struct LobsDashboardApp: App {
              let img = NSImage(contentsOf: url) {
             NSApplication.shared.applicationIconImage = img
           }
+          // Enable macOS native spell checking globally for all text views.
+          // NSSpellChecker is the system spell checker; enabling continuous
+          // spell checking and automatic spelling correction covers all
+          // NSTextView-backed fields (TextField with axis: .vertical, TextEditor).
+          NSSpellChecker.shared.automaticallyIdentifiesLanguages = true
+          // Enable continuous spell checking on all NSTextView instances via
+          // swizzling the default: when a new NSTextView appears, the system
+          // respects the user's global preference. We nudge it here.
+          UserDefaults.standard.set(true, forKey: "NSAllowsContinuousSpellChecking")
+          UserDefaults.standard.set(true, forKey: "WebContinuousSpellCheckingEnabled")
         }
     }
     // Set a reasonable initial window size; the `.frame(minWidth/minHeight)` only

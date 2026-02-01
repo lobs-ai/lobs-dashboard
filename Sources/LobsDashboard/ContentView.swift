@@ -1030,10 +1030,13 @@ private struct TaskDetailPopover: View {
               .font(.caption)
               .foregroundStyle(.secondary)
 
-            TextField("Add notes…", text: $editNotes, axis: .vertical)
-              .textFieldStyle(.roundedBorder)
-              .lineLimit(6, reservesSpace: true)
-              .onChange(of: editNotes) { _ in scheduleAutosave() }
+            SpellCheckingTextEditor(
+              text: $editNotes,
+              font: .systemFont(ofSize: NSFont.smallSystemFontSize),
+              placeholder: "Add notes…"
+            )
+            .frame(minHeight: 80, maxHeight: 160)
+            .onChange(of: editNotes) { _ in scheduleAutosave() }
           }
 
           HStack(spacing: 8) {
