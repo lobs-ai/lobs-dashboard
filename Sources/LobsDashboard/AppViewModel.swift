@@ -705,6 +705,45 @@ final class AppViewModel: ObservableObject {
     }
   }
 
+  func unarchiveProject(id: String) {
+    guard let repoURL else { return }
+
+    // Local update
+    if let idx = projects.firstIndex(where: { $0.id == id }) {
+      projects[idx].archived = false
+      projects[idx].updatedAt = Date()
+    }
+
+    // Persist + git
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      var file = try store.loadProjects()
+      if let idx = file.projects.firstIndex(where: { $0.id == id }) {
+        file.projects[idx].archived = false
+        file.projects[idx].updatedAt = Date()
+      }
+      try store.saveProjects(file)
+    } catch {
+      flashError("Failed to unarchive project: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: unarchive project \(id)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+        reload()
+      }
+      isGitBusy = false
+    }
+  }
+
   private func uniqueProjectId(for title: String) -> String {
     func slugify(_ s: String) -> String {
       let lower = s.lowercased()

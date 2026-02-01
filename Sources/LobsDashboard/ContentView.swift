@@ -299,6 +299,38 @@ private struct ToolbarArea: View {
           Divider()
         }
 
+        // Archived projects submenu
+        let archivedProjects = vm.projects.filter { $0.archived == true }
+        if !archivedProjects.isEmpty {
+          Menu("Archived (\(archivedProjects.count))") {
+            ForEach(archivedProjects) { p in
+              Menu(p.title) {
+                Button {
+                  vm.unarchiveProject(id: p.id)
+                } label: {
+                  Label("Unarchive", systemImage: "tray.and.arrow.up")
+                }
+
+                Button {
+                  vm.selectedProjectId = p.id
+                } label: {
+                  Label("View", systemImage: "eye")
+                }
+
+                Divider()
+
+                Button(role: .destructive) {
+                  vm.deleteProject(id: p.id)
+                } label: {
+                  Label("Delete Permanently", systemImage: "trash")
+                }
+              }
+            }
+          }
+
+          Divider()
+        }
+
         Button {
           showCreateProject = true
         } label: {
