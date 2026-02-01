@@ -135,7 +135,11 @@ struct ContentView: View {
       }
     }
     .sheet(isPresented: $showAddTask) {
-      AddTaskSheet(vm: vm, autoPush: $autoPush)
+      AddTaskSheet(
+        vm: vm,
+        autoPush: $autoPush,
+        projectId: vm.showOverview ? nil : vm.selectedProjectId
+      )
     }
     .sheet(isPresented: $showCreateProject) {
       CreateProjectSheet(vm: vm)
@@ -1487,6 +1491,10 @@ private struct AddTaskSheet: View {
   @ObservedObject var vm: AppViewModel
   @Binding var autoPush: Bool
 
+  /// When nil, the sheet is being presented from the overview/home screen and should
+  /// require the user to explicitly choose a project.
+  let projectId: String?
+
   @Environment(\.dismiss) private var dismiss
 
   @State private var title: String = ""
@@ -1496,6 +1504,8 @@ private struct AddTaskSheet: View {
   private var activeProjects: [Project] {
     vm.projects.filter { ($0.archived ?? false) == false }
   }
+
+  private var shouldShowProjectPicker: Bool { projectId == nil }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
@@ -1512,21 +1522,25 @@ private struct AddTaskSheet: View {
           .fontWeight(.bold)
       }
 
-      // Project picker
-      VStack(alignment: .leading, spacing: 8) {
-        Text("Project")
-          .font(.callout)
-          .fontWeight(.medium)
-        Picker("Project", selection: $selectedProjectId) {
-          ForEach(activeProjects) { project in
-            HStack(spacing: 6) {
-              Image(systemName: project.resolvedType == .research ? "doc.text.magnifyingglass" : "rectangle.split.3x1")
-              Text(project.title)
+      // Project picker (only required when creating from overview/home)
+      if shouldShowProjectPicker {
+        VStack(alignment: .leading, spacing: 8) {
+          Text("Project")
+            .font(.callout)
+            .fontWeight(.medium)
+          Picker("Project", selection: $selectedProjectId) {
+            Text("Choose a project")
+              .tag("")
+            ForEach(activeProjects) { project in
+              HStack(spacing: 6) {
+                Image(systemName: project.resolvedType == .research ? "doc.text.magnifyingglass" : "rectangle.split.3x1")
+                Text(project.title)
+              }
+              .tag(project.id)
             }
-            .tag(project.id)
           }
+          .labelsHidden()
         }
-        .labelsHidden()
       }
 
       VStack(alignment: .leading, spacing: 8) {
@@ -1552,6 +1566,7 @@ private struct AddTaskSheet: View {
           onSubmit: {
             let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return }
+            guard !selectedProjectId.isEmpty else { return }
             let prevProject = vm.selectedProjectId
             vm.selectedProjectId = selectedProjectId
             vm.submitTaskToLobs(title: title, notes: notes.isEmpty ? nil : notes, autoPush: autoPush)
@@ -1585,14 +1600,21 @@ private struct AddTaskSheet: View {
             .fontWeight(.semibold)
         }
         .keyboardShortcut(.defaultAction)
-        .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        .disabled(
+          title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedProjectId.isEmpty
+        )
         .buttonStyle(.borderedProminent)
       }
     }
     .padding(24)
     .frame(minWidth: 480, minHeight: 320)
     .onAppear {
-      selectedProjectId = vm.selectedProjectId
+      if let projectId {
+        selectedProjectId = projectId
+      } else {
+        // When invoked from the overview/home screen, force an explicit choice.
+        selectedProjectId = ""
+      }
     }
   }
 }
