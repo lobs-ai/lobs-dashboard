@@ -1276,15 +1276,8 @@ private struct CreateProjectSheet: View {
             .foregroundStyle(.secondary)
 
           Picker("Type", selection: $projectType) {
-            HStack(spacing: 6) {
-              Image(systemName: "rectangle.split.3x1")
-              Text("Kanban")
-            }.tag(ProjectType.kanban)
-
-            HStack(spacing: 6) {
-              Image(systemName: "doc.text.magnifyingglass")
-              Text("Research")
-            }.tag(ProjectType.research)
+            Text("Kanban").tag(ProjectType.kanban)
+            Text("Research").tag(ProjectType.research)
           }
           .pickerStyle(.segmented)
 
