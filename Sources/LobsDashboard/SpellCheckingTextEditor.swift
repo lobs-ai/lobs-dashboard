@@ -4,11 +4,18 @@ import AppKit
 /// A multi-line text editor that explicitly enables macOS native spell checking.
 /// Wraps NSTextView with continuousSpellCheckingEnabled and
 /// grammarCheckingEnabled set to true.
+///
+/// When `onSubmit` is provided:
+///   - **Enter** triggers `onSubmit` (like a chat send)
+///   - **Shift+Enter** inserts a newline
+/// When `onSubmit` is nil, Enter always inserts a newline (standard editor behaviour).
 struct SpellCheckingTextEditor: NSViewRepresentable {
   @Binding var text: String
   var font: NSFont = .systemFont(ofSize: NSFont.systemFontSize)
   var isEditable: Bool = true
   var placeholder: String = ""
+  /// Optional submit callback. When set, bare Enter submits; Shift+Enter inserts newline.
+  var onSubmit: (() -> Void)? = nil
 
   func makeCoordinator() -> Coordinator {
     Coordinator(self)
@@ -57,6 +64,8 @@ struct SpellCheckingTextEditor: NSViewRepresentable {
 
   func updateNSView(_ scrollView: NSScrollView, context: Context) {
     guard let textView = scrollView.documentView as? NSTextView else { return }
+    // Keep coordinator in sync so the key handler sees the latest callback.
+    context.coordinator.parent = self
     // Only update if the text actually changed (avoid cursor jump)
     if textView.string != text {
       textView.string = text
@@ -73,6 +82,26 @@ struct SpellCheckingTextEditor: NSViewRepresentable {
     func textDidChange(_ notification: Notification) {
       guard let textView = notification.object as? NSTextView else { return }
       parent.text = textView.string
+    }
+
+    /// Intercept Enter key: bare Enter → submit (if callback set), Shift+Enter → newline.
+    func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+      if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+        // If no onSubmit callback, treat Enter as normal newline.
+        guard let onSubmit = parent.onSubmit else { return false }
+
+        let flags = NSApp.currentEvent?.modifierFlags ?? []
+        if flags.contains(.shift) {
+          // Shift+Enter → insert actual newline
+          textView.insertNewlineIgnoringFieldEditor(nil)
+          return true
+        }
+
+        // Bare Enter → submit
+        onSubmit()
+        return true
+      }
+      return false
     }
   }
 }

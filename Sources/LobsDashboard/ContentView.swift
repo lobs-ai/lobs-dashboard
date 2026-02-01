@@ -1058,14 +1058,25 @@ private struct TaskDetailPopover: View {
           }
 
           VStack(alignment: .leading, spacing: 6) {
-            Text("Notes")
-              .font(.caption)
-              .foregroundStyle(.secondary)
+            HStack {
+              Text("Notes")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+              Spacer()
+              Text("Shift+Enter for new line")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            }
 
             SpellCheckingTextEditor(
               text: $editNotes,
               font: .systemFont(ofSize: NSFont.smallSystemFontSize),
-              placeholder: "Add notes…"
+              placeholder: "Add notes…",
+              onSubmit: {
+                vm.editTask(taskId: task.id, title: editTitle, notes: editNotes, autoPush: autoPush)
+                lastAutosavedTitle = editTitle
+                lastAutosavedNotes = editNotes
+              }
             )
             .frame(minHeight: 80, maxHeight: 160)
             .onChange(of: editNotes) { _ in scheduleAutosave() }
@@ -1490,15 +1501,27 @@ private struct AddTaskSheet: View {
         Text("Notes")
           .font(.subheadline)
           .fontWeight(.medium)
-        TextField("Additional context (optional)", text: $notes, axis: .vertical)
-          .textFieldStyle(.roundedBorder)
-          .lineLimit(4, reservesSpace: true)
+        Text("Shift+Enter for new line")
+          .font(.caption2)
+          .foregroundStyle(.tertiary)
+        SpellCheckingTextEditor(
+          text: $notes,
+          font: .systemFont(ofSize: NSFont.systemFontSize),
+          placeholder: "Additional context (optional)",
+          onSubmit: {
+            let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+            vm.submitTaskToLobs(title: title, notes: notes.isEmpty ? nil : notes, autoPush: autoPush)
+            dismiss()
+          }
+        )
+        .frame(minHeight: 80, maxHeight: 160)
       }
 
       Spacer()
 
       HStack {
-        Text("⌘N to open · Enter to create")
+        Text("⌘N to open · Enter to create · Shift+Enter for new line")
           .font(.caption)
           .foregroundStyle(.tertiary)
 
