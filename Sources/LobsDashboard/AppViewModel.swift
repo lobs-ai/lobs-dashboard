@@ -44,6 +44,9 @@ final class AppViewModel: ObservableObject {
       loadResearchData()
     }
   }
+
+  /// When true, the overview/home screen is shown instead of a project board.
+  @Published var showOverview: Bool = true
   @Published var artifactText: String = "(select a task)"
   @Published var lastError: String? = nil
 

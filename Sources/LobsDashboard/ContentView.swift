@@ -71,8 +71,13 @@ struct ContentView: View {
 
         Divider()
 
-        // Switch view based on project type
-        if vm.isResearchProject {
+        // Switch view: overview (home) vs project board
+        if vm.showOverview {
+          OverviewView(vm: vm) { projectId in
+            vm.selectedProjectId = projectId
+            vm.showOverview = false
+          }
+        } else if vm.isResearchProject {
           ResearchBoardView(vm: vm)
         } else {
           // Kanban board
@@ -260,11 +265,25 @@ private struct ToolbarArea: View {
 
       Spacer()
 
+      // Home button
+      Button {
+        vm.showOverview = true
+      } label: {
+        Image(systemName: "house.fill")
+          .font(.body)
+          .padding(6)
+          .background(vm.showOverview ? Color.accentColor.opacity(0.15) : Theme.subtle)
+          .clipShape(RoundedRectangle(cornerRadius: 8))
+      }
+      .buttonStyle(.plain)
+      .help("Home — Overview")
+
       // Project
       Menu {
         ForEach(vm.projects.filter { ($0.archived ?? false) == false }) { p in
           Button {
             vm.selectedProjectId = p.id
+            vm.showOverview = false
           } label: {
             HStack {
               if vm.selectedProjectId == p.id {
