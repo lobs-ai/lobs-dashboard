@@ -241,7 +241,7 @@ private struct ToolbarArea: View {
         // Project management submenu for selected project
         if let selected = vm.projects.first(where: { $0.id == vm.selectedProjectId }),
            selected.id != "default" {
-          Menu("Manage "\(selected.title)"") {
+          Menu("Manage \"\(selected.title)\"") {
             Button {
               editingProject = selected
             } label: {
