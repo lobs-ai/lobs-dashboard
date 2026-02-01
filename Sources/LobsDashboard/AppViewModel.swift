@@ -511,6 +511,160 @@ final class AppViewModel: ObservableObject {
     }
   }
 
+  func renameProject(id: String, newTitle: String) {
+    let trimmed = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty, let repoURL else { return }
+
+    // Local update
+    if let idx = projects.firstIndex(where: { $0.id == id }) {
+      projects[idx].title = trimmed
+      projects[idx].updatedAt = Date()
+    }
+
+    // Persist + git
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.renameProject(id: id, newTitle: trimmed)
+    } catch {
+      flashError("Failed to rename project: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: rename project \(id) to \(trimmed)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+        reload()
+      }
+      isGitBusy = false
+    }
+  }
+
+  func updateProjectNotes(id: String, notes: String?) {
+    guard let repoURL else { return }
+    let clean = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    // Local update
+    if let idx = projects.firstIndex(where: { $0.id == id }) {
+      projects[idx].notes = (clean?.isEmpty == true) ? nil : clean
+      projects[idx].updatedAt = Date()
+    }
+
+    // Persist + git
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.updateProjectNotes(id: id, notes: clean)
+    } catch {
+      flashError("Failed to update project: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: update project \(id) notes",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+        reload()
+      }
+      isGitBusy = false
+    }
+  }
+
+  func deleteProject(id: String) {
+    guard id != "default", let repoURL else { return }
+
+    // Move tasks in this project to "default"
+    for i in tasks.indices where (tasks[i].projectId ?? "default") == id {
+      tasks[i].projectId = "default"
+    }
+
+    // Remove locally
+    projects.removeAll { $0.id == id }
+    if selectedProjectId == id {
+      selectedProjectId = "default"
+    }
+
+    // Persist tasks + project removal + git
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      // Update tasks that were in this project
+      let file = try store.loadTasks()
+      var updated = file
+      for i in updated.tasks.indices where (updated.tasks[i].projectId ?? "default") == id {
+        updated.tasks[i].projectId = "default"
+        updated.tasks[i].updatedAt = Date()
+      }
+      try store.saveTasks(updated)
+      try store.deleteProject(id: id)
+    } catch {
+      flashError("Failed to delete project: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: delete project \(id), tasks moved to default",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+        reload()
+      }
+      isGitBusy = false
+    }
+  }
+
+  func archiveProject(id: String) {
+    guard id != "default", let repoURL else { return }
+
+    // Local update
+    if let idx = projects.firstIndex(where: { $0.id == id }) {
+      projects[idx].archived = true
+      projects[idx].updatedAt = Date()
+    }
+    if selectedProjectId == id {
+      selectedProjectId = "default"
+    }
+
+    // Persist + git
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.archiveProject(id: id)
+    } catch {
+      flashError("Failed to archive project: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: archive project \(id)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+        reload()
+      }
+      isGitBusy = false
+    }
+  }
+
   private func uniqueProjectId(for title: String) -> String {
     func slugify(_ s: String) -> String {
       let lower = s.lowercased()

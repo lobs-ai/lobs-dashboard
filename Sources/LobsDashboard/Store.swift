@@ -62,6 +62,37 @@ final class LobsControlStore {
     try data.write(to: projectsURL, options: [.atomic])
   }
 
+  func renameProject(id: String, newTitle: String) throws {
+    var file = try loadProjects()
+    guard let idx = file.projects.firstIndex(where: { $0.id == id }) else { return }
+    file.projects[idx].title = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+    file.projects[idx].updatedAt = Date()
+    try saveProjects(file)
+  }
+
+  func updateProjectNotes(id: String, notes: String?) throws {
+    var file = try loadProjects()
+    guard let idx = file.projects.firstIndex(where: { $0.id == id }) else { return }
+    let clean = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+    file.projects[idx].notes = (clean?.isEmpty == true) ? nil : clean
+    file.projects[idx].updatedAt = Date()
+    try saveProjects(file)
+  }
+
+  func deleteProject(id: String) throws {
+    var file = try loadProjects()
+    file.projects.removeAll { $0.id == id }
+    try saveProjects(file)
+  }
+
+  func archiveProject(id: String) throws {
+    var file = try loadProjects()
+    guard let idx = file.projects.firstIndex(where: { $0.id == id }) else { return }
+    file.projects[idx].archived = true
+    file.projects[idx].updatedAt = Date()
+    try saveProjects(file)
+  }
+
   // MARK: - Tasks
 
   func loadTasks() throws -> TasksFile {
