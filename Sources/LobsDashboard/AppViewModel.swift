@@ -37,6 +37,9 @@ final class AppViewModel: ObservableObject {
 
   // Kanban UX
   @Published var searchText: String = ""
+
+  /// Inbox is treated as a filter, not a column.
+  @Published var showInboxOnly: Bool = false
   @Published var ownerFilter: String = "all" {
     didSet { settings.set(ownerFilter, forKey: ownerFilterKey) }
   }
@@ -654,6 +657,13 @@ final class AppViewModel: ObservableObject {
       (t.projectId ?? "default") == selectedProjectId
     }
 
+    // Inbox is a filter, not a column.
+    if showInboxOnly {
+      out = out.filter { $0.status == .inbox }
+    } else {
+      out = out.filter { $0.status != .inbox }
+    }
+
     let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     if !q.isEmpty {
       out = out.filter { t in
@@ -678,7 +688,6 @@ final class AppViewModel: ObservableObject {
 
   var columns: [AnyTaskColumn] {
     [
-      .init(title: "Inbox", dropStatus: .inbox) { $0.status == .inbox },
       .init(title: "Active", dropStatus: .active) { $0.status == .active },
       .init(title: "Waiting on", dropStatus: .waitingOn) { $0.status == .waitingOn },
 

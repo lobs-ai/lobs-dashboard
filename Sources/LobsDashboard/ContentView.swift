@@ -482,7 +482,15 @@ private struct StatsBar: View {
 
   var body: some View {
     HStack(spacing: 16) {
-      StatPill(label: "Inbox", count: inboxCount, color: .blue)
+      Button {
+        withAnimation(.easeInOut(duration: 0.15)) {
+          vm.showInboxOnly.toggle()
+        }
+      } label: {
+        StatPill(label: vm.showInboxOnly ? "Inbox (showing)" : "Inbox", count: inboxCount, color: .blue)
+      }
+      .buttonStyle(.plain)
+
       StatPill(label: "Active", count: activeCount, color: .orange)
       if blockedCount > 0 {
         StatPill(label: "Blocked", count: blockedCount, color: .red)
