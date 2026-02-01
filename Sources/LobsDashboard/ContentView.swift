@@ -42,6 +42,7 @@ struct ContentView: View {
   @State private var autoPush = true
   @State private var showAddTask = false
   @State private var showCreateProject = false
+  @State private var editingProject: Project? = nil
   @State private var showSettings = false
   @State private var showAllCompleted = false
   @State private var showAllRejected = false
@@ -58,6 +59,7 @@ struct ContentView: View {
           showPicker: $showPicker,
           showAddTask: $showAddTask,
           showCreateProject: $showCreateProject,
+          editingProject: $editingProject,
           showSettings: $showSettings
         )
 
@@ -124,6 +126,9 @@ struct ContentView: View {
     }
     .sheet(isPresented: $showCreateProject) {
       CreateProjectSheet(vm: vm)
+    }
+    .sheet(item: $editingProject) { project in
+      EditProjectSheet(vm: vm, project: project)
     }
     .onAppear { vm.reloadIfPossible() }
     // Keyboard shortcuts (Task #84248F22)
@@ -199,6 +204,7 @@ private struct ToolbarArea: View {
   @Binding var showPicker: Bool
   @Binding var showAddTask: Bool
   @Binding var showCreateProject: Bool
+  @Binding var editingProject: Project?
   @Binding var showSettings: Bool
 
   var body: some View {
@@ -230,6 +236,34 @@ private struct ToolbarArea: View {
         }
 
         Divider()
+
+        // Project management submenu for selected project
+        if let selected = vm.projects.first(where: { $0.id == vm.selectedProjectId }),
+           selected.id != "default" {
+          Menu("Manage "\(selected.title)"") {
+            Button {
+              editingProject = selected
+            } label: {
+              Label("Edit…", systemImage: "pencil")
+            }
+
+            Button {
+              vm.archiveProject(id: selected.id)
+            } label: {
+              Label("Archive", systemImage: "archivebox")
+            }
+
+            Divider()
+
+            Button(role: .destructive) {
+              vm.deleteProject(id: selected.id)
+            } label: {
+              Label("Delete", systemImage: "trash")
+            }
+          }
+
+          Divider()
+        }
 
         Button {
           showCreateProject = true
@@ -1193,6 +1227,73 @@ private struct CreateProjectSheet: View {
     }
     .padding(20)
     .frame(width: 420)
+  }
+}
+
+// MARK: - Edit Project Sheet
+
+private struct EditProjectSheet: View {
+  @ObservedObject var vm: AppViewModel
+  let project: Project
+
+  @Environment(\.dismiss) private var dismiss
+
+  @State private var title: String = ""
+  @State private var notes: String = ""
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      HStack {
+        Image(systemName: "folder.badge.gear")
+          .font(.title2)
+          .foregroundStyle(.linearGradient(
+            colors: [.blue, .purple],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+          ))
+        Text("Edit project")
+          .font(.title3)
+          .fontWeight(.bold)
+        Spacer()
+      }
+
+      VStack(alignment: .leading, spacing: 10) {
+        TextField("Project name", text: $title)
+          .textFieldStyle(.roundedBorder)
+
+        TextField("Description (optional)", text: $notes, axis: .vertical)
+          .textFieldStyle(.roundedBorder)
+          .lineLimit(6, reservesSpace: true)
+      }
+
+      HStack {
+        Button("Cancel") { dismiss() }
+          .keyboardShortcut(.cancelAction)
+
+        Spacer()
+
+        Button("Save") {
+          let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+          if !trimmedTitle.isEmpty && trimmedTitle != project.title {
+            vm.renameProject(id: project.id, newTitle: trimmedTitle)
+          }
+          let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+          let oldNotes = project.notes?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+          if trimmedNotes != oldNotes {
+            vm.updateProjectNotes(id: project.id, notes: trimmedNotes.isEmpty ? nil : trimmedNotes)
+          }
+          dismiss()
+        }
+        .keyboardShortcut(.defaultAction)
+        .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+      }
+    }
+    .padding(20)
+    .frame(width: 420)
+    .onAppear {
+      title = project.title
+      notes = project.notes ?? ""
+    }
   }
 }
 
