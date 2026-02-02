@@ -497,8 +497,10 @@ final class LobsControlStore {
     for case let url as URL in e {
       guard url.pathExtension.lowercased() == "json" else { continue }
       let data = try Data(contentsOf: url)
-      let r = try dec.decode(InboxResponse.self, from: data)
-      out.append(r)
+      // Skip files that are in the newer thread format (have messages array, no response field)
+      if let r = try? dec.decode(InboxResponse.self, from: data) {
+        out.append(r)
+      }
     }
 
     out.sort { $0.updatedAt > $1.updatedAt }
