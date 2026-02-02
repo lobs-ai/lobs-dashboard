@@ -202,6 +202,7 @@ struct OverviewView: View {
                   .foregroundStyle(.secondary)
               }
               .frame(maxWidth: .infinity, minHeight: 100)
+              .contentShape(Rectangle())
               .background(
                 RoundedRectangle(cornerRadius: OTheme.cardRadius)
                   .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
@@ -508,6 +509,7 @@ private struct ProjectCard: View {
       }
       .padding(16)
       .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
+      .contentShape(Rectangle())
       .background(
         RoundedRectangle(cornerRadius: OTheme.cardRadius)
           .fill(OTheme.cardBg)
