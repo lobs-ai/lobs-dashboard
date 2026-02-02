@@ -429,20 +429,29 @@ private struct ToolbarArea: View {
         }
       } label: {
         HStack(spacing: 6) {
-          Image(systemName: projectTypeIcon(vm.selectedProject?.resolvedType ?? .kanban))
-            .foregroundStyle(projectTypeAccentColor(vm.selectedProject?.resolvedType ?? .kanban))
-            .font(.footnote)
-          Text(vm.projects.first(where: { $0.id == vm.selectedProjectId })?.title ?? "Default")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-          if let type = vm.selectedProject?.resolvedType, type != .kanban {
-            Text(type.rawValue.capitalized)
-              .font(.system(size: 11, weight: .medium))
-              .padding(.horizontal, 5)
-              .padding(.vertical, 1)
-              .background(projectTypeAccentColor(type).opacity(0.15))
-              .foregroundStyle(projectTypeAccentColor(type))
-              .clipShape(Capsule())
+          if vm.showOverview {
+            Image(systemName: "folder")
+              .foregroundStyle(.secondary)
+              .font(.footnote)
+            Text("Projects")
+              .font(.footnote)
+              .foregroundStyle(.secondary)
+          } else {
+            Image(systemName: projectTypeIcon(vm.selectedProject?.resolvedType ?? .kanban))
+              .foregroundStyle(projectTypeAccentColor(vm.selectedProject?.resolvedType ?? .kanban))
+              .font(.footnote)
+            Text(vm.projects.first(where: { $0.id == vm.selectedProjectId })?.title ?? "Default")
+              .font(.footnote)
+              .foregroundStyle(.secondary)
+            if let type = vm.selectedProject?.resolvedType, type != .kanban {
+              Text(type.rawValue.capitalized)
+                .font(.system(size: 11, weight: .medium))
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1)
+                .background(projectTypeAccentColor(type).opacity(0.15))
+                .foregroundStyle(projectTypeAccentColor(type))
+                .clipShape(Capsule())
+            }
           }
         }
         .padding(.horizontal, 10)
