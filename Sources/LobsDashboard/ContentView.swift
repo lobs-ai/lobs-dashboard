@@ -46,7 +46,8 @@ private enum Theme {
   static let border = Color.primary.opacity(0.08)
   static let cardRadius: CGFloat = 14
   static let colRadius: CGFloat = 16
-  static let columnWidth: CGFloat = 300
+  static let columnMinWidth: CGFloat = 280
+  static let columnIdealWidth: CGFloat = 320
 }
 
 // MARK: - Content View (Top Level)
@@ -858,22 +859,31 @@ private struct BoardView: View {
         ProjectReadmeBar(vm: vm)
       }
 
-      ScrollView(.horizontal, showsIndicators: false) {
-        HStack(alignment: .top, spacing: 16) {
-          ForEach(vm.columns, id: \.title) { col in
-            BoardColumn(
-              title: col.title,
-              tasks: vm.filteredTasks.filter(col.matches),
-              dropStatus: col.dropStatus,
-              vm: vm,
-              autoPush: $autoPush,
-              showAllDone: $showAllDone,
-              showAllRejected: $showAllRejected,
-              quickAddText: $quickAddText
-            )
+      GeometryReader { geo in
+        let columnCount = CGFloat(vm.columns.count)
+        let totalSpacing: CGFloat = 16 * (columnCount - 1) + 40 // inter-column + padding
+        let perColumn = max(Theme.columnMinWidth, (geo.size.width - totalSpacing) / columnCount)
+        let needsScroll = perColumn <= Theme.columnMinWidth
+
+        ScrollView(needsScroll ? .horizontal : [], showsIndicators: false) {
+          HStack(alignment: .top, spacing: 16) {
+            ForEach(vm.columns, id: \.title) { col in
+              BoardColumn(
+                title: col.title,
+                tasks: vm.filteredTasks.filter(col.matches),
+                dropStatus: col.dropStatus,
+                vm: vm,
+                autoPush: $autoPush,
+                showAllDone: $showAllDone,
+                showAllRejected: $showAllRejected,
+                quickAddText: $quickAddText,
+                columnWidth: needsScroll ? Theme.columnMinWidth : perColumn
+              )
+            }
           }
+          .padding(20)
+          .frame(minHeight: geo.size.height)
         }
-        .padding(20)
       }
     }
   }
@@ -996,6 +1006,7 @@ private struct BoardColumn: View {
   @Binding var showAllDone: Bool
   @Binding var showAllRejected: Bool
   @Binding var quickAddText: String
+  var columnWidth: CGFloat = Theme.columnMinWidth
 
   @State private var isHovering = false
 
@@ -1114,8 +1125,8 @@ private struct BoardColumn: View {
 
       // Quick-add inline removed (Task #9168CFAF)
     }
-    .frame(width: Theme.columnWidth)
-    .frame(maxHeight: 600)
+    .frame(width: columnWidth)
+    .frame(maxHeight: .infinity)
     .background(
       RoundedRectangle(cornerRadius: Theme.colRadius)
         .fill(Theme.bg)
