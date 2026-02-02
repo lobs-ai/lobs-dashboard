@@ -19,8 +19,12 @@ struct ResearchDocView: View {
   @State private var showAddSource = false
   @State private var showAddRequest = false
   @State private var isEditing = true
+  @State private var isCondensed = false
   @State private var editContent: String = ""
   @State private var saveTimer: Timer? = nil
+  @State private var docSearchText: String = ""
+  @State private var collapsedSections: Set<String> = []
+  @State private var followUpSection: String? = nil
 
   /// Table of contents derived from headings in the doc
   private var tableOfContents: [(Int, String)] { // (level, heading text)
@@ -64,7 +68,10 @@ struct ResearchDocView: View {
       AddSourceSheet(vm: vm)
     }
     .sheet(isPresented: $showAddRequest) {
-      AskLobsResearchSheet(vm: vm)
+      AskLobsResearchSheet(vm: vm, sectionContext: followUpSection)
+    }
+    .onChange(of: showAddRequest) { isShowing in
+      if !isShowing { followUpSection = nil }
     }
   }
 
@@ -134,15 +141,38 @@ struct ResearchDocView: View {
           .foregroundStyle(.secondary)
       }
 
+      // Quick search within doc
+      HStack(spacing: 4) {
+        Image(systemName: "magnifyingglass")
+          .font(.system(size: 10))
+          .foregroundStyle(.tertiary)
+        TextField("Search doc…", text: $docSearchText)
+          .textFieldStyle(.plain)
+          .font(.system(size: 11))
+      }
+      .padding(.horizontal, 6)
+      .padding(.vertical, 4)
+      .background(DocTheme.bg)
+      .clipShape(RoundedRectangle(cornerRadius: 6))
+
       ForEach(Array(tableOfContents.enumerated()), id: \.offset) { _, entry in
         let (level, heading) = entry
+        let isMatch = !docSearchText.isEmpty &&
+          heading.localizedCaseInsensitiveContains(docSearchText)
         Button {
           scrollToHeading(heading)
         } label: {
-          Text(heading)
-            .font(.footnote)
-            .foregroundStyle(.primary)
-            .lineLimit(1)
+          HStack(spacing: 4) {
+            Text(heading)
+              .font(.footnote)
+              .foregroundStyle(isMatch ? .orange : .primary)
+              .lineLimit(1)
+            if collapsedSections.contains(heading) {
+              Image(systemName: "chevron.right")
+                .font(.system(size: 8))
+                .foregroundStyle(.tertiary)
+            }
+          }
         }
         .buttonStyle(.plain)
         .padding(.leading, CGFloat((level - 1) * 12))
@@ -329,6 +359,22 @@ struct ResearchDocView: View {
         .pickerStyle(.segmented)
         .frame(width: 160)
 
+        // Condensed view toggle (preview mode only)
+        if !isEditing {
+          Button {
+            isCondensed.toggle()
+          } label: {
+            Image(systemName: isCondensed ? "text.justify.leading" : "list.bullet.below.rectangle")
+              .font(.body)
+              .foregroundStyle(isCondensed ? .orange : .secondary)
+              .padding(4)
+              .background(isCondensed ? Color.orange.opacity(0.12) : Color.clear)
+              .clipShape(RoundedRectangle(cornerRadius: 6))
+          }
+          .buttonStyle(.plain)
+          .help(isCondensed ? "Show full document" : "Condensed view (headings + summaries)")
+        }
+
         Spacer()
 
         if vm.isGitBusy {
@@ -361,11 +407,21 @@ struct ResearchDocView: View {
             scheduleSave()
           }
       } else {
-        // Preview (rendered markdown)
+        // Preview (rendered markdown with collapsible sections)
         ScrollView {
-          MarkdownPreview(content: editContent, sources: vm.researchSources)
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
+          SectionedMarkdownPreview(
+            content: editContent,
+            sources: vm.researchSources,
+            isCondensed: isCondensed,
+            collapsedSections: $collapsedSections,
+            searchText: docSearchText,
+            onAskFollowUp: { sectionHeading in
+              followUpSection = sectionHeading
+              showAddRequest = true
+            }
+          )
+          .padding(20)
+          .frame(maxWidth: .infinity, alignment: .leading)
         }
       }
     }
@@ -466,53 +522,153 @@ private struct CitationRichText: View {
   }
 }
 
-// MARK: - Markdown Preview
+// MARK: - Document Section Model
 
-private struct MarkdownPreview: View {
+/// A parsed section of the markdown document
+private struct DocSection: Identifiable {
+  let id: String          // heading text (unique enough for our use)
+  let heading: String
+  let level: Int          // 1, 2, or 3
+  let lines: [String]     // body lines (not including the heading line)
+
+  /// First ~120 chars of body text, for condensed view summary chip
+  var summary: String {
+    let bodyText = lines
+      .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+      .prefix(3)
+      .joined(separator: " ")
+      .trimmingCharacters(in: .whitespaces)
+    if bodyText.count > 120 {
+      return String(bodyText.prefix(117)) + "…"
+    }
+    return bodyText
+  }
+
+  /// Number of non-empty body lines
+  var lineCount: Int {
+    lines.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.count
+  }
+}
+
+/// Parse markdown content into sections by heading
+private func parseDocSections(_ content: String) -> (preamble: [String], sections: [DocSection]) {
+  let allLines = content.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+  var preamble: [String] = []
+  var sections: [DocSection] = []
+  var currentHeading: String? = nil
+  var currentLevel: Int = 0
+  var currentLines: [String] = []
+
+  func flush() {
+    if let heading = currentHeading {
+      sections.append(DocSection(
+        id: heading,
+        heading: heading,
+        level: currentLevel,
+        lines: currentLines
+      ))
+    } else {
+      preamble = currentLines
+    }
+    currentLines = []
+  }
+
+  for line in allLines {
+    let trimmed = line.trimmingCharacters(in: .whitespaces)
+    if trimmed.hasPrefix("### ") {
+      flush()
+      currentHeading = String(trimmed.dropFirst(4))
+      currentLevel = 3
+    } else if trimmed.hasPrefix("## ") {
+      flush()
+      currentHeading = String(trimmed.dropFirst(3))
+      currentLevel = 2
+    } else if trimmed.hasPrefix("# ") {
+      flush()
+      currentHeading = String(trimmed.dropFirst(2))
+      currentLevel = 1
+    } else {
+      currentLines.append(line)
+    }
+  }
+  flush()
+
+  return (preamble, sections)
+}
+
+// MARK: - Sectioned Markdown Preview
+
+private struct SectionedMarkdownPreview: View {
   let content: String
   let sources: [ResearchSource]
+  let isCondensed: Bool
+  @Binding var collapsedSections: Set<String>
+  let searchText: String
+  let onAskFollowUp: (String) -> Void
+
+  private var parsed: (preamble: [String], sections: [DocSection]) {
+    parseDocSections(content)
+  }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      ForEach(Array(content.split(separator: "\n", omittingEmptySubsequences: false).enumerated()), id: \.offset) { _, line in
-        let text = String(line)
-        if text.hasPrefix("### ") {
-          CitationRichText(text: String(text.dropFirst(4)), sources: sources)
-            .font(.title3)
-            .fontWeight(.semibold)
-            .padding(.top, 8)
-        } else if text.hasPrefix("## ") {
-          CitationRichText(text: String(text.dropFirst(3)), sources: sources)
-            .font(.title2)
-            .fontWeight(.bold)
-            .padding(.top, 12)
-        } else if text.hasPrefix("# ") {
-          CitationRichText(text: String(text.dropFirst(2)), sources: sources)
-            .font(.title)
-            .fontWeight(.bold)
-            .padding(.top, 16)
-        } else if text.hasPrefix("- ") {
-          HStack(alignment: .top, spacing: 6) {
-            Text("•")
-              .foregroundStyle(.secondary)
-            CitationRichText(text: String(text.dropFirst(2)), sources: sources)
-          }
-        } else if text.isEmpty {
-          Spacer().frame(height: 4)
-        } else {
-          CitationRichText(text: text, sources: sources)
+    let data = parsed
+    VStack(alignment: .leading, spacing: 4) {
+      // Preamble (text before first heading)
+      if !isCondensed {
+        ForEach(Array(data.preamble.enumerated()), id: \.offset) { _, line in
+          renderLine(line)
         }
       }
 
-      // Citation footnotes at bottom of document
-      if !sources.isEmpty {
+      // Sections
+      ForEach(data.sections) { section in
+        let isCollapsed = collapsedSections.contains(section.heading)
+        let matchesSearch = !searchText.isEmpty && (
+          section.heading.localizedCaseInsensitiveContains(searchText) ||
+          section.lines.contains { $0.localizedCaseInsensitiveContains(searchText) }
+        )
+
+        SectionCardView(
+          section: section,
+          sources: sources,
+          isCollapsed: isCollapsed,
+          isCondensed: isCondensed,
+          isSearchHighlighted: matchesSearch,
+          searchText: searchText,
+          onToggleCollapse: {
+            if collapsedSections.contains(section.heading) {
+              collapsedSections.remove(section.heading)
+            } else {
+              collapsedSections.insert(section.heading)
+            }
+          },
+          onAskFollowUp: { onAskFollowUp(section.heading) }
+        )
+      }
+
+      // Citation footnotes
+      if !sources.isEmpty && !isCondensed {
         citationFootnotes
       }
     }
     .textSelection(.enabled)
   }
 
-  /// Footnote-style citation list at the bottom of the preview
+  @ViewBuilder
+  private func renderLine(_ text: String) -> some View {
+    if text.hasPrefix("- ") {
+      HStack(alignment: .top, spacing: 6) {
+        Text("•")
+          .foregroundStyle(.secondary)
+        CitationRichText(text: String(text.dropFirst(2)), sources: sources)
+      }
+    } else if text.trimmingCharacters(in: .whitespaces).isEmpty {
+      Spacer().frame(height: 4)
+    } else {
+      CitationRichText(text: text, sources: sources)
+    }
+  }
+
   private var citationFootnotes: some View {
     VStack(alignment: .leading, spacing: 0) {
       Divider()
@@ -563,6 +719,132 @@ private struct MarkdownPreview: View {
   private func domainFromURL(_ urlString: String) -> String {
     guard let url = URL(string: urlString), let host = url.host else { return urlString }
     return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+  }
+}
+
+// MARK: - Section Card View
+
+private struct SectionCardView: View {
+  let section: DocSection
+  let sources: [ResearchSource]
+  let isCollapsed: Bool
+  let isCondensed: Bool
+  let isSearchHighlighted: Bool
+  let searchText: String
+  let onToggleCollapse: () -> Void
+  let onAskFollowUp: () -> Void
+
+  @State private var isHovering = false
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      // Section header (always visible)
+      HStack(spacing: 8) {
+        // Collapse chevron
+        Button(action: onToggleCollapse) {
+          Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .frame(width: 14)
+        }
+        .buttonStyle(.plain)
+
+        // Heading
+        CitationRichText(text: section.heading, sources: sources)
+          .font(headingFont)
+          .fontWeight(section.level <= 2 ? .bold : .semibold)
+
+        Spacer()
+
+        // Line count chip
+        if isCollapsed || isCondensed {
+          Text("\(section.lineCount) lines")
+            .font(.system(size: 10))
+            .foregroundStyle(.tertiary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(DocTheme.subtle)
+            .clipShape(Capsule())
+        }
+
+        // Ask follow-up button (visible on hover)
+        if isHovering {
+          Button(action: onAskFollowUp) {
+            HStack(spacing: 3) {
+              Image(systemName: "questionmark.bubble")
+                .font(.system(size: 10))
+              Text("Follow up")
+                .font(.system(size: 10))
+            }
+            .foregroundStyle(.orange)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(Color.orange.opacity(0.1))
+            .clipShape(Capsule())
+          }
+          .buttonStyle(.plain)
+        }
+      }
+      .padding(.vertical, 6)
+      .padding(.horizontal, 8)
+
+      // Summary chip (when collapsed or condensed)
+      if (isCollapsed || isCondensed) && !section.summary.isEmpty {
+        Text(section.summary)
+          .font(.system(size: 12))
+          .foregroundStyle(.secondary)
+          .lineLimit(2)
+          .padding(.horizontal, 30) // indent past chevron
+          .padding(.bottom, 6)
+      }
+
+      // Full body (when expanded and not condensed)
+      if !isCollapsed && !isCondensed {
+        VStack(alignment: .leading, spacing: 6) {
+          ForEach(Array(section.lines.enumerated()), id: \.offset) { _, line in
+            renderBodyLine(line)
+          }
+        }
+        .padding(.horizontal, 30)  // indent past chevron
+        .padding(.bottom, 10)
+      }
+    }
+    .background(
+      RoundedRectangle(cornerRadius: 10)
+        .fill(isSearchHighlighted ? Color.orange.opacity(0.06) : Color.clear)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 10)
+        .strokeBorder(
+          isSearchHighlighted ? Color.orange.opacity(0.2) : Color.clear,
+          lineWidth: 1
+        )
+    )
+    .onHover { hovering in isHovering = hovering }
+    .padding(.top, section.level == 1 ? 16 : (section.level == 2 ? 10 : 6))
+  }
+
+  private var headingFont: Font {
+    switch section.level {
+    case 1: return .title
+    case 2: return .title2
+    default: return .title3
+    }
+  }
+
+  @ViewBuilder
+  private func renderBodyLine(_ text: String) -> some View {
+    if text.hasPrefix("- ") {
+      HStack(alignment: .top, spacing: 6) {
+        Text("•")
+          .foregroundStyle(.secondary)
+        CitationRichText(text: String(text.dropFirst(2)), sources: sources)
+      }
+    } else if text.trimmingCharacters(in: .whitespaces).isEmpty {
+      Spacer().frame(height: 4)
+    } else {
+      CitationRichText(text: text, sources: sources)
+    }
   }
 }
 
@@ -628,6 +910,9 @@ private struct AskLobsResearchSheet: View {
   @ObservedObject var vm: AppViewModel
   @Environment(\.dismiss) private var dismiss
 
+  /// Optional section heading for follow-up context
+  var sectionContext: String? = nil
+
   @State private var prompt: String = ""
 
   var body: some View {
@@ -641,7 +926,7 @@ private struct AskLobsResearchSheet: View {
             endPoint: .bottomTrailing
           ))
         VStack(alignment: .leading, spacing: 2) {
-          Text("Ask Lobs to Research")
+          Text(sectionContext != nil ? "Follow Up on Section" : "Ask Lobs to Research")
             .font(.title3)
             .fontWeight(.bold)
           Text("Lobs will research your question and update the document with findings.")
@@ -651,13 +936,32 @@ private struct AskLobsResearchSheet: View {
         Spacer()
       }
 
+      // Section context badge
+      if let section = sectionContext {
+        HStack(spacing: 6) {
+          Image(systemName: "text.quote")
+            .font(.system(size: 11))
+            .foregroundStyle(.orange)
+          Text("Re: \(section)")
+            .font(.footnote)
+            .fontWeight(.medium)
+            .foregroundStyle(.orange)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.orange.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+      }
+
       TextEditor(text: $prompt)
         .font(.system(size: 13))
         .frame(minHeight: 80, maxHeight: 160)
         .overlay(
           Group {
             if prompt.isEmpty {
-              Text("What should Lobs research?")
+              Text(sectionContext != nil
+                ? "What would you like to know more about in this section?"
+                : "What should Lobs research?")
                 .font(.system(size: 13))
                 .foregroundStyle(.tertiary)
                 .padding(.horizontal, 5)
@@ -674,7 +978,13 @@ private struct AskLobsResearchSheet: View {
           .keyboardShortcut(.cancelAction)
         Spacer()
         Button("Submit") {
-          vm.addRequest(prompt: prompt)
+          let fullPrompt: String
+          if let section = sectionContext {
+            fullPrompt = "[Section: \(section)] \(prompt)"
+          } else {
+            fullPrompt = prompt
+          }
+          vm.addRequest(prompt: fullPrompt)
           dismiss()
         }
         .keyboardShortcut(.defaultAction)
