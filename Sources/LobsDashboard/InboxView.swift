@@ -334,13 +334,22 @@ private struct DocumentViewer: View {
       ScrollViewReader { proxy in
         ScrollView {
           VStack(alignment: .leading, spacing: 0) {
-            // Document content
-            Text(item.content)
-              .font(.system(size: 13, design: .monospaced))
-              .lineSpacing(4)
-              .textSelection(.enabled)
-              .frame(maxWidth: .infinity, alignment: .leading)
-              .padding(24)
+            // Document content (rendered as markdown)
+            if let md = try? AttributedString(markdown: item.content, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+              Text(md)
+                .font(.system(size: 13))
+                .lineSpacing(4)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(24)
+            } else {
+              Text(item.content)
+                .font(.system(size: 13))
+                .lineSpacing(4)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(24)
+            }
 
             // Thread messages
             if let thread = thread, !thread.messages.isEmpty {
@@ -460,7 +469,13 @@ private struct ThreadMessageBubble: View {
             .foregroundStyle(.tertiary)
         }
 
-        Text(message.text)
+        Group {
+          if let md = try? AttributedString(markdown: message.text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+            Text(md)
+          } else {
+            Text(message.text)
+          }
+        }
           .font(.system(size: 13))
           .textSelection(.enabled)
           .lineSpacing(3)
