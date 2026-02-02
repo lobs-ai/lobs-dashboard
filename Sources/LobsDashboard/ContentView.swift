@@ -67,6 +67,7 @@ struct ContentView: View {
   @State private var quickAddText = ""
   @State private var showTemplates = false
   @State private var showHelp = false
+  @State private var showTextDump = false
 
   var body: some View {
     ZStack(alignment: .top) {
@@ -83,7 +84,8 @@ struct ContentView: View {
           showSettings: $showSettings,
           showInbox: $showInbox,
           showTemplates: $showTemplates,
-          showHelp: $showHelp
+          showHelp: $showHelp,
+          showTextDump: $showTextDump
         )
 
         // Stats bar
@@ -196,6 +198,9 @@ struct ContentView: View {
     }
     .sheet(isPresented: $showHelp) {
       HelpPanelSheet()
+    }
+    .sheet(isPresented: $showTextDump) {
+      TextDumpSheet(vm: vm, projectId: vm.showOverview ? "default" : vm.selectedProjectId)
     }
     .onAppear { vm.reloadIfPossible() }
     // Keyboard shortcuts (Task #84248F22)
@@ -325,6 +330,7 @@ private struct ToolbarArea: View {
   @Binding var showInbox: Bool
   @Binding var showTemplates: Bool
   @Binding var showHelp: Bool
+  @Binding var showTextDump: Bool
 
   var body: some View {
     HStack(spacing: 12) {
@@ -616,6 +622,19 @@ private struct ToolbarArea: View {
       ToolbarButton(icon: "arrow.clockwise", label: "Refresh", shortcut: "⌘R") {
         vm.reload()
       }
+
+      // Text dump button — paste bulk text for task breakdown
+      Button {
+        showTextDump = true
+      } label: {
+        Image(systemName: "doc.plaintext")
+          .font(.body)
+          .padding(6)
+          .background(Theme.subtle)
+          .clipShape(RoundedRectangle(cornerRadius: 8))
+      }
+      .buttonStyle(.plain)
+      .help("Paste Text → Tasks")
 
       // Help button (⌘/)
       Button {
@@ -2498,5 +2517,89 @@ private struct HelpPanelSheet: View {
       }
     }
     .frame(width: 500, height: 600)
+  }
+}
+
+// MARK: - Text Dump Sheet
+
+private struct TextDumpSheet: View {
+  @ObservedObject var vm: AppViewModel
+  let projectId: String
+  @Environment(\.dismiss) private var dismiss
+
+  @State private var text: String = ""
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      HStack {
+        Image(systemName: "doc.plaintext.fill")
+          .font(.title2)
+          .foregroundStyle(.linearGradient(
+            colors: [.orange, .red],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+          ))
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Paste Text → Tasks")
+            .font(.title3)
+            .fontWeight(.bold)
+          Text("Paste feedback, requirements, or any text. Lobs will break it down into individual tasks on the next run.")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
+        Spacer()
+      }
+
+      // Target project
+      HStack(spacing: 6) {
+        Text("Project:")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+        Text(vm.projects.first(where: { $0.id == projectId })?.title ?? projectId)
+          .font(.footnote)
+          .fontWeight(.medium)
+      }
+
+      TextEditor(text: $text)
+        .font(.system(size: 13))
+        .frame(minHeight: 200, maxHeight: 400)
+        .overlay(
+          Group {
+            if text.isEmpty {
+              Text("Paste user feedback, feature requests, bug reports, or any text here…")
+                .font(.system(size: 13))
+                .foregroundStyle(.tertiary)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 8)
+                .allowsHitTesting(false)
+            }
+          },
+          alignment: .topLeading
+        )
+        .border(Color.primary.opacity(0.1), width: 1)
+
+      HStack {
+        Button("Cancel") { dismiss() }
+          .keyboardShortcut(.cancelAction)
+
+        Spacer()
+
+        let wordCount = text.split(separator: " ").count
+        if wordCount > 0 {
+          Text("\(wordCount) words")
+            .font(.footnote)
+            .foregroundStyle(.tertiary)
+        }
+
+        Button("Submit") {
+          vm.submitTextDump(text: text, projectId: projectId)
+          dismiss()
+        }
+        .keyboardShortcut(.defaultAction)
+        .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+      }
+    }
+    .padding(20)
+    .frame(width: 520)
   }
 }

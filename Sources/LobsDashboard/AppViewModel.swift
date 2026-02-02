@@ -1086,6 +1086,50 @@ final class AppViewModel: ObservableObject {
 
   // MARK: - Projects
 
+  // MARK: - Text Dumps
+
+  func submitTextDump(text: String, projectId: String) {
+    guard let repoURL else { return }
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return }
+
+    let now = Date()
+    let dump = TextDump(
+      id: UUID().uuidString,
+      projectId: projectId,
+      text: trimmed,
+      status: .pending,
+      taskIds: nil,
+      createdAt: now,
+      updatedAt: now
+    )
+
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.saveTextDump(dump)
+    } catch {
+      flashError("Failed to save text dump: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: text dump for project \(projectId)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+        reload()
+      }
+      isGitBusy = false
+    }
+  }
+
+  // MARK: - Projects
+
   func createProject(title: String, notes: String?, type: ProjectType = .kanban) {
     let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
     let trimmedNotes = notes?.trimmingCharacters(in: .whitespacesAndNewlines)

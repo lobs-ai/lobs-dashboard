@@ -855,6 +855,29 @@ final class LobsControlStore {
     return try decoder().decode(WorkerStatus.self, from: data)
   }
 
+  // MARK: - Text Dumps
+
+  private var textDumpsDir: URL {
+    repoRoot.appendingPathComponent("state").appendingPathComponent("text-dumps")
+  }
+
+  func saveTextDump(_ dump: TextDump) throws {
+    try FileManager.default.createDirectory(at: textDumpsDir, withIntermediateDirectories: true)
+    let url = textDumpsDir.appendingPathComponent("\(dump.id).json")
+    let data = try encoder().encode(dump)
+    try data.write(to: url)
+  }
+
+  func loadTextDumps() throws -> [TextDump] {
+    let dir = textDumpsDir
+    guard FileManager.default.fileExists(atPath: dir.path) else { return [] }
+    let files = try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+    return try files
+      .filter { $0.pathExtension == "json" }
+      .map { try decoder().decode(TextDump.self, from: Data(contentsOf: $0)) }
+      .sorted { $0.createdAt > $1.createdAt }
+  }
+
   // MARK: - Project README
 
   private func projectReadmeURL(projectId: String) -> URL {

@@ -323,6 +323,24 @@ struct TaskTemplate: Codable, Identifiable, Hashable {
   var updatedAt: Date
 }
 
+// MARK: - Text Dump (bulk text → tasks)
+
+enum TextDumpStatus: String, Codable, Hashable {
+  case pending
+  case processing
+  case completed
+}
+
+struct TextDump: Codable, Identifiable, Hashable {
+  var id: String
+  var projectId: String
+  var text: String
+  var status: TextDumpStatus
+  var taskIds: [String]?   // IDs of tasks created from this dump
+  var createdAt: Date
+  var updatedAt: Date
+}
+
 // MARK: - Worker Status
 
 struct WorkerStatus: Codable {
