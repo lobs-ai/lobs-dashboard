@@ -2035,8 +2035,16 @@ final class AppViewModel: ObservableObject {
     }
     syncBlockedByUncommitted = false
 
-    _ = try await Git.runAsync(["fetch", "origin"], cwd: repoURL)
-    _ = try await Git.runAsync(["reset", "--hard", "origin/main"], cwd: repoURL)
+    let fetch = try await Git.runAsync(["fetch", "origin"], cwd: repoURL)
+    if !fetch.ok {
+      print("[sync] git fetch failed (exit \(fetch.exitCode)): \(fetch.stderr)")
+      return
+    }
+    let reset = try await Git.runAsync(["reset", "--hard", "origin/main"], cwd: repoURL)
+    if !reset.ok {
+      print("[sync] git reset failed (exit \(reset.exitCode)): \(reset.stderr)")
+      return
+    }
     _ = try await Git.runAsync(["clean", "-fd"], cwd: repoURL)
   }
 
