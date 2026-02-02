@@ -11,6 +11,8 @@ struct LobsDashboardApp: App {
         .environmentObject(vm)
         .frame(minWidth: 1100, minHeight: 720)
         .onAppear {
+          // Register global quick capture hotkey (⌘⇧Space)
+          QuickCapturePanel.shared.setup(vm: vm)
           // Ensure the app becomes key so keyboard input goes to fields.
           NSApp.activate(ignoringOtherApps: true)
           // Set app icon from bundled resource
