@@ -44,6 +44,9 @@ final class AppViewModel: ObservableObject {
   // Project README
   @Published var projectReadme: String = ""
 
+  // Worker Status
+  @Published var workerStatus: WorkerStatus? = nil
+
   // Projects
   @Published var projects: [Project] = []
   @Published var selectedProjectId: String = "default" {
@@ -259,6 +262,7 @@ final class AppViewModel: ObservableObject {
       loadInboxItems(store: store)
       loadProjectReadme(store: store)
       loadTemplates()
+      loadWorkerStatus(store: store)
 
     } catch {
       lastError = String(describing: error)
@@ -508,6 +512,18 @@ final class AppViewModel: ObservableObject {
   }
 
   // MARK: - Task Templates
+
+  // MARK: - Worker Status
+
+  func loadWorkerStatus(store: LobsControlStore? = nil) {
+    guard let repoURL else { workerStatus = nil; return }
+    let s = store ?? LobsControlStore(repoRoot: repoURL)
+    do {
+      workerStatus = try s.loadWorkerStatus()
+    } catch {
+      workerStatus = nil
+    }
+  }
 
   @Published var templates: [TaskTemplate] = []
 

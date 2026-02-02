@@ -123,6 +123,11 @@ struct OverviewView: View {
             .clipped()
         }
 
+        // Worker status
+        if let ws = vm.workerStatus {
+          WorkerStatusCard(status: ws)
+        }
+
         // Project cards
         VStack(alignment: .leading, spacing: 12) {
           Text("Projects")
@@ -1053,6 +1058,110 @@ private func overviewProjectTypeColor(_ type: ProjectType) -> Color {
   case .kanban: return .blue
   case .research: return .orange
   case .tracker: return .cyan
+  }
+}
+
+// MARK: - Worker Status Card
+
+private struct WorkerStatusCard: View {
+  let status: WorkerStatus
+
+  private var isActive: Bool { status.active }
+
+  private var runningDuration: String? {
+    guard let started = status.startedAt else { return nil }
+    let seconds = Date().timeIntervalSince(started)
+    let minutes = Int(seconds / 60)
+    if minutes < 60 { return "\(minutes)m" }
+    let hours = minutes / 60
+    let mins = minutes % 60
+    return mins > 0 ? "\(hours)h \(mins)m" : "\(hours)h"
+  }
+
+  var body: some View {
+    HStack(spacing: 14) {
+      // Status indicator
+      ZStack {
+        Circle()
+          .fill(isActive ? Color.green.opacity(0.15) : Color.gray.opacity(0.1))
+          .frame(width: 40, height: 40)
+        Image(systemName: isActive ? "bolt.fill" : "moon.zzz.fill")
+          .font(.system(size: 18))
+          .foregroundStyle(isActive ? .green : .secondary)
+      }
+
+      VStack(alignment: .leading, spacing: 4) {
+        HStack(spacing: 6) {
+          Text("Lobs Worker")
+            .font(.callout)
+            .fontWeight(.semibold)
+
+          // Status pill
+          Text(isActive ? "Active" : "Idle")
+            .font(.system(size: 11, weight: .semibold))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 2)
+            .background(isActive ? Color.green.opacity(0.15) : Color.gray.opacity(0.1))
+            .foregroundStyle(isActive ? .green : .secondary)
+            .clipShape(Capsule())
+        }
+
+        if isActive {
+          HStack(spacing: 12) {
+            if let task = status.currentTask {
+              HStack(spacing: 4) {
+                Image(systemName: "hammer.fill")
+                  .font(.system(size: 10))
+                  .foregroundStyle(.secondary)
+                Text(task)
+                  .font(.footnote)
+                  .foregroundStyle(.secondary)
+                  .lineLimit(1)
+              }
+            }
+
+            if let completed = status.tasksCompleted, completed > 0 {
+              HStack(spacing: 4) {
+                Image(systemName: "checkmark.circle.fill")
+                  .font(.system(size: 10))
+                  .foregroundStyle(.green)
+                Text("\(completed) done")
+                  .font(.footnote)
+                  .foregroundStyle(.secondary)
+              }
+            }
+
+            if let duration = runningDuration {
+              HStack(spacing: 4) {
+                Image(systemName: "clock")
+                  .font(.system(size: 10))
+                  .foregroundStyle(.secondary)
+                Text(duration)
+                  .font(.footnote)
+                  .foregroundStyle(.secondary)
+              }
+            }
+          }
+        } else {
+          if let heartbeat = status.lastHeartbeat {
+            Text("Last seen \(relativeTime(heartbeat))")
+              .font(.footnote)
+              .foregroundStyle(.tertiary)
+          }
+        }
+      }
+
+      Spacer()
+    }
+    .padding(14)
+    .background(
+      RoundedRectangle(cornerRadius: OTheme.cardRadius)
+        .fill(OTheme.cardBg)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: OTheme.cardRadius)
+        .stroke(isActive ? Color.green.opacity(0.2) : OTheme.border, lineWidth: isActive ? 1.5 : 0.5)
+    )
   }
 }
 

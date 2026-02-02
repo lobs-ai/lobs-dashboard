@@ -320,6 +320,17 @@ struct TaskTemplate: Codable, Identifiable, Hashable {
   var updatedAt: Date
 }
 
+// MARK: - Worker Status
+
+struct WorkerStatus: Codable {
+  var active: Bool
+  var workerId: String?
+  var startedAt: Date?
+  var currentTask: String?
+  var tasksCompleted: Int?
+  var lastHeartbeat: Date?
+}
+
 struct ProjectsFile: Codable {
   var schemaVersion: Int
   var generatedAt: Date

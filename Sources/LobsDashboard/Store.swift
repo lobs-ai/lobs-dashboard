@@ -846,6 +846,17 @@ final class LobsControlStore {
     }
   }
 
+  // MARK: - Worker Status
+
+  func loadWorkerStatus() throws -> WorkerStatus? {
+    let url = repoRoot
+      .appendingPathComponent("state")
+      .appendingPathComponent("worker-status.json")
+    guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+    let data = try Data(contentsOf: url)
+    return try decoder().decode(WorkerStatus.self, from: data)
+  }
+
   // MARK: - Project README
 
   private func projectReadmeURL(projectId: String) -> URL {
