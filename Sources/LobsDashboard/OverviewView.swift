@@ -2,15 +2,8 @@ import SwiftUI
 
 // MARK: - Theme (shared palette)
 
-private enum OTheme {
-  static let bg = Color(nsColor: .windowBackgroundColor)
-  static let boardBg = Color(nsColor: .underPageBackgroundColor)
-  static let cardBg = Color(nsColor: .controlBackgroundColor)
-  static let accent = Color.accentColor
-  static let subtle = Color.primary.opacity(0.06)
-  static let border = Color.primary.opacity(0.08)
-  static let cardRadius: CGFloat = 14
-}
+// Theme is defined in Theme.swift
+private typealias OTheme = Theme
 
 // MARK: - Project Drop Delegate
 

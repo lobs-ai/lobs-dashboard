@@ -2,14 +2,8 @@ import SwiftUI
 
 // MARK: - Theme
 
-private enum DocTheme {
-  static let bg = Color(nsColor: .windowBackgroundColor)
-  static let boardBg = Color(nsColor: .underPageBackgroundColor)
-  static let cardBg = Color(nsColor: .controlBackgroundColor)
-  static let subtle = Color.primary.opacity(0.06)
-  static let border = Color.primary.opacity(0.08)
-  static let cardRadius: CGFloat = 14
-}
+// Theme is defined in Theme.swift
+private typealias DocTheme = Theme
 
 /// Wrapper for section follow-up context, conforming to Identifiable for .sheet(item:).
 private struct FollowUpContext: Identifiable {

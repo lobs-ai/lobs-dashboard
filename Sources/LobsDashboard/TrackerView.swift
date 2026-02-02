@@ -2,14 +2,8 @@ import SwiftUI
 
 // MARK: - Theme
 
-private enum TTheme {
-  static let bg = Color(nsColor: .windowBackgroundColor)
-  static let boardBg = Color(nsColor: .underPageBackgroundColor)
-  static let cardBg = Color(nsColor: .controlBackgroundColor)
-  static let subtle = Color.primary.opacity(0.06)
-  static let border = Color.primary.opacity(0.08)
-  static let cardRadius: CGFloat = 14
-}
+// Theme is defined in Theme.swift
+private typealias TTheme = Theme
 
 // MARK: - Tracker Board View
 

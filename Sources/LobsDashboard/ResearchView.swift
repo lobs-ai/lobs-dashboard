@@ -2,15 +2,8 @@ import SwiftUI
 
 // MARK: - Theme (shared reference — uses same palette as ContentView)
 
-private enum RTheme {
-  static let bg = Color(nsColor: .windowBackgroundColor)
-  static let boardBg = Color(nsColor: .underPageBackgroundColor)
-  static let cardBg = Color(nsColor: .controlBackgroundColor)
-  static let accent = Color.accentColor
-  static let subtle = Color.primary.opacity(0.06)
-  static let border = Color.primary.opacity(0.08)
-  static let cardRadius: CGFloat = 14
-}
+// Theme is defined in Theme.swift
+private typealias RTheme = Theme
 
 // MARK: - Research Board View (document-first layout)
 
