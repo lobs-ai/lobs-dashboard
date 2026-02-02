@@ -21,6 +21,7 @@ struct OverviewView: View {
   @State private var detailTask: DashboardTask? = nil
   @State private var showInboxSheet: Bool = false
   @State private var pendingInboxItemId: String? = nil
+  @State private var showDetailedStats: Bool = false
 
   private var allTasks: [DashboardTask] { vm.tasks }
 
@@ -88,13 +89,38 @@ struct OverviewView: View {
         .padding(.bottom, 4)
 
         // Quick stats
-        StatsRow(
-          activeTasks: activeTasks,
-          completedThisWeek: completedThisWeek,
-          openResearchRequests: openResearchRequests,
-          blockedTasks: blockedTasks,
-          inboxTasks: inboxTasks
-        )
+        HStack(alignment: .top) {
+          StatsRow(
+            activeTasks: activeTasks,
+            completedThisWeek: completedThisWeek,
+            openResearchRequests: openResearchRequests,
+            blockedTasks: blockedTasks,
+            inboxTasks: inboxTasks
+          )
+          Spacer()
+          Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+              showDetailedStats.toggle()
+            }
+          } label: {
+            HStack(spacing: 4) {
+              Image(systemName: showDetailedStats ? "chart.bar.fill" : "chart.bar")
+                .font(.footnote)
+              Text(showDetailedStats ? "Hide Stats" : "Detailed Stats")
+                .font(.footnote)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(showDetailedStats ? Color.accentColor.opacity(0.15) : OTheme.subtle)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+          }
+          .buttonStyle(.plain)
+        }
+
+        if showDetailedStats {
+          DetailedStatsView(tasks: allTasks, projects: activeProjects)
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
 
         // Project cards
         VStack(alignment: .leading, spacing: 12) {
@@ -706,6 +732,308 @@ private struct OverviewDetailTag: View {
       .background(color.opacity(0.12))
       .foregroundStyle(color)
       .clipShape(Capsule())
+  }
+}
+
+// MARK: - Detailed Stats View
+
+private struct DetailedStatsView: View {
+  let tasks: [DashboardTask]
+  let projects: [Project]
+
+  // Status breakdown
+  private var statusBreakdown: [(String, Int, Color)] {
+    let active = tasks.filter { $0.status == .active }.count
+    let completed = tasks.filter { $0.status == .completed }.count
+    let inbox = tasks.filter { $0.status == .inbox }.count
+    let waitingOn = tasks.filter { $0.status == .waitingOn }.count
+    let rejected = tasks.filter { $0.status == .rejected }.count
+    return [
+      ("Active", active, .orange),
+      ("Completed", completed, .green),
+      ("Inbox", inbox, .blue),
+      ("Waiting On", waitingOn, .yellow),
+      ("Rejected", rejected, .red),
+    ].filter { $0.1 > 0 }
+  }
+
+  // Tasks per project
+  private var tasksPerProject: [(String, Int, Int, Int)] { // (name, total, active, completed)
+    projects.map { project in
+      let projectTasks = tasks.filter { ($0.projectId ?? "default") == project.id }
+      let active = projectTasks.filter { $0.status == .active }.count
+      let completed = projectTasks.filter { $0.status == .completed }.count
+      return (project.title, projectTasks.count, active, completed)
+    }
+    .sorted { $0.1 > $1.1 }
+  }
+
+  // Completion rate
+  private var completionRate: Double {
+    let completable = tasks.filter { $0.status == .completed || $0.status == .active || $0.status == .waitingOn }
+    guard !completable.isEmpty else { return 0 }
+    let completed = completable.filter { $0.status == .completed }.count
+    return Double(completed) / Double(completable.count)
+  }
+
+  // Average time to complete (days)
+  private var avgCompletionDays: Double? {
+    let completedTasks = tasks.filter { $0.status == .completed }
+    guard !completedTasks.isEmpty else { return nil }
+    let totalDays = completedTasks.reduce(0.0) { sum, task in
+      sum + task.updatedAt.timeIntervalSince(task.createdAt) / 86400
+    }
+    return totalDays / Double(completedTasks.count)
+  }
+
+  // Most active projects (by tasks updated in last 14 days)
+  private var mostActiveProjects: [(String, Int)] {
+    let twoWeeksAgo = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? Date()
+    var counts: [String: Int] = [:]
+    for task in tasks where task.updatedAt >= twoWeeksAgo {
+      let projectId = task.projectId ?? "default"
+      let name = projects.first(where: { $0.id == projectId })?.title ?? projectId
+      counts[name, default: 0] += 1
+    }
+    return counts.sorted { $0.value > $1.value }.prefix(5).map { ($0.key, $0.value) }
+  }
+
+  // Owner breakdown
+  private var ownerBreakdown: [(String, Int)] {
+    var counts: [String: Int] = [:]
+    for task in tasks where task.status == .active {
+      counts[task.owner.rawValue, default: 0] += 1
+    }
+    return counts.sorted { $0.value > $1.value }
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      HStack(spacing: 8) {
+        Image(systemName: "chart.bar.xaxis")
+          .font(.title3)
+          .foregroundStyle(.purple)
+        Text("Detailed Statistics")
+          .font(.headline)
+          .fontWeight(.bold)
+      }
+
+      // Top metrics row
+      HStack(spacing: 16) {
+        MetricCard(
+          title: "Total Tasks",
+          value: "\(tasks.count)",
+          icon: "list.bullet",
+          color: .blue
+        )
+        MetricCard(
+          title: "Completion Rate",
+          value: String(format: "%.0f%%", completionRate * 100),
+          icon: "percent",
+          color: .green
+        )
+        if let avgDays = avgCompletionDays {
+          MetricCard(
+            title: "Avg Completion",
+            value: avgDays < 1 ? String(format: "%.0fh", avgDays * 24) : String(format: "%.1fd", avgDays),
+            icon: "clock",
+            color: .orange
+          )
+        }
+        MetricCard(
+          title: "Active Owners",
+          value: "\(ownerBreakdown.count)",
+          icon: "person.2",
+          color: .purple
+        )
+      }
+
+      HStack(alignment: .top, spacing: 24) {
+        // Status breakdown
+        VStack(alignment: .leading, spacing: 10) {
+          Text("Tasks by Status")
+            .font(.callout)
+            .fontWeight(.semibold)
+
+          ForEach(statusBreakdown, id: \.0) { label, count, color in
+            HStack(spacing: 8) {
+              RoundedRectangle(cornerRadius: 3)
+                .fill(color)
+                .frame(width: 4, height: 16)
+              Text(label)
+                .font(.callout)
+                .frame(width: 80, alignment: .leading)
+              // Bar
+              GeometryReader { geo in
+                RoundedRectangle(cornerRadius: 3)
+                  .fill(color.opacity(0.3))
+                  .frame(width: tasks.isEmpty ? 0 : geo.size.width * CGFloat(count) / CGFloat(tasks.count))
+              }
+              .frame(height: 16)
+              Text("\(count)")
+                .font(.callout)
+                .fontWeight(.medium)
+                .monospacedDigit()
+                .frame(width: 30, alignment: .trailing)
+            }
+          }
+        }
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(OTheme.cardBg)
+        .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
+        .overlay(
+          RoundedRectangle(cornerRadius: OTheme.cardRadius)
+            .stroke(OTheme.border, lineWidth: 0.5)
+        )
+
+        // Tasks per project
+        VStack(alignment: .leading, spacing: 10) {
+          Text("Tasks per Project")
+            .font(.callout)
+            .fontWeight(.semibold)
+
+          ForEach(tasksPerProject, id: \.0) { name, total, active, completed in
+            VStack(alignment: .leading, spacing: 4) {
+              HStack {
+                Text(name)
+                  .font(.callout)
+                  .lineLimit(1)
+                Spacer()
+                Text("\(total)")
+                  .font(.callout)
+                  .fontWeight(.medium)
+                  .monospacedDigit()
+              }
+              HStack(spacing: 4) {
+                if completed > 0 {
+                  Text("\(completed) done")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.green)
+                }
+                if active > 0 {
+                  Text("\(active) active")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.orange)
+                }
+              }
+            }
+            Divider()
+          }
+        }
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(OTheme.cardBg)
+        .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
+        .overlay(
+          RoundedRectangle(cornerRadius: OTheme.cardRadius)
+            .stroke(OTheme.border, lineWidth: 0.5)
+        )
+
+        // Most active + owner breakdown
+        VStack(alignment: .leading, spacing: 16) {
+          // Most active projects
+          VStack(alignment: .leading, spacing: 8) {
+            Text("Most Active (14d)")
+              .font(.callout)
+              .fontWeight(.semibold)
+
+            if mostActiveProjects.isEmpty {
+              Text("No recent activity")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            } else {
+              ForEach(mostActiveProjects, id: \.0) { name, count in
+                HStack {
+                  Text(name)
+                    .font(.callout)
+                    .lineLimit(1)
+                  Spacer()
+                  Text("\(count) updates")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                }
+              }
+            }
+          }
+
+          Divider()
+
+          // Owner breakdown
+          VStack(alignment: .leading, spacing: 8) {
+            Text("Active by Owner")
+              .font(.callout)
+              .fontWeight(.semibold)
+
+            if ownerBreakdown.isEmpty {
+              Text("No active tasks")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            } else {
+              ForEach(ownerBreakdown, id: \.0) { owner, count in
+                HStack {
+                  Text(owner.capitalized)
+                    .font(.callout)
+                  Spacer()
+                  Text("\(count)")
+                    .font(.callout)
+                    .fontWeight(.medium)
+                    .monospacedDigit()
+                }
+              }
+            }
+          }
+        }
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(OTheme.cardBg)
+        .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
+        .overlay(
+          RoundedRectangle(cornerRadius: OTheme.cardRadius)
+            .stroke(OTheme.border, lineWidth: 0.5)
+        )
+      }
+    }
+    .padding(16)
+    .background(OTheme.boardBg.opacity(0.5))
+    .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
+    .overlay(
+      RoundedRectangle(cornerRadius: OTheme.cardRadius)
+        .stroke(OTheme.border, lineWidth: 0.5)
+    )
+  }
+}
+
+private struct MetricCard: View {
+  let title: String
+  let value: String
+  let icon: String
+  let color: Color
+
+  var body: some View {
+    VStack(spacing: 6) {
+      HStack(spacing: 4) {
+        Image(systemName: icon)
+          .font(.system(size: 11))
+          .foregroundStyle(color)
+        Text(title)
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+      }
+      Text(value)
+        .font(.title2)
+        .fontWeight(.bold)
+        .foregroundStyle(color)
+    }
+    .frame(minWidth: 100)
+    .padding(.horizontal, 14)
+    .padding(.vertical, 12)
+    .background(OTheme.cardBg)
+    .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
+    .overlay(
+      RoundedRectangle(cornerRadius: OTheme.cardRadius)
+        .stroke(OTheme.border, lineWidth: 0.5)
+    )
   }
 }
 
