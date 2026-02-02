@@ -88,6 +88,16 @@ final class AppViewModel: ObservableObject {
   /// Whether sync is blocked because the local repo has uncommitted changes.
   @Published var syncBlockedByUncommitted: Bool = false
 
+  // Dashboard update indicator
+  /// True when origin/main of the lobs-dashboard repo is ahead of the local HEAD.
+  @Published var dashboardUpdateAvailable: Bool = false
+  /// Short hash of the local HEAD in lobs-dashboard repo.
+  @Published var dashboardLocalCommit: String = ""
+  /// Short hash of origin/main HEAD in lobs-dashboard repo.
+  @Published var dashboardRemoteCommit: String = ""
+  /// How many commits origin/main is ahead of the local built commit.
+  @Published var dashboardCommitsBehind: Int = 0
+
   // Kanban UX
   @Published var searchText: String = ""
   @Published var multiSelectedTaskIds: Set<String> = []
@@ -140,6 +150,7 @@ final class AppViewModel: ObservableObject {
     didSet { settings.set(autoRefreshIntervalSeconds, forKey: autoRefreshIntervalSecondsKey) }
   }
   private var refreshTimer: Timer?
+  private var refreshTickCount: Int = 0
 
   init() {
     repoPath = settings.string(forKey: repoPathKey) ?? ""
@@ -173,6 +184,9 @@ final class AppViewModel: ObservableObject {
     }
 
     startAutoRefreshIfNeeded()
+
+    // Check for dashboard source updates on launch
+    checkForDashboardUpdate()
   }
 
   var selectedProject: Project? {
@@ -204,7 +218,13 @@ final class AppViewModel: ObservableObject {
     guard autoRefreshEnabled else { return }
     refreshTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(autoRefreshIntervalSeconds), repeats: true) { [weak self] _ in
       Task { @MainActor [weak self] in
-        self?.silentReload()
+        guard let self else { return }
+        self.silentReload()
+        // Check for dashboard updates every ~10 ticks (~5 min at 30s interval)
+        self.refreshTickCount += 1
+        if self.refreshTickCount % 10 == 0 {
+          self.checkForDashboardUpdate()
+        }
       }
     }
   }
@@ -289,6 +309,55 @@ final class AppViewModel: ObservableObject {
   func setRepoURL(_ url: URL) {
     repoPath = url.path
     settings.set(repoPath, forKey: repoPathKey)
+  }
+
+  /// URL of the lobs-dashboard repo — derived as sibling of lobs-control.
+  var dashboardRepoURL: URL? {
+    guard let controlURL = repoURL else { return nil }
+    let parent = controlURL.deletingLastPathComponent()
+    let dashURL = parent.appendingPathComponent("lobs-dashboard")
+    // Verify it's a git repo
+    let gitDir = dashURL.appendingPathComponent(".git")
+    var isDir: ObjCBool = false
+    if FileManager.default.fileExists(atPath: gitDir.path, isDirectory: &isDir), isDir.boolValue {
+      return dashURL
+    }
+    return nil
+  }
+
+  /// Check if lobs-dashboard has new commits on origin/main that haven't been built.
+  func checkForDashboardUpdate() {
+    guard let dashURL = dashboardRepoURL else { return }
+    Task {
+      do {
+        // Fetch latest from remote
+        let fetch = try await Git.runAsync(["fetch", "origin"], cwd: dashURL)
+        guard fetch.ok else { return }
+
+        // Get local HEAD hash
+        let localResult = try await Git.runAsync(["rev-parse", "--short", "HEAD"], cwd: dashURL)
+        guard localResult.ok else { return }
+        let localHash = localResult.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Get origin/main hash
+        let remoteResult = try await Git.runAsync(["rev-parse", "--short", "origin/main"], cwd: dashURL)
+        guard remoteResult.ok else { return }
+        let remoteHash = remoteResult.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Count commits behind
+        let behindResult = try await Git.runAsync(
+          ["rev-list", "--count", "HEAD..origin/main"], cwd: dashURL
+        )
+        let behind = Int(behindResult.stdout.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+
+        self.dashboardLocalCommit = localHash
+        self.dashboardRemoteCommit = remoteHash
+        self.dashboardCommitsBehind = behind
+        self.dashboardUpdateAvailable = behind > 0
+      } catch {
+        print("[update-check] failed: \(error)")
+      }
+    }
   }
 
   func reloadIfPossible() {

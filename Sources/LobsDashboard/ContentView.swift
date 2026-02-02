@@ -429,6 +429,28 @@ private struct ToolbarArea: View {
           .fontWeight(.bold)
       }
 
+      // Update available indicator
+      if vm.dashboardUpdateAvailable {
+        Button {
+          vm.checkForDashboardUpdate() // Re-check on tap
+        } label: {
+          HStack(spacing: 4) {
+            Image(systemName: "arrow.down.circle.fill")
+              .foregroundStyle(.orange)
+              .font(.footnote)
+            Text("\(vm.dashboardCommitsBehind) update\(vm.dashboardCommitsBehind == 1 ? "" : "s")")
+              .font(.system(size: 11, weight: .medium))
+              .foregroundStyle(.orange)
+          }
+          .padding(.horizontal, 8)
+          .padding(.vertical, 4)
+          .background(Color.orange.opacity(0.12))
+          .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help("lobs-dashboard has \(vm.dashboardCommitsBehind) new commit\(vm.dashboardCommitsBehind == 1 ? "" : "s") on origin/main. Pull & rebuild to update.\nLocal: \(vm.dashboardLocalCommit) → Remote: \(vm.dashboardRemoteCommit)")
+      }
+
       Spacer()
 
       // Search (hidden on home/overview) — placed left of Home so Home doesn't shift
