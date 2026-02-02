@@ -371,7 +371,7 @@ private struct ToolbarArea: View {
             vm.showOverview = false
           } label: {
             HStack {
-              if vm.selectedProjectId == p.id {
+              if !vm.showOverview && vm.selectedProjectId == p.id {
                 Image(systemName: "checkmark")
               }
               Image(systemName: projectTypeIcon(p.resolvedType))
