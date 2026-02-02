@@ -160,7 +160,7 @@ struct OverviewView: View {
 
         // Worker status
         if let ws = vm.workerStatus {
-          WorkerStatusCard(status: ws, history: vm.workerHistory, onRequestWorker: { vm.requestWorker() })
+          WorkerStatusCard(status: ws, history: vm.workerHistory)
         }
 
         // Project cards
@@ -1362,9 +1362,7 @@ private func overviewProjectTypeColor(_ type: ProjectType) -> Color {
 private struct WorkerStatusCard: View {
   let status: WorkerStatus
   var history: WorkerHistory? = nil
-  var onRequestWorker: (() -> Void)? = nil
   @State private var showHistory = false
-  @State private var requested = false
 
   private var isActive: Bool { status.active }
 
@@ -1483,29 +1481,6 @@ private struct WorkerStatusCard: View {
       }
 
       Spacer()
-
-      if !isActive, let onRequestWorker {
-        Button {
-          onRequestWorker()
-          withAnimation { requested = true }
-        } label: {
-          HStack(spacing: 5) {
-            Image(systemName: requested ? "checkmark.circle.fill" : "play.circle.fill")
-              .font(.system(size: 14))
-            Text(requested ? "Requested" : "Request Worker")
-              .font(.system(size: 12, weight: .medium))
-          }
-          .foregroundStyle(requested ? .green : .accentColor)
-          .padding(.horizontal, 12)
-          .padding(.vertical, 6)
-          .background(
-            RoundedRectangle(cornerRadius: 8)
-              .fill(requested ? Color.green.opacity(0.1) : Color.accentColor.opacity(0.1))
-          )
-        }
-        .buttonStyle(.plain)
-        .disabled(requested)
-      }
     }
     .padding(14)
     .background(

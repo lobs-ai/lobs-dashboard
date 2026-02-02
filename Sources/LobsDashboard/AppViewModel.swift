@@ -1417,20 +1417,6 @@ final class AppViewModel: ObservableObject {
 
   // MARK: - Projects
 
-  // MARK: - Worker Request
-
-  func requestWorker() {
-    guard let repoURL else { return }
-    let store = LobsControlStore(repoRoot: repoURL)
-    do {
-      try store.saveWorkerRequest()
-    } catch {
-      flashError("Failed to request worker: \(error.localizedDescription)")
-      return
-    }
-    gitCommitAndPush(message: "Request worker from dashboard", paths: ["state/worker-request.json"])
-  }
-
   // MARK: - Text Dumps
 
   func submitTextDump(text: String, projectId: String) {

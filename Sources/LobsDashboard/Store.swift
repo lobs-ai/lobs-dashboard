@@ -1034,20 +1034,6 @@ final class LobsControlStore {
     return try decoder().decode(WorkerHistory.self, from: data)
   }
 
-  // MARK: - Worker Request
-
-  func saveWorkerRequest() throws {
-    let url = repoRoot
-      .appendingPathComponent("state")
-      .appendingPathComponent("worker-request.json")
-    let data: [String: Any] = [
-      "requestedAt": ISO8601DateFormatter().string(from: Date()),
-      "source": "dashboard"
-    ]
-    let jsonData = try JSONSerialization.data(withJSONObject: data, options: [.prettyPrinted, .sortedKeys])
-    try jsonData.write(to: url)
-  }
-
   // MARK: - Text Dumps
 
   private var textDumpsDir: URL {
