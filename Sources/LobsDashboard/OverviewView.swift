@@ -1206,10 +1206,40 @@ private struct WorkerStatusCard: View {
             }
           }
         } else {
-          if let heartbeat = status.lastHeartbeat {
-            Text("Last seen \(relativeTime(heartbeat))")
-              .font(.footnote)
-              .foregroundStyle(.tertiary)
+          // Idle state: show completion summary if available
+          HStack(spacing: 12) {
+            if let completed = status.tasksCompleted, completed > 0 {
+              HStack(spacing: 4) {
+                Image(systemName: "checkmark.circle.fill")
+                  .font(.system(size: 10))
+                  .foregroundStyle(.green)
+                Text("Completed \(completed) task\(completed == 1 ? "" : "s")")
+                  .font(.footnote)
+                  .foregroundStyle(.secondary)
+              }
+            }
+
+            // Show session duration if we have start and end times
+            if let started = status.startedAt, let ended = status.endedAt {
+              let duration = ended.timeIntervalSince(started)
+              let minutes = Int(duration / 60)
+              HStack(spacing: 4) {
+                Image(systemName: "clock")
+                  .font(.system(size: 10))
+                  .foregroundStyle(.secondary)
+                Text(minutes < 60
+                  ? "in \(max(1, minutes))m"
+                  : "in \(minutes / 60)h \(minutes % 60)m")
+                  .font(.footnote)
+                  .foregroundStyle(.secondary)
+              }
+            }
+
+            if let heartbeat = status.lastHeartbeat {
+              Text("· \(relativeTime(heartbeat))")
+                .font(.footnote)
+                .foregroundStyle(.tertiary)
+            }
           }
         }
       }

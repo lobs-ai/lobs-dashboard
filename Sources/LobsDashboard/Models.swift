@@ -364,6 +364,7 @@ struct WorkerStatus: Codable {
   var currentTask: String?
   var tasksCompleted: Int?
   var lastHeartbeat: Date?
+  var endedAt: Date?
 }
 
 struct ProjectsFile: Codable {
