@@ -43,6 +43,15 @@ final class AppViewModel: ObservableObject {
       settings.set(Array(readItemIds), forKey: "readInboxItemIds")
     }
   }
+  /// Tracks last-seen thread message count per doc ID. When a thread has more messages
+  /// than this count, the item shows as having unread follow-ups.
+  @Published var lastSeenThreadCounts: [String: Int] = [:] {
+    didSet {
+      if let data = try? JSONEncoder().encode(lastSeenThreadCounts) {
+        settings.set(data, forKey: "lastSeenThreadCounts")
+      }
+    }
+  }
   @Published var showInbox: Bool = false
   @Published var inboxResponsesByDocId: [String: InboxResponse] = [:]
   @Published var inboxThreadsByDocId: [String: InboxThread] = [:]
@@ -158,6 +167,10 @@ final class AppViewModel: ObservableObject {
 
     // Inbox read state
     readItemIds = Set(settings.stringArray(forKey: "readInboxItemIds") ?? [])
+    if let data = settings.data(forKey: "lastSeenThreadCounts"),
+       let decoded = try? JSONDecoder().decode([String: Int].self, from: data) {
+      lastSeenThreadCounts = decoded
+    }
 
     startAutoRefreshIfNeeded()
   }
@@ -637,10 +650,23 @@ final class AppViewModel: ObservableObject {
     }
   }
 
+  /// Returns how many follow-up thread messages are currently unread for a doc.
+  /// A follow-up is considered unread when the thread has more messages than the
+  /// last-seen count recorded locally.
+  func unreadFollowupCount(docId: String) -> Int {
+    guard let thread = inboxThreadsByDocId[docId] else { return 0 }
+    let seen = lastSeenThreadCounts[docId, default: 0]
+    return max(0, thread.messages.count - seen)
+  }
+
   func markInboxItemRead(_ item: InboxItem) {
     readItemIds.insert(item.id)
     if let idx = inboxItems.firstIndex(where: { $0.id == item.id }) {
       inboxItems[idx].isRead = true
+    }
+    // Mark thread follow-ups as seen when opening/marking as read.
+    if let thread = inboxThreadsByDocId[item.id] {
+      lastSeenThreadCounts[item.id] = thread.messages.count
     }
   }
 
@@ -649,10 +675,15 @@ final class AppViewModel: ObservableObject {
     if let idx = inboxItems.firstIndex(where: { $0.id == item.id }) {
       inboxItems[idx].isRead = false
     }
+    // Do not change lastSeenThreadCounts here.
   }
 
+  /// Total unread inbox count.
+  /// Includes unread docs AND docs with unread follow-up thread messages.
   var unreadInboxCount: Int {
-    inboxItems.filter { !$0.isRead }.count
+    inboxItems.filter { item in
+      !item.isRead || unreadFollowupCount(docId: item.id) > 0
+    }.count
   }
 
   func inboxResponseText(docId: String) -> String {
@@ -1002,6 +1033,11 @@ final class AppViewModel: ObservableObject {
         flashError("Failed to save thread: \(error.localizedDescription)")
         return
       }
+    }
+
+    // If the user just posted (e.g. author=="rafe"), consider the thread fully read.
+    if author.lowercased() == "rafe", let thread = inboxThreadsByDocId[docId] {
+      lastSeenThreadCounts[docId] = thread.messages.count
     }
 
     isGitBusy = true

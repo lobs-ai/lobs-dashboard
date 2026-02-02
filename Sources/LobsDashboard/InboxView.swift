@@ -85,7 +85,7 @@ struct InboxView: View {
   private var filteredItems: [InboxItem] {
     var items = vm.inboxItems
     if !showReadItems {
-      items = items.filter { !$0.isRead }
+      items = items.filter { !$0.isRead || vm.unreadFollowupCount(docId: $0.id) > 0 }
     }
     let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     if !q.isEmpty {
@@ -198,6 +198,7 @@ struct InboxView: View {
                 InboxItemRow(
                   item: item,
                   isSelected: selectedItem?.id == item.id,
+                  vm: vm,
                   onSelect: {
                     selectedItem = item
                     vm.markInboxItemRead(item)
@@ -320,6 +321,7 @@ private struct InboxArrowKeyMonitor: NSViewRepresentable {
 private struct InboxItemRow: View {
   let item: InboxItem
   let isSelected: Bool
+  @ObservedObject var vm: AppViewModel
   let onSelect: () -> Void
 
   @State private var isHovering = false
@@ -327,9 +329,10 @@ private struct InboxItemRow: View {
   var body: some View {
     Button(action: onSelect) {
       HStack(spacing: 12) {
-        // Unread indicator
+        // Unread indicator (doc unread OR unread follow-up thread messages)
+        let followupsUnread = vm.unreadFollowupCount(docId: item.id)
         Circle()
-          .fill(item.isRead ? Color.clear : Color.blue)
+          .fill((item.isRead && followupsUnread == 0) ? Color.clear : (followupsUnread > 0 ? Color.purple : Color.blue))
           .frame(width: 8, height: 8)
 
         VStack(alignment: .leading, spacing: 4) {
@@ -358,6 +361,21 @@ private struct InboxItemRow: View {
             .background(isInbox ? Color.blue.opacity(0.12) : Color.purple.opacity(0.12))
             .foregroundStyle(isInbox ? .blue : .purple)
             .clipShape(Capsule())
+
+            let followupsUnread = vm.unreadFollowupCount(docId: item.id)
+            if followupsUnread > 0 {
+              HStack(spacing: 3) {
+                Image(systemName: "bubble.left.and.bubble.right.fill")
+                  .font(.system(size: 9))
+                Text("+\(followupsUnread)")
+                  .font(.system(size: 11, weight: .semibold))
+              }
+              .padding(.horizontal, 6)
+              .padding(.vertical, 2)
+              .background(Color.purple.opacity(0.12))
+              .foregroundStyle(.purple)
+              .clipShape(Capsule())
+            }
 
             Text(relativeTime(item.modifiedAt))
               .font(.system(size: 11))
