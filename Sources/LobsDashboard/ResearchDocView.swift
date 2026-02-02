@@ -11,6 +11,12 @@ private enum DocTheme {
   static let cardRadius: CGFloat = 14
 }
 
+/// Wrapper for section follow-up context, conforming to Identifiable for .sheet(item:).
+private struct FollowUpContext: Identifiable {
+  let id = UUID()
+  let sectionHeading: String?
+}
+
 // MARK: - Research Doc View (document-first)
 
 struct ResearchDocView: View {
@@ -18,13 +24,14 @@ struct ResearchDocView: View {
 
   @State private var showAddSource = false
   @State private var showAddRequest = false
+  /// When non-nil, triggers the "Ask Lobs" sheet with context. Wraps section name for Identifiable.
+  @State private var followUpSheetContext: FollowUpContext? = nil
   @State private var isEditing = true
   @State private var isCondensed = false
   @State private var editContent: String = ""
   @State private var saveTimer: Timer? = nil
   @State private var docSearchText: String = ""
   @State private var collapsedSections: Set<String> = []
-  @State private var followUpSection: String? = nil
 
   /// Table of contents derived from headings in the doc
   private var tableOfContents: [(Int, String)] { // (level, heading text)
@@ -68,10 +75,10 @@ struct ResearchDocView: View {
       AddSourceSheet(vm: vm)
     }
     .sheet(isPresented: $showAddRequest) {
-      AskLobsResearchSheet(vm: vm, sectionContext: followUpSection)
+      AskLobsResearchSheet(vm: vm, sectionContext: nil)
     }
-    .onChange(of: showAddRequest) { isShowing in
-      if !isShowing { followUpSection = nil }
+    .sheet(item: $followUpSheetContext) { context in
+      AskLobsResearchSheet(vm: vm, sectionContext: context.sectionHeading)
     }
   }
 
@@ -417,8 +424,7 @@ struct ResearchDocView: View {
               collapsedSections: $collapsedSections,
               searchText: docSearchText,
               onAskFollowUp: { sectionHeading in
-                followUpSection = sectionHeading
-                showAddRequest = true
+                followUpSheetContext = FollowUpContext(sectionHeading: sectionHeading)
               }
             )
             .padding(20)
@@ -813,23 +819,25 @@ private struct SectionCardView: View {
             .clipShape(Capsule())
         }
 
-        // Ask follow-up button (visible on hover)
-        if isHovering {
-          Button(action: onAskFollowUp) {
-            HStack(spacing: 3) {
-              Image(systemName: "questionmark.bubble")
-                .font(.system(size: 10))
+        // Ask follow-up button (always visible, more prominent on hover)
+        Button(action: onAskFollowUp) {
+          HStack(spacing: 3) {
+            Image(systemName: "questionmark.bubble")
+              .font(.system(size: 10))
+            if isHovering {
               Text("Follow up")
                 .font(.system(size: 10))
             }
-            .foregroundStyle(.orange)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(Color.orange.opacity(0.1))
-            .clipShape(Capsule())
           }
-          .buttonStyle(.plain)
+          .foregroundStyle(.orange)
+          .padding(.horizontal, 6)
+          .padding(.vertical, 3)
+          .background(isHovering ? Color.orange.opacity(0.1) : Color.clear)
+          .clipShape(Capsule())
+          .opacity(isHovering ? 1.0 : 0.4)
+          .animation(.easeInOut(duration: 0.15), value: isHovering)
         }
+        .buttonStyle(.plain)
       }
       .padding(.vertical, 6)
       .padding(.horizontal, 8)
