@@ -334,22 +334,10 @@ private struct DocumentViewer: View {
       ScrollViewReader { proxy in
         ScrollView {
           VStack(alignment: .leading, spacing: 0) {
-            // Document content (rendered as markdown)
-            if let md = try? AttributedString(markdown: item.content, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
-              Text(md)
-                .font(.system(size: 13))
-                .lineSpacing(4)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(24)
-            } else {
-              Text(item.content)
-                .font(.system(size: 13))
-                .lineSpacing(4)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(24)
-            }
+            // Document content (rendered as full markdown)
+            MarkdownWebView(markdown: item.content)
+              .frame(maxWidth: .infinity, minHeight: 200)
+              .padding(.horizontal, 4)
 
             // Thread messages
             if let thread = thread, !thread.messages.isEmpty {
