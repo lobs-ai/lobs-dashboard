@@ -1319,13 +1319,22 @@ private struct TaskTile: View {
   private var isSelected: Bool { vm.selectedTaskId == task.id }
 
   /// Staleness: tasks sitting in inbox/active too long get visual attention.
+  /// Yellow → orange → red border after 3/7/14 days.
   private var stalenessColor: Color? {
     guard task.status == .inbox || task.status == .active else { return nil }
     let age = Date().timeIntervalSince(task.updatedAt)
-    if age > 7 * 86400 { return .red }       // >7 days
-    if age > 3 * 86400 { return .orange }     // >3 days
-    if age > 1 * 86400 { return .yellow }     // >1 day
+    if age > 14 * 86400 { return .red }       // >14 days
+    if age > 7 * 86400 { return .orange }     // >7 days
+    if age > 3 * 86400 { return .yellow }     // >3 days
     return nil
+  }
+
+  private var stalenessLabel: String {
+    let age = Date().timeIntervalSince(task.updatedAt)
+    let days = Int(age / 86400)
+    if days >= 14 { return "Stale (\(days)d)" }
+    if days >= 7 { return "Aging (\(days)d)" }
+    return "Idle (\(days)d)"
   }
 
   var body: some View {
@@ -1396,6 +1405,17 @@ private struct TaskTile: View {
         Text(relativeTime(task.updatedAt))
           .font(.system(size: 11))
           .foregroundStyle(.tertiary)
+
+        if let staleColor = stalenessColor {
+          Spacer()
+          HStack(spacing: 2) {
+            Image(systemName: "exclamationmark.triangle.fill")
+              .font(.system(size: 10))
+            Text(stalenessLabel)
+              .font(.system(size: 10, weight: .medium))
+          }
+          .foregroundStyle(staleColor)
+        }
       }
     }
     .padding(12)
