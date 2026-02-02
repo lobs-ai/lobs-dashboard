@@ -412,6 +412,16 @@ private struct DocumentViewer: View {
 
   @State private var replyText: String = ""
 
+  /// Live read state from the view model (not the stale item snapshot).
+  private var isRead: Bool {
+    vm.readItemIds.contains(item.id)
+  }
+
+  /// Live item from the view model (reflects current read state).
+  private var liveItem: InboxItem {
+    vm.inboxItems.first(where: { $0.id == item.id }) ?? item
+  }
+
   private var thread: InboxThread? {
     vm.inboxThreadsByDocId[item.id]
   }
@@ -455,20 +465,20 @@ private struct DocumentViewer: View {
         // Actions
         HStack(spacing: 6) {
           Button {
-            if item.isRead {
-              vm.markInboxItemUnread(item)
+            if isRead {
+              vm.markInboxItemUnread(liveItem)
             } else {
-              vm.markInboxItemRead(item)
+              vm.markInboxItemRead(liveItem)
             }
           } label: {
-            Image(systemName: item.isRead ? "envelope.open" : "envelope.badge")
+            Image(systemName: isRead ? "envelope.open" : "envelope.badge")
               .font(.body)
               .padding(6)
               .background(ITheme.subtle)
               .clipShape(RoundedRectangle(cornerRadius: 8))
           }
           .buttonStyle(.plain)
-          .help(item.isRead ? "Mark as unread" : "Mark as read")
+          .help(isRead ? "Mark as unread" : "Mark as read")
 
           Button {
             NSPasteboard.general.clearContents()
