@@ -1464,14 +1464,30 @@ private struct TaskTile: View {
         .textFieldStyle(.plain)
         .onExitCommand { isEditingTitle = false }
       } else {
-        Text(task.title)
-          .font(.callout)
-          .fontWeight(.medium)
-          .lineLimit(3)
-          .onTapGesture(count: 2) {
-            inlineTitle = task.title
-            isEditingTitle = true
+        HStack(alignment: .top, spacing: 4) {
+          Text(task.title)
+            .font(.callout)
+            .fontWeight(.medium)
+            .lineLimit(3)
+            .onTapGesture(count: 2) {
+              inlineTitle = task.title
+              isEditingTitle = true
+            }
+          Spacer()
+          // Pin/star indicator + toggle
+          if task.pinned == true || isHovering {
+            Button {
+              vm.togglePinTask(taskId: task.id, autoPush: autoPush)
+            } label: {
+              Image(systemName: task.pinned == true ? "star.fill" : "star")
+                .font(.system(size: 12))
+                .foregroundStyle(task.pinned == true ? .yellow : .secondary.opacity(0.4))
+            }
+            .buttonStyle(.plain)
+            .help(task.pinned == true ? "Unpin task" : "Pin task to top")
+            .transition(.opacity)
           }
+        }
       }
 
       HStack(spacing: 5) {
@@ -1782,9 +1798,29 @@ private struct TaskDetailPopover: View {
 
         // Context-aware actions based on task status
         VStack(alignment: .leading, spacing: 10) {
-          Text("Actions")
-            .font(.callout)
-            .fontWeight(.bold)
+          HStack {
+            Text("Actions")
+              .font(.callout)
+              .fontWeight(.bold)
+            Spacer()
+            Button {
+              vm.togglePinTask(taskId: task.id, autoPush: autoPush)
+            } label: {
+              HStack(spacing: 4) {
+                Image(systemName: task.pinned == true ? "star.fill" : "star")
+                  .font(.footnote)
+                Text(task.pinned == true ? "Unpin" : "Pin")
+                  .font(.footnote)
+                  .fontWeight(.medium)
+              }
+              .padding(.horizontal, 10)
+              .padding(.vertical, 5)
+              .background((task.pinned == true ? Color.yellow : Color.secondary).opacity(0.12))
+              .foregroundStyle(task.pinned == true ? .yellow : .secondary)
+              .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+          }
 
           switch task.status {
           case .inbox:

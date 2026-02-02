@@ -172,6 +172,9 @@ struct DashboardTask: Codable, Identifiable, Hashable {
 
   /// Task IDs this task is blocked by. When all blockers complete, the task auto-unblocks.
   var blockedBy: [String]?
+
+  /// Whether this task is pinned/starred (floats to top of its column).
+  var pinned: Bool?
 }
 
 enum ProjectType: String, Codable, CaseIterable, Hashable {

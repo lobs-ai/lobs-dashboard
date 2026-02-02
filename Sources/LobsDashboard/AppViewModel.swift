@@ -198,9 +198,12 @@ final class AppViewModel: ObservableObject {
 
   private func sortTasksForUX(_ tasks: inout [DashboardTask]) {
     // Stable ordering for UX.
-    // Respect manual sortOrder first, then fall back to creation time.
+    // Pinned tasks float to top, then respect manual sortOrder, then creation time.
     tasks.sort { (a, b) in
       if a.status.rawValue != b.status.rawValue { return a.status.rawValue < b.status.rawValue }
+      let ap = a.pinned ?? false
+      let bp = b.pinned ?? false
+      if ap != bp { return ap }
       let oa = a.sortOrder ?? Int.max
       let ob = b.sortOrder ?? Int.max
       if oa != ob { return oa < ob }
@@ -2048,6 +2051,20 @@ final class AppViewModel: ObservableObject {
     }
   }
 
+  /// Toggle the pinned/starred state of a task.
+  func togglePinTask(taskId: String, autoPush: Bool) {
+    let currentlyPinned = tasks.first(where: { $0.id == taskId })?.pinned ?? false
+    optimisticUpdate(taskId: taskId, localMutation: {
+      $0.pinned = !currentlyPinned ? true : nil
+    }) { repoURL in
+      try await self.asyncCommitAndMaybePush(
+        repoURL: repoURL,
+        message: "Lobs: \(!currentlyPinned ? "pin" : "unpin") \(taskId)",
+        autoPush: autoPush
+      )
+    }
+  }
+
   func editTask(taskId: String, title: String, notes: String?, autoPush: Bool) {
     optimisticUpdate(taskId: taskId, localMutation: {
       let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2498,6 +2515,14 @@ final class AppViewModel: ObservableObject {
       out = out.filter { if case .other = $0.owner { return true } else { return false } }
     default:
       break
+    }
+
+    // Pinned tasks float to top within their column grouping
+    out.sort { a, b in
+      let ap = a.pinned ?? false
+      let bp = b.pinned ?? false
+      if ap != bp { return ap }
+      return false // preserve existing order for non-pinned
     }
 
     return out
