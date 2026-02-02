@@ -73,7 +73,7 @@ struct InboxView: View {
           Image(systemName: "magnifyingglass")
             .foregroundStyle(.secondary)
             .font(.footnote)
-          TextField("Search docs…", text: $searchText)
+          TextField("Search inbox…", text: $searchText)
             .textFieldStyle(.plain)
             .frame(width: 160)
         }
