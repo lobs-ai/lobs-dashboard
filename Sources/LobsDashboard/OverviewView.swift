@@ -42,10 +42,9 @@ private struct ProjectDropDelegate: DropDelegate {
 struct OverviewView: View {
   @ObservedObject var vm: AppViewModel
   var onSelectProject: (String) -> Void
+  var onOpenInbox: ((String?) -> Void)? = nil
 
   @State private var detailTask: DashboardTask? = nil
-  @State private var showInboxSheet: Bool = false
-  @State private var pendingInboxItemId: String? = nil
   @State private var showDetailedStats: Bool = false
   @State private var draggingProjectId: String? = nil
   @State private var showCreateProject: Bool = false
@@ -284,8 +283,9 @@ struct OverviewView: View {
                 ForEach(Array(vm.inboxItems.prefix(8).enumerated()), id: \.element.id) { idx, item in
                   InboxRow(item: item, onTap: {
                     vm.markInboxItemRead(item)
-                    pendingInboxItemId = item.id
-                    showInboxSheet = true
+                    if let onOpenInbox {
+                      onOpenInbox(item.id)
+                    }
                   })
                   if idx < min(vm.inboxItems.count, 8) - 1 {
                     Divider().padding(.leading, 36)
@@ -309,11 +309,6 @@ struct OverviewView: View {
     .sheet(item: $detailTask) { task in
       OverviewTaskDetailSheet(task: task, vm: vm)
         .frame(minWidth: 480, minHeight: 500)
-    }
-    .sheet(isPresented: $showInboxSheet) {
-      InboxView(vm: vm, isPresented: $showInboxSheet, initialSelectedItemId: pendingInboxItemId)
-        .frame(minWidth: 1000, minHeight: 650)
-        .onDisappear { pendingInboxItemId = nil }
     }
   }
 }

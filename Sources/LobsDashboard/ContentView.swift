@@ -62,6 +62,7 @@ struct ContentView: View {
   @State private var editingProject: Project? = nil
   @State private var showSettings = false
   @State private var showInbox = false
+  @State private var inboxInitialItemId: String? = nil
   @State private var showAllDone = false
   @State private var showAllRejected = false
   @State private var quickAddText = ""
@@ -99,10 +100,13 @@ struct ContentView: View {
         // Content fills remaining space below the pinned header
         Group {
           if vm.showOverview {
-            OverviewView(vm: vm) { projectId in
+            OverviewView(vm: vm, onSelectProject: { projectId in
               vm.selectedProjectId = projectId
               vm.showOverview = false
-            }
+            }, onOpenInbox: { itemId in
+              inboxInitialItemId = itemId
+              withAnimation(.easeInOut(duration: 0.25)) { showInbox = true }
+            })
           } else if vm.isResearchProject {
             ResearchDocView(vm: vm)
           } else if vm.isTrackerProject {
@@ -219,12 +223,13 @@ struct ContentView: View {
           .transition(.opacity)
           .zIndex(200)
 
-        InboxView(vm: vm, isPresented: $showInbox)
+        InboxView(vm: vm, isPresented: $showInbox, initialSelectedItemId: inboxInitialItemId)
           .frame(minWidth: 1000, idealWidth: 1200, minHeight: 700, idealHeight: 800)
           .clipShape(RoundedRectangle(cornerRadius: 16))
           .shadow(color: .black.opacity(0.3), radius: 30, y: 10)
           .padding(40)
           .onExitCommand { withAnimation(.easeInOut(duration: 0.25)) { showInbox = false } }
+          .onDisappear { inboxInitialItemId = nil }
           .transition(.opacity.combined(with: .scale(scale: 0.95)))
           .zIndex(201)
       }
