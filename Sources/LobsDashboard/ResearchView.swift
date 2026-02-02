@@ -377,8 +377,8 @@ private struct TileCard: View {
       }
 
       Text(tile.title)
-        .font(.callout)
-        .fontWeight(.medium)
+        .font(.headline)
+        .fontWeight(.semibold)
         .lineLimit(2)
 
       // Type-specific preview
@@ -654,7 +654,7 @@ private struct TileDetailView: View {
           Image(systemName: tileTypeIcon(tile.type))
             .foregroundStyle(tileTypeColor(tile.type))
           Text(tileTypeLabel(tile.type))
-            .font(.footnote)
+            .font(.callout)
             .fontWeight(.bold)
             .foregroundStyle(tileTypeColor(tile.type))
           Spacer()
@@ -668,8 +668,8 @@ private struct TileDetailView: View {
 
         // Title
         TextField("Title", text: $editTitle)
-          .font(.title3)
-          .fontWeight(.bold)
+          .font(.headline)
+          .fontWeight(.semibold)
           .textFieldStyle(.plain)
           .onAppear { loadFields() }
           .onChange(of: tile.id) { _ in loadFields() }
@@ -679,9 +679,10 @@ private struct TileDetailView: View {
         case .link:
           VStack(alignment: .leading, spacing: 8) {
             Text("URL")
-              .font(.footnote)
+              .font(.callout)
               .foregroundStyle(.secondary)
             TextField("https://…", text: $editUrl)
+              .font(.body)
               .textFieldStyle(.roundedBorder)
 
             if !editUrl.isEmpty {
@@ -697,9 +698,10 @@ private struct TileDetailView: View {
             }
 
             Text("Summary")
-              .font(.footnote)
+              .font(.callout)
               .foregroundStyle(.secondary)
             TextField("Summary…", text: $editSummary, axis: .vertical)
+              .font(.body)
               .textFieldStyle(.roundedBorder)
               .lineLimit(6, reservesSpace: true)
           }
@@ -707,9 +709,10 @@ private struct TileDetailView: View {
         case .note:
           VStack(alignment: .leading, spacing: 8) {
             Text("Content")
-              .font(.footnote)
+              .font(.callout)
               .foregroundStyle(.secondary)
             TextField("Write your notes…", text: $editContent, axis: .vertical)
+              .font(.body)
               .textFieldStyle(.roundedBorder)
               .lineLimit(12, reservesSpace: true)
           }
@@ -718,45 +721,47 @@ private struct TileDetailView: View {
           VStack(alignment: .leading, spacing: 8) {
             // Summary
             Text("Summary")
-              .font(.footnote)
+              .font(.callout)
               .foregroundStyle(.secondary)
             TextField("Summarize the finding…", text: $editSummary, axis: .vertical)
+              .font(.body)
               .textFieldStyle(.roundedBorder)
               .lineLimit(4, reservesSpace: true)
 
             // Key Finding
             Text("Key Finding")
-              .font(.footnote)
+              .font(.callout)
               .foregroundStyle(.secondary)
             TextField("State the finding…", text: $editClaim, axis: .vertical)
+              .font(.body)
               .textFieldStyle(.roundedBorder)
               .lineLimit(4, reservesSpace: true)
 
             // Certainty
             HStack {
               Text("Certainty")
-                .font(.footnote)
+                .font(.callout)
                 .foregroundStyle(.secondary)
               Slider(value: $editConfidence, in: 0...1, step: 0.05)
               Text("\(Int(editConfidence * 100))%")
-                .font(.footnote)
+                .font(.callout)
                 .monospacedDigit()
                 .frame(width: 35, alignment: .trailing)
             }
 
             // Evidence
             if let evidence = tile.evidence, !evidence.isEmpty {
-              VStack(alignment: .leading, spacing: 4) {
+              VStack(alignment: .leading, spacing: 6) {
                 Text("Evidence")
-                  .font(.footnote)
+                  .font(.callout)
                   .foregroundStyle(.secondary)
                 ForEach(evidence, id: \.self) { e in
                   HStack(spacing: 4) {
                     Image(systemName: "checkmark.circle.fill")
-                      .font(.system(size: 11))
+                      .font(.system(size: 13))
                       .foregroundStyle(.green)
                     Text(e)
-                      .font(.footnote)
+                      .font(.body)
                   }
                 }
               }
@@ -764,17 +769,17 @@ private struct TileDetailView: View {
 
             // Counterpoints
             if let counterpoints = tile.counterpoints, !counterpoints.isEmpty {
-              VStack(alignment: .leading, spacing: 4) {
+              VStack(alignment: .leading, spacing: 6) {
                 Text("Counterpoints")
-                  .font(.footnote)
+                  .font(.callout)
                   .foregroundStyle(.secondary)
                 ForEach(counterpoints, id: \.self) { c in
                   HStack(spacing: 4) {
                     Image(systemName: "xmark.circle.fill")
-                      .font(.system(size: 11))
+                      .font(.system(size: 13))
                       .foregroundStyle(.red)
                     Text(c)
-                      .font(.footnote)
+                      .font(.body)
                   }
                 }
               }
@@ -784,10 +789,10 @@ private struct TileDetailView: View {
             if let content = tile.content, !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
               VStack(alignment: .leading, spacing: 4) {
                 Text("Content")
-                  .font(.footnote)
+                  .font(.callout)
                   .foregroundStyle(.secondary)
                 Text(content)
-                  .font(.footnote)
+                  .font(.body)
                   .foregroundStyle(.secondary)
                   .textSelection(.enabled)
               }
@@ -798,7 +803,7 @@ private struct TileDetailView: View {
           if let options = tile.options {
             VStack(alignment: .leading, spacing: 12) {
               Text("Options")
-                .font(.footnote)
+                .font(.callout)
                 .foregroundStyle(.secondary)
               ForEach(options, id: \.name) { opt in
                 ComparisonOptionView(option: opt)
@@ -812,9 +817,10 @@ private struct TileDetailView: View {
         // Tags
         VStack(alignment: .leading, spacing: 4) {
           Text("Tags (comma-separated)")
-            .font(.footnote)
+            .font(.callout)
             .foregroundStyle(.secondary)
           TextField("tag1, tag2, …", text: $editTags)
+            .font(.body)
             .textFieldStyle(.roundedBorder)
         }
 
