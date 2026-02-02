@@ -1171,10 +1171,11 @@ private struct WorkerStatusCard: View {
         if isActive {
           HStack(spacing: 12) {
             if let task = status.currentTask {
+              let isResearch = task.lowercased().hasPrefix("research:")
               HStack(spacing: 4) {
-                Image(systemName: "hammer.fill")
+                Image(systemName: isResearch ? "magnifyingglass" : "hammer.fill")
                   .font(.system(size: 10))
-                  .foregroundStyle(.secondary)
+                  .foregroundStyle(isResearch ? .purple : .secondary)
                 Text(task)
                   .font(.footnote)
                   .foregroundStyle(.secondary)
