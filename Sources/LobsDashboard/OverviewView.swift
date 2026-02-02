@@ -175,6 +175,7 @@ struct OverviewView: View {
                 project: project,
                 tasks: allTasks.filter { ($0.projectId ?? "default") == project.id },
                 researchRequestCount: researchRequestCountsByProject[project.id] ?? 0,
+                wipLimit: vm.wipLimitActive,
                 onTap: { onSelectProject(project.id) }
               )
               .onDrag {
@@ -355,6 +356,7 @@ private struct ProjectCard: View {
   let project: Project
   let tasks: [DashboardTask]
   var researchRequestCount: Int = 0
+  var wipLimit: Int = 0
   let onTap: () -> Void
 
   @State private var isHovering = false
@@ -435,6 +437,15 @@ private struct ProjectCard: View {
         // Task counts
         HStack(spacing: 12) {
           CountBadge(label: "Active", count: activeCount, color: .orange)
+          if wipLimit > 0 && activeCount > wipLimit {
+            Text("WIP")
+              .font(.system(size: 11, weight: .bold))
+              .padding(.horizontal, 6)
+              .padding(.vertical, 2)
+              .background(Color.orange.opacity(0.2))
+              .foregroundStyle(.orange)
+              .clipShape(Capsule())
+          }
           CountBadge(label: "Done", count: completedCount, color: .green)
           if researchRequestCount > 0 {
             CountBadge(label: "Research", count: researchRequestCount, color: .purple)
