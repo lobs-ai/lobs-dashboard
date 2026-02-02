@@ -1606,6 +1606,23 @@ private func relativeTime(_ date: Date) -> String {
 
 // MARK: - Mini Tag (for cards)
 
+// MARK: - Shake Effect (validation feedback)
+
+private struct ShakeEffect: ViewModifier {
+  var shaking: Bool
+
+  func body(content: Content) -> some View {
+    content
+      .offset(x: shaking ? -6 : 0)
+      .animation(
+        shaking
+          ? .interpolatingSpring(stiffness: 300, damping: 8).speed(2)
+          : .default,
+        value: shaking
+      )
+  }
+}
+
 private struct MiniTag: View {
   let text: String
   let color: Color
@@ -1834,6 +1851,8 @@ private struct AddTaskSheet: View {
   @State private var title: String = ""
   @State private var notes: String = ""
   @State private var selectedProjectId: String = ""
+  @State private var shakeTitle: Bool = false
+  @State private var shakeProject: Bool = false
 
   private var activeProjects: [Project] {
     vm.projects.filter { ($0.archived ?? false) == false }
@@ -1874,6 +1893,12 @@ private struct AddTaskSheet: View {
             }
           }
           .labelsHidden()
+          .padding(4)
+          .background(
+            RoundedRectangle(cornerRadius: 6)
+              .stroke(shakeProject ? Color.red : Color.clear, lineWidth: 2)
+          )
+          .modifier(ShakeEffect(shaking: shakeProject))
         }
       }
 
@@ -1884,6 +1909,11 @@ private struct AddTaskSheet: View {
         TextField("What needs to be done?", text: $title)
           .textFieldStyle(.roundedBorder)
           .font(.body)
+          .overlay(
+            RoundedRectangle(cornerRadius: 6)
+              .stroke(shakeTitle ? Color.red : Color.clear, lineWidth: 2)
+          )
+          .modifier(ShakeEffect(shaking: shakeTitle))
       }
 
       VStack(alignment: .leading, spacing: 8) {
@@ -1898,9 +1928,21 @@ private struct AddTaskSheet: View {
           font: .systemFont(ofSize: NSFont.systemFontSize),
           placeholder: "Additional context (optional)",
           onSubmit: {
-            let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return }
-            guard !selectedProjectId.isEmpty else { return }
+            let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let missingTitle = trimmedTitle.isEmpty
+            let missingProject = selectedProjectId.isEmpty
+
+            if missingTitle || missingProject {
+              withAnimation(.default) {
+                if missingProject { shakeProject = true }
+                if missingTitle { shakeTitle = true }
+              }
+              DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                withAnimation { shakeProject = false; shakeTitle = false }
+              }
+              return
+            }
+
             let prevProject = vm.selectedProjectId
             vm.selectedProjectId = selectedProjectId
             vm.submitTaskToLobs(title: title, notes: notes.isEmpty ? nil : notes, autoPush: autoPush)
@@ -1924,6 +1966,23 @@ private struct AddTaskSheet: View {
           .keyboardShortcut(.cancelAction)
 
         Button {
+          let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+          let missingTitle = trimmedTitle.isEmpty
+          let missingProject = selectedProjectId.isEmpty
+
+          if missingTitle || missingProject {
+            // Shake the missing fields to draw attention
+            withAnimation(.default) {
+              if missingProject { shakeProject = true }
+              if missingTitle { shakeTitle = true }
+            }
+            // Reset after animation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+              withAnimation { shakeProject = false; shakeTitle = false }
+            }
+            return
+          }
+
           let prevProject = vm.selectedProjectId
           vm.selectedProjectId = selectedProjectId
           vm.submitTaskToLobs(title: title, notes: notes.isEmpty ? nil : notes, autoPush: autoPush)
@@ -1934,9 +1993,6 @@ private struct AddTaskSheet: View {
             .fontWeight(.semibold)
         }
         .keyboardShortcut(.defaultAction)
-        .disabled(
-          title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedProjectId.isEmpty
-        )
         .buttonStyle(.borderedProminent)
       }
     }
