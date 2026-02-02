@@ -344,7 +344,7 @@ private struct DocumentViewer: View {
         ZStack(alignment: .topLeading) {
           TextEditor(text: $responseText)
             .font(.system(.body, design: .monospaced))
-            .frame(minHeight: 110)
+            .frame(minHeight: 44, maxHeight: 120)
             .padding(6)
             .background(ITheme.cardBg)
             .clipShape(RoundedRectangle(cornerRadius: 10))

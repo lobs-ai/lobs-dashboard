@@ -393,7 +393,7 @@ private struct TileCard: View {
           }
           if let summary = tile.summary {
             Text(summary)
-              .font(.footnote)
+              .font(.body)
               .foregroundStyle(.secondary)
               .lineLimit(3)
           }
@@ -409,25 +409,25 @@ private struct TileCard: View {
         case .finding:
           if let claim = tile.claim, !claim.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             VStack(alignment: .leading, spacing: 4) {
-              Text("Claim")
+              Text("Key Finding")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
               Text(claim)
-                .font(.footnote)
+                .font(.body)
                 .foregroundStyle(.secondary)
                 .lineLimit(4)
             }
           } else if let content = tile.content, !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             // Fallback: show content preview when claim is absent
             Text(content)
-              .font(.footnote)
+              .font(.body)
               .foregroundStyle(.secondary)
               .lineLimit(4)
           }
 
           if let confidence = tile.confidence {
             HStack(spacing: 6) {
-              Text("Confidence")
+              Text("Certainty")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
               ConfidenceBar(value: confidence)
@@ -441,7 +441,7 @@ private struct TileCard: View {
                 .foregroundStyle(.secondary)
               ForEach(topBullets(summary, max: 3), id: \.self) { line in
                 Text("• \(line)")
-                  .font(.system(size: 11))
+                  .font(.body)
                   .foregroundStyle(.secondary)
                   .lineLimit(2)
               }
@@ -724,17 +724,17 @@ private struct TileDetailView: View {
               .textFieldStyle(.roundedBorder)
               .lineLimit(4, reservesSpace: true)
 
-            // Claim
-            Text("Claim")
+            // Key Finding
+            Text("Key Finding")
               .font(.footnote)
               .foregroundStyle(.secondary)
             TextField("State the finding…", text: $editClaim, axis: .vertical)
               .textFieldStyle(.roundedBorder)
               .lineLimit(4, reservesSpace: true)
 
-            // Confidence
+            // Certainty
             HStack {
-              Text("Confidence")
+              Text("Certainty")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
               Slider(value: $editConfidence, in: 0...1, step: 0.05)
