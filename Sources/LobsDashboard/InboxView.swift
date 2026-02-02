@@ -234,6 +234,14 @@ struct InboxView: View {
       }
     }
     .background(ITheme.boardBg)
+    .overlay {
+      InboxArrowKeyMonitor(
+        onUp: { selectAdjacentItem(direction: -1) },
+        onDown: { selectAdjacentItem(direction: 1) },
+        onEscape: { isPresented = false }
+      )
+      .frame(width: 0, height: 0)
+    }
     .onAppear {
       if !didApplyInitialSelection, let targetId = initialSelectedItemId,
          let item = vm.inboxItems.first(where: { $0.id == targetId }) {
@@ -242,6 +250,74 @@ struct InboxView: View {
         didApplyInitialSelection = true
       }
     }
+  }
+
+  private func selectAdjacentItem(direction: Int) {
+    let items = filteredItems
+    guard !items.isEmpty else { return }
+
+    if let current = selectedItem,
+       let idx = items.firstIndex(where: { $0.id == current.id }) {
+      let newIdx = idx + direction
+      if newIdx >= 0 && newIdx < items.count {
+        selectedItem = items[newIdx]
+        vm.markInboxItemRead(items[newIdx])
+      }
+    } else {
+      // Nothing selected — select first or last depending on direction
+      let item = direction > 0 ? items.first! : items.last!
+      selectedItem = item
+      vm.markInboxItemRead(item)
+    }
+  }
+}
+
+// MARK: - Inbox Arrow Key Monitor
+
+/// NSEvent-based arrow key handler for inbox navigation.
+/// Skips interception when a text field is focused.
+private struct InboxArrowKeyMonitor: NSViewRepresentable {
+  let onUp: () -> Void
+  let onDown: () -> Void
+  let onEscape: () -> Void
+
+  func makeNSView(context: Context) -> NSView {
+    let view = NSView()
+    context.coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+      // Let text fields handle their own key events
+      if let responder = NSApp.keyWindow?.firstResponder,
+         responder is NSTextView || responder is NSTextField {
+        return event
+      }
+      switch event.keyCode {
+      case 125: // down arrow
+        DispatchQueue.main.async { self.onDown() }
+        return nil
+      case 126: // up arrow
+        DispatchQueue.main.async { self.onUp() }
+        return nil
+      case 53: // escape
+        DispatchQueue.main.async { self.onEscape() }
+        return nil
+      default:
+        return event
+      }
+    }
+    return view
+  }
+
+  func updateNSView(_ nsView: NSView, context: Context) {}
+
+  static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+    if let monitor = coordinator.monitor {
+      NSEvent.removeMonitor(monitor)
+    }
+  }
+
+  func makeCoordinator() -> Coordinator { Coordinator() }
+
+  class Coordinator {
+    var monitor: Any?
   }
 }
 
