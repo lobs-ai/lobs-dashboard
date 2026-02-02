@@ -2607,25 +2607,79 @@ final class AppViewModel: ObservableObject {
 
   // MARK: - Keyboard Navigation
 
+  /// Tasks in the same column as the currently selected task.
+  private func tasksInCurrentColumn() -> [DashboardTask] {
+    guard let currentId = selectedTaskId,
+          let current = filteredTasks.first(where: { $0.id == currentId }) else {
+      return filteredTasks
+    }
+    // Find which column the current task belongs to
+    let col = columns.first(where: { $0.matches(current) })
+    guard let col else { return filteredTasks }
+    return filteredTasks.filter(col.matches)
+  }
+
   func selectNextTask() {
-    let visible = filteredTasks
+    let visible = tasksInCurrentColumn()
     guard !visible.isEmpty else { return }
     if let current = selectedTaskId, let idx = visible.firstIndex(where: { $0.id == current }) {
       let next = min(idx + 1, visible.count - 1)
       selectTask(visible[next])
     } else {
-      selectTask(visible[0])
+      // Nothing selected — select first task in first non-empty column
+      let allVisible = filteredTasks
+      if let first = allVisible.first { selectTask(first) }
     }
   }
 
   func selectPreviousTask() {
-    let visible = filteredTasks
+    let visible = tasksInCurrentColumn()
     guard !visible.isEmpty else { return }
     if let current = selectedTaskId, let idx = visible.firstIndex(where: { $0.id == current }) {
       let prev = max(idx - 1, 0)
       selectTask(visible[prev])
     } else {
-      selectTask(visible[visible.count - 1])
+      let allVisible = filteredTasks
+      if let last = allVisible.last { selectTask(last) }
+    }
+  }
+
+  /// Move selection to the next column (right arrow).
+  func selectNextColumn() {
+    guard let currentId = selectedTaskId,
+          let current = filteredTasks.first(where: { $0.id == currentId }) else {
+      // Nothing selected — select first task
+      if let first = filteredTasks.first { selectTask(first) }
+      return
+    }
+    let currentColIdx = columns.firstIndex(where: { $0.matches(current) }) ?? 0
+    // Find next non-empty column
+    for offset in 1...columns.count {
+      let nextIdx = (currentColIdx + offset) % columns.count
+      let colTasks = filteredTasks.filter(columns[nextIdx].matches)
+      if let first = colTasks.first {
+        selectTask(first)
+        return
+      }
+    }
+  }
+
+  /// Move selection to the previous column (left arrow).
+  func selectPreviousColumn() {
+    guard let currentId = selectedTaskId,
+          let current = filteredTasks.first(where: { $0.id == currentId }) else {
+      if let first = filteredTasks.first { selectTask(first) }
+      return
+    }
+    let currentColIdx = columns.firstIndex(where: { $0.matches(current) }) ?? 0
+    // Find previous non-empty column
+    for offset in 1...columns.count {
+      let prevIdx = (currentColIdx - offset + columns.count) % columns.count
+      let colTasks = filteredTasks.filter(columns[prevIdx].matches)
+      if let first = colTasks.first {
+        selectTask(first)
+        return
+      }
     }
   }
 

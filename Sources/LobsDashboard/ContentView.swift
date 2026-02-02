@@ -265,6 +265,8 @@ struct ContentView: View {
         onRefresh: { vm.reload() },
         onNextTask: { vm.selectNextTask() },
         onPrevTask: { vm.selectPreviousTask() },
+        onNextColumn: { vm.selectNextColumn() },
+        onPrevColumn: { vm.selectPreviousColumn() },
         onSearch: { /* Focus is handled by ⌘F via toolbar */ },
         onHelp: { showHelp = true },
         onEscape: {
@@ -286,6 +288,8 @@ private struct KeyboardShortcutReceiver: View {
   let onRefresh: () -> Void
   let onNextTask: () -> Void
   let onPrevTask: () -> Void
+  var onNextColumn: (() -> Void)? = nil
+  var onPrevColumn: (() -> Void)? = nil
   let onSearch: () -> Void
   var onHelp: (() -> Void)? = nil
   var onEscape: (() -> Bool)? = nil
@@ -309,7 +313,7 @@ private struct KeyboardShortcutReceiver: View {
     .allowsHitTesting(false)
     #if os(macOS)
     .background(
-      ArrowKeyMonitor(onDown: onNextTask, onUp: onPrevTask, onEscape: onEscape)
+      ArrowKeyMonitor(onDown: onNextTask, onUp: onPrevTask, onRight: onNextColumn, onLeft: onPrevColumn, onEscape: onEscape)
     )
     #endif
   }
@@ -321,11 +325,15 @@ private struct KeyboardShortcutReceiver: View {
 private struct ArrowKeyMonitor: NSViewRepresentable {
   let onDown: () -> Void
   let onUp: () -> Void
+  var onRight: (() -> Void)? = nil
+  var onLeft: (() -> Void)? = nil
   var onEscape: (() -> Bool)? = nil
 
   func makeNSView(context: Context) -> NSView {
     let view = NSView()
     context.coordinator.onEscape = onEscape
+    context.coordinator.onRight = onRight
+    context.coordinator.onLeft = onLeft
     context.coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
       // Escape key — close overlays first (works even when text fields are focused)
       if event.keyCode == 53 { // escape
@@ -348,6 +356,18 @@ private struct ArrowKeyMonitor: NSViewRepresentable {
       case 126: // up arrow
         DispatchQueue.main.async { self.onUp() }
         return nil // consume
+      case 124: // right arrow
+        if let handler = context.coordinator.onRight {
+          DispatchQueue.main.async { handler() }
+          return nil
+        }
+        return event
+      case 123: // left arrow
+        if let handler = context.coordinator.onLeft {
+          DispatchQueue.main.async { handler() }
+          return nil
+        }
+        return event
       default:
         return event
       }
@@ -357,6 +377,8 @@ private struct ArrowKeyMonitor: NSViewRepresentable {
 
   func updateNSView(_ nsView: NSView, context: Context) {
     context.coordinator.onEscape = onEscape
+    context.coordinator.onRight = onRight
+    context.coordinator.onLeft = onLeft
   }
 
   static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
@@ -370,6 +392,8 @@ private struct ArrowKeyMonitor: NSViewRepresentable {
   class Coordinator {
     var monitor: Any?
     var onEscape: (() -> Bool)?
+    var onRight: (() -> Void)?
+    var onLeft: (() -> Void)?
   }
 }
 #endif
