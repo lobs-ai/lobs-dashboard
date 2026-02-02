@@ -784,6 +784,49 @@ final class LobsControlStore {
     }
   }
 
+  // MARK: - Task Templates
+
+  private var templatesDirURL: URL {
+    repoRoot.appendingPathComponent("state").appendingPathComponent("templates")
+  }
+
+  func loadTemplates() throws -> [TaskTemplate] {
+    let dir = templatesDirURL
+    guard FileManager.default.fileExists(atPath: dir.path) else { return [] }
+
+    let items = try FileManager.default.contentsOfDirectory(
+      at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+    )
+
+    let dec = decoder()
+    var templates: [TaskTemplate] = []
+    for url in items where url.pathExtension.lowercased() == "json" {
+      do {
+        let data = try Data(contentsOf: url)
+        let t = try dec.decode(TaskTemplate.self, from: data)
+        templates.append(t)
+      } catch {
+        continue
+      }
+    }
+    templates.sort { $0.name.lowercased() < $1.name.lowercased() }
+    return templates
+  }
+
+  func saveTemplate(_ template: TaskTemplate) throws {
+    try FileManager.default.createDirectory(at: templatesDirURL, withIntermediateDirectories: true)
+    let url = templatesDirURL.appendingPathComponent("\(template.id).json")
+    let data = try encoder().encode(template)
+    try data.write(to: url, options: [.atomic])
+  }
+
+  func deleteTemplate(id: String) throws {
+    let url = templatesDirURL.appendingPathComponent("\(id).json")
+    if FileManager.default.fileExists(atPath: url.path) {
+      try FileManager.default.removeItem(at: url)
+    }
+  }
+
   // MARK: - Project README
 
   private func projectReadmeURL(projectId: String) -> URL {

@@ -49,6 +49,7 @@ struct ContentView: View {
   @State private var showAllDone = false
   @State private var showAllRejected = false
   @State private var quickAddText = ""
+  @State private var showTemplates = false
 
   var body: some View {
     ZStack(alignment: .top) {
@@ -63,7 +64,8 @@ struct ContentView: View {
           showCreateProject: $showCreateProject,
           editingProject: $editingProject,
           showSettings: $showSettings,
-          showInbox: $showInbox
+          showInbox: $showInbox,
+          showTemplates: $showTemplates
         )
 
         // Stats bar
@@ -167,6 +169,9 @@ struct ContentView: View {
     .sheet(item: $editingProject) { project in
       EditProjectSheet(vm: vm, project: project)
     }
+    .sheet(isPresented: $showTemplates) {
+      TemplateManagerSheet(vm: vm)
+    }
     .onAppear { vm.reloadIfPossible() }
     // Keyboard shortcuts (Task #84248F22)
     .background(
@@ -266,6 +271,7 @@ private struct ToolbarArea: View {
   @Binding var editingProject: Project?
   @Binding var showSettings: Bool
   @Binding var showInbox: Bool
+  @Binding var showTemplates: Bool
 
   var body: some View {
     HStack(spacing: 12) {
@@ -476,6 +482,46 @@ private struct ToolbarArea: View {
       }
       .buttonStyle(.plain)
       .help("Inbox — Design Docs & Artifacts")
+
+      // Templates button
+      if !vm.templates.isEmpty {
+        Menu {
+          ForEach(vm.templates) { template in
+            Button {
+              vm.stampTemplate(template, autoPush: true)
+            } label: {
+              Label(template.name, systemImage: "doc.on.doc")
+            }
+          }
+          Divider()
+          Button {
+            showTemplates = true
+          } label: {
+            Label("Manage Templates…", systemImage: "pencil")
+          }
+        } label: {
+          Image(systemName: "doc.on.doc")
+            .font(.body)
+            .padding(6)
+            .background(Theme.subtle)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Task Templates")
+      } else {
+        Button {
+          showTemplates = true
+        } label: {
+          Image(systemName: "doc.on.doc")
+            .font(.body)
+            .padding(6)
+            .background(Theme.subtle)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .help("Task Templates")
+      }
 
       // Action buttons
       ToolbarButton(icon: "plus", label: "New task", shortcut: "⌘N") {
@@ -1887,5 +1933,232 @@ final class TaskDetailWindowController {
     window.makeKeyAndOrderFront(nil)
 
     openWindows[task.id] = window
+  }
+}
+
+// MARK: - Template Manager Sheet
+
+private struct TemplateManagerSheet: View {
+  @ObservedObject var vm: AppViewModel
+  @Environment(\.dismiss) private var dismiss
+
+  @State private var showCreateTemplate = false
+  @State private var editingTemplate: TaskTemplate? = nil
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      HStack {
+        Image(systemName: "doc.on.doc.fill")
+          .font(.title2)
+          .foregroundStyle(.linearGradient(
+            colors: [.orange, .red],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+          ))
+        Text("Task Templates")
+          .font(.title3)
+          .fontWeight(.bold)
+        Spacer()
+        Button { showCreateTemplate = true } label: {
+          Label("New Template", systemImage: "plus")
+        }
+        .buttonStyle(.bordered)
+      }
+
+      if vm.templates.isEmpty {
+        VStack(spacing: 12) {
+          Image(systemName: "doc.on.doc")
+            .font(.system(size: 36))
+            .foregroundStyle(.quaternary)
+          Text("No templates yet")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+          Text("Create a template to stamp out batches of pre-filled tasks")
+            .font(.footnote)
+            .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 40)
+      } else {
+        ScrollView {
+          LazyVStack(spacing: 8) {
+            ForEach(vm.templates) { template in
+              HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                  Text(template.name)
+                    .font(.callout)
+                    .fontWeight(.semibold)
+                  if let desc = template.description, !desc.isEmpty {
+                    Text(desc)
+                      .font(.footnote)
+                      .foregroundStyle(.secondary)
+                      .lineLimit(2)
+                  }
+                  Text("\(template.items.count) task\(template.items.count == 1 ? "" : "s")")
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
+                }
+
+                Spacer()
+
+                Button {
+                  vm.stampTemplate(template, autoPush: true)
+                  dismiss()
+                } label: {
+                  Label("Use", systemImage: "plus.circle")
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                  editingTemplate = template
+                } label: {
+                  Image(systemName: "pencil")
+                }
+                .buttonStyle(.plain)
+
+                Button(role: .destructive) {
+                  vm.deleteTemplate(id: template.id)
+                } label: {
+                  Image(systemName: "trash")
+                    .foregroundStyle(.red)
+                }
+                .buttonStyle(.plain)
+              }
+              .padding(12)
+              .background(
+                RoundedRectangle(cornerRadius: 10)
+                  .fill(Color(nsColor: .controlBackgroundColor))
+              )
+            }
+          }
+        }
+      }
+
+      HStack {
+        Spacer()
+        Button("Done") { dismiss() }
+          .keyboardShortcut(.cancelAction)
+      }
+    }
+    .padding(20)
+    .frame(minWidth: 500, minHeight: 300)
+    .sheet(isPresented: $showCreateTemplate) {
+      EditTemplateSheet(vm: vm, template: nil)
+    }
+    .sheet(item: $editingTemplate) { template in
+      EditTemplateSheet(vm: vm, template: template)
+    }
+  }
+}
+
+// MARK: - Edit Template Sheet
+
+private struct EditTemplateSheet: View {
+  @ObservedObject var vm: AppViewModel
+  let template: TaskTemplate?
+
+  @Environment(\.dismiss) private var dismiss
+
+  @State private var name: String = ""
+  @State private var description: String = ""
+  @State private var items: [TaskTemplateItem] = []
+
+  private var isEditing: Bool { template != nil }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      Text(isEditing ? "Edit Template" : "New Template")
+        .font(.title3)
+        .fontWeight(.bold)
+
+      TextField("Template name", text: $name)
+        .textFieldStyle(.roundedBorder)
+
+      TextField("Description (optional)", text: $description)
+        .textFieldStyle(.roundedBorder)
+
+      Divider()
+
+      HStack {
+        Text("Tasks")
+          .font(.callout)
+          .fontWeight(.semibold)
+        Spacer()
+        Button {
+          items.append(TaskTemplateItem(id: UUID().uuidString, title: "", notes: nil))
+        } label: {
+          Label("Add Task", systemImage: "plus")
+        }
+        .controlSize(.small)
+      }
+
+      ScrollView {
+        LazyVStack(spacing: 6) {
+          ForEach(items.indices, id: \.self) { idx in
+            HStack(spacing: 8) {
+              Text("\(idx + 1).")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(width: 20)
+
+              VStack(spacing: 4) {
+                TextField("Task title", text: $items[idx].title)
+                  .textFieldStyle(.roundedBorder)
+                  .font(.callout)
+                TextField("Notes (optional)", text: Binding(
+                  get: { items[idx].notes ?? "" },
+                  set: { items[idx].notes = $0.isEmpty ? nil : $0 }
+                ))
+                .textFieldStyle(.roundedBorder)
+                .font(.footnote)
+              }
+
+              Button {
+                items.remove(at: idx)
+              } label: {
+                Image(systemName: "xmark.circle")
+                  .foregroundStyle(.red.opacity(0.6))
+              }
+              .buttonStyle(.plain)
+            }
+          }
+        }
+      }
+      .frame(minHeight: 100, maxHeight: 300)
+
+      HStack {
+        Button("Cancel") { dismiss() }
+          .keyboardShortcut(.cancelAction)
+        Spacer()
+        Button(isEditing ? "Save" : "Create") {
+          let now = Date()
+          let t = TaskTemplate(
+            id: template?.id ?? UUID().uuidString,
+            name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+            description: description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : description.trimmingCharacters(in: .whitespacesAndNewlines),
+            items: items.filter { !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty },
+            createdAt: template?.createdAt ?? now,
+            updatedAt: now
+          )
+          vm.saveTemplate(t)
+          dismiss()
+        }
+        .keyboardShortcut(.defaultAction)
+        .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || items.filter { !$0.title.isEmpty }.isEmpty)
+        .buttonStyle(.borderedProminent)
+      }
+    }
+    .padding(20)
+    .frame(minWidth: 500, minHeight: 400)
+    .onAppear {
+      if let t = template {
+        name = t.name
+        description = t.description ?? ""
+        items = t.items
+      }
+      if items.isEmpty {
+        items = [TaskTemplateItem(id: UUID().uuidString, title: "", notes: nil)]
+      }
+    }
   }
 }

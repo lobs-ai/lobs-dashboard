@@ -300,6 +300,23 @@ struct InboxThread: Codable, Identifiable, Hashable {
   var updatedAt: Date
 }
 
+// MARK: - Task Templates
+
+struct TaskTemplateItem: Codable, Identifiable, Hashable {
+  var id: String
+  var title: String
+  var notes: String?
+}
+
+struct TaskTemplate: Codable, Identifiable, Hashable {
+  var id: String
+  var name: String
+  var description: String?
+  var items: [TaskTemplateItem]
+  var createdAt: Date
+  var updatedAt: Date
+}
+
 struct ProjectsFile: Codable {
   var schemaVersion: Int
   var generatedAt: Date

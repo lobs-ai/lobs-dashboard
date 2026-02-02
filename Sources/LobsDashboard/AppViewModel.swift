@@ -255,6 +255,7 @@ final class AppViewModel: ObservableObject {
       loadTrackerData(store: store)
       loadInboxItems(store: store)
       loadProjectReadme(store: store)
+      loadTemplates()
 
     } catch {
       lastError = String(describing: error)
@@ -495,6 +496,141 @@ final class AppViewModel: ObservableObject {
           repoURL: repoURL,
           message: "Lobs: update project \(selectedProjectId) README",
           autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
+    }
+  }
+
+  // MARK: - Task Templates
+
+  @Published var templates: [TaskTemplate] = []
+
+  func loadTemplates() {
+    guard let repoURL else { templates = []; return }
+    let store = LobsControlStore(repoRoot: repoURL)
+    do {
+      templates = try store.loadTemplates()
+    } catch {
+      templates = []
+    }
+  }
+
+  func saveTemplate(_ template: TaskTemplate) {
+    guard let repoURL else { return }
+
+    if let idx = templates.firstIndex(where: { $0.id == template.id }) {
+      templates[idx] = template
+    } else {
+      templates.append(template)
+    }
+
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.saveTemplate(template)
+    } catch {
+      flashError("Failed to save template: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: save template \(template.id)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
+    }
+  }
+
+  func deleteTemplate(id: String) {
+    guard let repoURL else { return }
+    templates.removeAll { $0.id == id }
+
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.deleteTemplate(id: id)
+    } catch {
+      flashError("Failed to delete template: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: delete template \(id)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
+    }
+  }
+
+  func stampTemplate(_ template: TaskTemplate, autoPush: Bool) {
+    guard let repoURL else { return }
+    let now = Date()
+
+    var newTasks: [DashboardTask] = []
+    for item in template.items {
+      let task = DashboardTask(
+        id: UUID().uuidString,
+        title: item.title,
+        status: .active,
+        owner: .lobs,
+        createdAt: now,
+        updatedAt: now,
+        workState: .notStarted,
+        reviewState: .approved,
+        projectId: selectedProjectId,
+        artifactPath: nil,
+        notes: item.notes,
+        startedAt: now,
+        finishedAt: nil
+      )
+      newTasks.append(task)
+    }
+
+    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+      tasks.append(contentsOf: newTasks)
+    }
+
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      for task in newTasks {
+        _ = try store.addTask(
+          id: task.id,
+          title: task.title,
+          owner: task.owner,
+          status: task.status,
+          projectId: task.projectId,
+          workState: task.workState,
+          reviewState: task.reviewState,
+          notes: task.notes
+        )
+      }
+    } catch {
+      flashError("Failed to create tasks from template: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: stamp template \(template.name) (\(newTasks.count) tasks)",
+          autoPush: autoPush
         )
       } catch {
         flashError("Git push failed: \(error.localizedDescription)")
