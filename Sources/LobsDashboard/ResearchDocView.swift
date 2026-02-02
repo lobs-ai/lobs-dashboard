@@ -479,57 +479,86 @@ struct ResearchDocView: View {
 
 // MARK: - Markdown Line with Citations
 
-/// Renders a single line of text, replacing [N] patterns with hoverable citation badges.
-/// Uses Text concatenation for natural text flow with styled citation markers.
+/// Renders a single line of text with inline markdown formatting (**bold**, *italic*)
+/// and [N] citation badges. Uses Text concatenation for natural text flow.
 private struct CitationRichText: View {
   let text: String
   let sources: [ResearchSource]
 
-  // Regex to match [N] citation patterns
-  private static let citationPattern = try! NSRegularExpression(pattern: #"\[(\d+)\]"#)
+  /// Combined regex for citations, bold, and italic patterns.
+  /// Order matters: **bold** before *italic* to avoid partial matches.
+  private static let inlinePattern = try! NSRegularExpression(
+    pattern: #"\[(\d+)\]|\*\*(.+?)\*\*|\*(.+?)\*"#
+  )
 
-  /// Parse text into segments: plain text and citation references
-  private var segments: [(String, Int?)] { // (text, citationIndex or nil)
+  /// Segment types for inline rendering
+  private enum Segment {
+    case plain(String)
+    case citation(Int)
+    case bold(String)
+    case italic(String)
+  }
+
+  /// Parse text into typed segments
+  private var segments: [Segment] {
     let nsText = text as NSString
-    let matches = Self.citationPattern.matches(in: text, range: NSRange(location: 0, length: nsText.length))
+    let matches = Self.inlinePattern.matches(in: text, range: NSRange(location: 0, length: nsText.length))
 
-    var result: [(String, Int?)] = []
+    var result: [Segment] = []
     var lastEnd = 0
 
     for match in matches {
       let matchRange = match.range
       if matchRange.location > lastEnd {
         let plainRange = NSRange(location: lastEnd, length: matchRange.location - lastEnd)
-        result.append((nsText.substring(with: plainRange), nil))
+        result.append(.plain(nsText.substring(with: plainRange)))
       }
-      let numRange = match.range(at: 1)
-      if let num = Int(nsText.substring(with: numRange)) {
-        result.append(("[\(num)]", num))
+
+      // Group 1: citation [N]
+      if match.range(at: 1).location != NSNotFound {
+        let numStr = nsText.substring(with: match.range(at: 1))
+        if let num = Int(numStr) {
+          result.append(.citation(num))
+        }
       }
+      // Group 2: **bold**
+      else if match.range(at: 2).location != NSNotFound {
+        result.append(.bold(nsText.substring(with: match.range(at: 2))))
+      }
+      // Group 3: *italic*
+      else if match.range(at: 3).location != NSNotFound {
+        result.append(.italic(nsText.substring(with: match.range(at: 3))))
+      }
+
       lastEnd = matchRange.location + matchRange.length
     }
 
     if lastEnd < nsText.length {
-      result.append((nsText.substring(from: lastEnd), nil))
+      result.append(.plain(nsText.substring(from: lastEnd)))
     }
 
     return result
   }
 
-  /// Build concatenated Text with styled citations inline
+  /// Build concatenated Text with styled inline elements
   private var richText: Text {
     segments.reduce(Text("")) { accumulated, segment in
-      let (segText, citIdx) = segment
-      if let idx = citIdx, idx >= 1, idx <= sources.count {
-        return accumulated + Text("[\(idx)]")
-          .font(.system(size: 11, weight: .bold, design: .rounded))
-          .foregroundColor(.orange)
-          .baselineOffset(4)
-      } else if citIdx != nil {
-        // Out-of-range citation — render as plain text
-        return accumulated + Text(segText)
-      } else {
-        return accumulated + Text(segText)
+      switch segment {
+      case .plain(let str):
+        return accumulated + Text(str)
+      case .citation(let idx):
+        if idx >= 1 && idx <= sources.count {
+          return accumulated + Text("[\(idx)]")
+            .font(.system(size: 11, weight: .bold, design: .rounded))
+            .foregroundColor(.orange)
+            .baselineOffset(4)
+        } else {
+          return accumulated + Text("[\(idx)]")
+        }
+      case .bold(let str):
+        return accumulated + Text(str).bold()
+      case .italic(let str):
+        return accumulated + Text(str).italic()
       }
     }
   }
