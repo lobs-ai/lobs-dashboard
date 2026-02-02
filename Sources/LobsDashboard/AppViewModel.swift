@@ -83,7 +83,6 @@ final class AppViewModel: ObservableObject {
 
   /// Inbox is treated as a filter, not a column.
   @Published var showInboxOnly: Bool = false
-  @Published var focusMode: Bool = false
   @Published var ownerFilter: String = "all" {
     didSet { settings.set(ownerFilter, forKey: ownerFilterKey) }
   }
@@ -2258,11 +2257,6 @@ final class AppViewModel: ObservableObject {
       case .other:
         return true
       }
-    }
-
-    // Focus mode: only show the Active column
-    if focusMode {
-      return [activeCol]
     }
 
     return [
