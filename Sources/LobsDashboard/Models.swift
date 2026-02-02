@@ -268,6 +268,20 @@ struct ResearchRequest: Codable, Identifiable, Hashable {
   var updatedAt: Date
 }
 
+// MARK: - Research Document (doc-based storage)
+
+struct ResearchSource: Codable, Identifiable, Hashable {
+  var id: String
+  var url: String
+  var title: String
+  var tags: [String]?
+  var addedAt: Date
+}
+
+struct ResearchSourcesFile: Codable {
+  var sources: [ResearchSource]
+}
+
 // MARK: - Inbox Item (Design Docs)
 
 struct InboxItem: Identifiable, Hashable {

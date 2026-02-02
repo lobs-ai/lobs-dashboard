@@ -677,7 +677,132 @@ final class LobsControlStore {
     return result
   }
 
-  // MARK: - Research Tiles
+  // MARK: - Research Document (doc-based)
+
+  private func researchDocURL(projectId: String) -> URL {
+    researchDirURL.appendingPathComponent(projectId).appendingPathComponent("doc.md")
+  }
+
+  private func researchSourcesURL(projectId: String) -> URL {
+    researchDirURL.appendingPathComponent(projectId).appendingPathComponent("sources.json")
+  }
+
+  func loadResearchDoc(projectId: String) throws -> String {
+    let url = researchDocURL(projectId: projectId)
+    guard FileManager.default.fileExists(atPath: url.path) else { return "" }
+    return try String(contentsOf: url, encoding: .utf8)
+  }
+
+  func saveResearchDoc(projectId: String, content: String) throws {
+    let dir = researchDirURL.appendingPathComponent(projectId)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let url = researchDocURL(projectId: projectId)
+    try content.write(to: url, atomically: true, encoding: .utf8)
+  }
+
+  func loadResearchSources(projectId: String) throws -> [ResearchSource] {
+    let url = researchSourcesURL(projectId: projectId)
+    guard FileManager.default.fileExists(atPath: url.path) else { return [] }
+    let data = try Data(contentsOf: url)
+    let file = try decoder().decode(ResearchSourcesFile.self, from: data)
+    return file.sources
+  }
+
+  func saveResearchSources(projectId: String, sources: [ResearchSource]) throws {
+    let dir = researchDirURL.appendingPathComponent(projectId)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let url = researchSourcesURL(projectId: projectId)
+    let file = ResearchSourcesFile(sources: sources)
+    let data = try encoder().encode(file)
+    try data.write(to: url, options: [.atomic])
+  }
+
+  /// One-time migration: convert tiles to doc.md + sources.json.
+  func migrateResearchTilesToDoc(projectId: String) throws {
+    let tiles = try loadTiles(projectId: projectId)
+    guard !tiles.isEmpty else { return }
+
+    // Check if already migrated
+    let docURL = researchDocURL(projectId: projectId)
+    if FileManager.default.fileExists(atPath: docURL.path) { return }
+
+    var markdown = ""
+    var sources: [ResearchSource] = []
+
+    // Group by type
+    let findings = tiles.filter { $0.type == .finding }
+    let notes = tiles.filter { $0.type == .note }
+    let links = tiles.filter { $0.type == .link }
+    let comparisons = tiles.filter { $0.type == .comparison }
+
+    if !findings.isEmpty {
+      markdown += "## Findings\n\n"
+      for tile in findings {
+        markdown += "### \(tile.title)\n\n"
+        if let claim = tile.claim { markdown += "\(claim)\n\n" }
+        if let evidence = tile.evidence, !evidence.isEmpty {
+          markdown += "**Evidence:**\n"
+          for e in evidence { markdown += "- \(e)\n" }
+          markdown += "\n"
+        }
+        if let confidence = tile.confidence {
+          markdown += "_Confidence: \(Int(confidence * 100))%_\n\n"
+        }
+      }
+    }
+
+    if !comparisons.isEmpty {
+      markdown += "## Comparisons\n\n"
+      for tile in comparisons {
+        markdown += "### \(tile.title)\n\n"
+        if let options = tile.options {
+          for opt in options {
+            markdown += "**\(opt.name)**\n"
+            if let pros = opt.pros { for p in pros { markdown += "- ✅ \(p)\n" } }
+            if let cons = opt.cons { for c in cons { markdown += "- ❌ \(c)\n" } }
+            if let cost = opt.cost { markdown += "- 💰 Cost: \(cost)\n" }
+            if let notes = opt.notes { markdown += "- 📝 \(notes)\n" }
+            markdown += "\n"
+          }
+        }
+      }
+    }
+
+    if !notes.isEmpty {
+      markdown += "## Notes\n\n"
+      for tile in notes {
+        markdown += "### \(tile.title)\n\n"
+        if let content = tile.content { markdown += "\(content)\n\n" }
+      }
+    }
+
+    // Extract sources from link tiles
+    for tile in links {
+      if let url = tile.url {
+        sources.append(ResearchSource(
+          id: tile.id,
+          url: url,
+          title: tile.title,
+          tags: tile.tags,
+          addedAt: tile.createdAt
+        ))
+      }
+      // Also add link summaries to doc
+      if markdown.isEmpty || !links.isEmpty {
+        if links.first?.id == tile.id { markdown += "## Sources\n\n" }
+        markdown += "- [\(tile.title)](\(tile.url ?? ""))"
+        if let summary = tile.summary { markdown += " — \(summary)" }
+        markdown += "\n"
+      }
+    }
+
+    try saveResearchDoc(projectId: projectId, content: markdown)
+    if !sources.isEmpty {
+      try saveResearchSources(projectId: projectId, sources: sources)
+    }
+  }
+
+  // MARK: - Research Tiles (legacy)
 
   func loadTiles(projectId: String) throws -> [ResearchTile] {
     let dir = tilesDirURL(projectId: projectId)

@@ -102,7 +102,7 @@ struct ContentView: View {
               vm.showOverview = false
             }
           } else if vm.isResearchProject {
-            ResearchBoardView(vm: vm)
+            ResearchDocView(vm: vm)
           } else if vm.isTrackerProject {
             TrackerBoardView(vm: vm)
           } else {

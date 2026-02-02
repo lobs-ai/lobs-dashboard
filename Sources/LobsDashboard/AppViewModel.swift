@@ -23,9 +23,13 @@ final class AppViewModel: ObservableObject {
   @Published var selectedTaskId: String? = nil
 
   // Research
-  @Published var researchTiles: [ResearchTile] = []
+  @Published var researchTiles: [ResearchTile] = []  // Legacy tiles
   @Published var researchRequests: [ResearchRequest] = []
   @Published var selectedTileId: String? = nil
+
+  // Research Document (doc-based)
+  @Published var researchDocContent: String = ""
+  @Published var researchSources: [ResearchSource] = []
 
   // Tracker
   @Published var trackerItems: [TrackerItem] = []
@@ -313,13 +317,113 @@ final class AppViewModel: ObservableObject {
     guard isResearchProject else {
       researchTiles = []
       researchRequests = []
+      researchDocContent = ""
+      researchSources = []
       return
     }
     do {
+      // Try migrating tiles to doc if needed
+      try s.migrateResearchTilesToDoc(projectId: selectedProjectId)
+
+      // Load doc-based content
+      researchDocContent = try s.loadResearchDoc(projectId: selectedProjectId)
+      researchSources = try s.loadResearchSources(projectId: selectedProjectId)
+
+      // Still load legacy tiles (for backwards compat during transition)
       researchTiles = try s.loadTiles(projectId: selectedProjectId)
       researchRequests = try s.loadRequests(projectId: selectedProjectId)
     } catch {
       flashError("Failed to load research data: \(error.localizedDescription)")
+    }
+  }
+
+  // MARK: - Research Document Actions
+
+  func saveResearchDocContent(_ content: String) {
+    guard let repoURL else { return }
+    researchDocContent = content
+
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.saveResearchDoc(projectId: selectedProjectId, content: content)
+    } catch {
+      flashError("Failed to save research doc: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: update research doc for \(selectedProjectId)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
+    }
+  }
+
+  func addResearchSource(url: String, title: String, tags: [String]? = nil) {
+    guard let repoURL else { return }
+    let source = ResearchSource(
+      id: UUID().uuidString,
+      url: url,
+      title: title,
+      tags: tags,
+      addedAt: Date()
+    )
+    researchSources.append(source)
+
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.saveResearchSources(projectId: selectedProjectId, sources: researchSources)
+    } catch {
+      flashError("Failed to save source: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: add research source for \(selectedProjectId)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
+    }
+  }
+
+  func removeResearchSource(id: String) {
+    guard let repoURL else { return }
+    researchSources.removeAll { $0.id == id }
+
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.saveResearchSources(projectId: selectedProjectId, sources: researchSources)
+    } catch {
+      flashError("Failed to save sources: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: remove research source for \(selectedProjectId)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
     }
   }
 
