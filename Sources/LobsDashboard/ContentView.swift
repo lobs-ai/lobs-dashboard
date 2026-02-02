@@ -199,7 +199,12 @@ struct ContentView: View {
         onRefresh: { vm.reload() },
         onNextTask: { vm.selectNextTask() },
         onPrevTask: { vm.selectPreviousTask() },
-        onSearch: { /* Focus is handled by ⌘F via toolbar */ }
+        onSearch: { /* Focus is handled by ⌘F via toolbar */ },
+        onEscape: {
+          if showInbox { withAnimation { showInbox = false }; return true }
+          if showSettings { showSettings = false; return true }
+          return false
+        }
       )
     )
   }
@@ -213,6 +218,7 @@ private struct KeyboardShortcutReceiver: View {
   let onNextTask: () -> Void
   let onPrevTask: () -> Void
   let onSearch: () -> Void
+  var onEscape: (() -> Bool)? = nil
 
   var body: some View {
     Group {
@@ -228,7 +234,7 @@ private struct KeyboardShortcutReceiver: View {
     .allowsHitTesting(false)
     #if os(macOS)
     .background(
-      ArrowKeyMonitor(onDown: onNextTask, onUp: onPrevTask)
+      ArrowKeyMonitor(onDown: onNextTask, onUp: onPrevTask, onEscape: onEscape)
     )
     #endif
   }
@@ -240,10 +246,20 @@ private struct KeyboardShortcutReceiver: View {
 private struct ArrowKeyMonitor: NSViewRepresentable {
   let onDown: () -> Void
   let onUp: () -> Void
+  var onEscape: (() -> Bool)? = nil
 
   func makeNSView(context: Context) -> NSView {
     let view = NSView()
+    context.coordinator.onEscape = onEscape
     context.coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+      // Escape key — close overlays first (works even when text fields are focused)
+      if event.keyCode == 53 { // escape
+        if let handler = context.coordinator.onEscape {
+          let handled = DispatchQueue.main.sync { handler() }
+          if handled { return nil }
+        }
+        return event
+      }
       // Let text fields handle their own key events
       if let responder = NSApp.keyWindow?.firstResponder,
          responder is NSTextView || responder is NSTextField {
@@ -263,7 +279,9 @@ private struct ArrowKeyMonitor: NSViewRepresentable {
     return view
   }
 
-  func updateNSView(_ nsView: NSView, context: Context) {}
+  func updateNSView(_ nsView: NSView, context: Context) {
+    context.coordinator.onEscape = onEscape
+  }
 
   static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
     if let monitor = coordinator.monitor {
@@ -275,6 +293,7 @@ private struct ArrowKeyMonitor: NSViewRepresentable {
 
   class Coordinator {
     var monitor: Any?
+    var onEscape: (() -> Bool)?
   }
 }
 #endif
