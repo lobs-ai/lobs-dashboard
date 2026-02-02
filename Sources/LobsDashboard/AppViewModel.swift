@@ -224,7 +224,8 @@ final class AppViewModel: ObservableObject {
         let file = try store.loadTasks()
         // Only update if something changed (avoid UI flicker).
         if file.tasks.map({ $0.id }).sorted() != tasks.map({ $0.id }).sorted()
-          || file.tasks.map({ $0.updatedAt }) != tasks.map({ $0.updatedAt }) {
+          || file.tasks.map({ $0.updatedAt }) != tasks.map({ $0.updatedAt })
+          || file.tasks.map({ $0.status.rawValue }) != tasks.map({ $0.status.rawValue }) {
           tasks = file.tasks
           try loadArtifactForSelected(store: store)
         }
