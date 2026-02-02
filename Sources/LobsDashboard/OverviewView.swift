@@ -818,11 +818,58 @@ private struct DetailedStatsView: View {
   let projects: [Project]
   var researchRequestCountsByProject: [String: Int] = [:]
 
+  /// Week offset: 0 = current week, -1 = last week, etc.
+  @State private var weekOffset: Int = 0
+
+  private let calendar = Calendar.current
+
   private var totalOpenResearchRequests: Int {
     researchRequestCountsByProject.values.reduce(0, +)
   }
 
-  // Status breakdown
+  /// Start of the selected week (Monday).
+  private var weekStart: Date {
+    let now = Date()
+    let shifted = calendar.date(byAdding: .weekOfYear, value: weekOffset, to: now) ?? now
+    var comps = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: shifted)
+    comps.weekday = 2 // Monday
+    return calendar.date(from: comps) ?? shifted
+  }
+
+  /// End of the selected week (Sunday 23:59:59).
+  private var weekEnd: Date {
+    calendar.date(byAdding: .day, value: 7, to: weekStart) ?? weekStart
+  }
+
+  /// Human-readable week label.
+  private var weekLabel: String {
+    if weekOffset == 0 { return "This Week" }
+    if weekOffset == -1 { return "Last Week" }
+    let df = DateFormatter()
+    df.dateFormat = "MMM d"
+    let start = df.string(from: weekStart)
+    let end = df.string(from: calendar.date(byAdding: .day, value: 6, to: weekStart) ?? weekStart)
+    return "\(start) – \(end)"
+  }
+
+  private var isCurrentWeek: Bool { weekOffset == 0 }
+
+  /// Tasks completed during the selected week.
+  private var completedThisWeek: [DashboardTask] {
+    tasks.filter { $0.status == .completed && $0.updatedAt >= weekStart && $0.updatedAt < weekEnd }
+  }
+
+  /// Tasks created during the selected week.
+  private var createdThisWeek: [DashboardTask] {
+    tasks.filter { $0.createdAt >= weekStart && $0.createdAt < weekEnd }
+  }
+
+  /// Tasks updated during the selected week.
+  private var updatedThisWeek: [DashboardTask] {
+    tasks.filter { $0.updatedAt >= weekStart && $0.updatedAt < weekEnd }
+  }
+
+  // Status breakdown (all-time for context)
   private var statusBreakdown: [(String, Int, Color)] {
     let active = tasks.filter { $0.status == .active || $0.status == .waitingOn }.count
     let completed = tasks.filter { $0.status == .completed }.count
@@ -848,7 +895,18 @@ private struct DetailedStatsView: View {
     .sorted { $0.1 > $1.1 }
   }
 
-  // Completion rate
+  // Weekly per-project completions
+  private var weeklyCompletionsByProject: [(String, Int)] {
+    var counts: [String: Int] = [:]
+    for task in completedThisWeek {
+      let projectId = task.projectId ?? "default"
+      let name = projects.first(where: { $0.id == projectId })?.title ?? projectId
+      counts[name, default: 0] += 1
+    }
+    return counts.sorted { $0.value > $1.value }
+  }
+
+  // Completion rate (all-time)
   private var completionRate: Double {
     let completable = tasks.filter { $0.status == .completed || $0.status == .active || $0.status == .waitingOn }
     guard !completable.isEmpty else { return 0 }
@@ -856,29 +914,18 @@ private struct DetailedStatsView: View {
     return Double(completed) / Double(completable.count)
   }
 
-  // Average time to complete (days)
-  private var avgCompletionDays: Double? {
-    let completedTasks = tasks.filter { $0.status == .completed }
-    guard !completedTasks.isEmpty else { return nil }
-    let totalDays = completedTasks.reduce(0.0) { sum, task in
-      sum + task.updatedAt.timeIntervalSince(task.createdAt) / 86400
+  // Average time to complete (days) — for tasks completed this week
+  private var avgCompletionDaysThisWeek: Double? {
+    let completed = completedThisWeek
+    guard !completed.isEmpty else { return nil }
+    let totalDays = completed.reduce(0.0) { sum, task in
+      let started = task.startedAt ?? task.createdAt
+      return sum + task.updatedAt.timeIntervalSince(started) / 86400
     }
-    return totalDays / Double(completedTasks.count)
+    return totalDays / Double(completed.count)
   }
 
-  // Most active projects (by tasks updated in last 14 days)
-  private var mostActiveProjects: [(String, Int)] {
-    let twoWeeksAgo = Calendar.current.date(byAdding: .day, value: -14, to: Date()) ?? Date()
-    var counts: [String: Int] = [:]
-    for task in tasks where task.updatedAt >= twoWeeksAgo {
-      let projectId = task.projectId ?? "default"
-      let name = projects.first(where: { $0.id == projectId })?.title ?? projectId
-      counts[name, default: 0] += 1
-    }
-    return counts.sorted { $0.value > $1.value }.prefix(5).map { ($0.key, $0.value) }
-  }
-
-  // Owner breakdown
+  // Owner breakdown (active tasks)
   private var ownerBreakdown: [(String, Int)] {
     var counts: [String: Int] = [:]
     for task in tasks where task.status == .active {
@@ -889,30 +936,86 @@ private struct DetailedStatsView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
-      HStack(spacing: 8) {
+      // Header with week navigation
+      HStack(spacing: 12) {
         Image(systemName: "chart.bar.xaxis")
           .font(.title3)
           .foregroundStyle(.purple)
         Text("Detailed Statistics")
           .font(.headline)
           .fontWeight(.bold)
+
+        Spacer()
+
+        // Week navigation
+        HStack(spacing: 8) {
+          Button {
+            withAnimation(.easeInOut(duration: 0.2)) { weekOffset -= 1 }
+          } label: {
+            Image(systemName: "chevron.left")
+              .font(.footnote.weight(.semibold))
+              .padding(6)
+              .background(OTheme.subtle)
+              .clipShape(Circle())
+          }
+          .buttonStyle(.plain)
+
+          Text(weekLabel)
+            .font(.callout)
+            .fontWeight(.semibold)
+            .frame(minWidth: 120)
+            .animation(.none, value: weekOffset)
+
+          Button {
+            withAnimation(.easeInOut(duration: 0.2)) { weekOffset += 1 }
+          } label: {
+            Image(systemName: "chevron.right")
+              .font(.footnote.weight(.semibold))
+              .padding(6)
+              .background(isCurrentWeek ? OTheme.subtle.opacity(0.3) : OTheme.subtle)
+              .clipShape(Circle())
+          }
+          .buttonStyle(.plain)
+          .disabled(isCurrentWeek)
+
+          if weekOffset != 0 {
+            Button {
+              withAnimation(.easeInOut(duration: 0.2)) { weekOffset = 0 }
+            } label: {
+              Text("Today")
+                .font(.footnote.weight(.medium))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Color.accentColor.opacity(0.12))
+                .foregroundStyle(.accentColor)
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+          }
+        }
       }
 
-      // Top metrics row
+      // Weekly summary metrics
       HStack(spacing: 16) {
         MetricCard(
-          title: "Total Tasks",
-          value: "\(tasks.count)",
-          icon: "list.bullet",
+          title: "Completed",
+          value: "\(completedThisWeek.count)",
+          icon: "checkmark.circle.fill",
+          color: .green
+        )
+        MetricCard(
+          title: "Created",
+          value: "\(createdThisWeek.count)",
+          icon: "plus.circle.fill",
           color: .blue
         )
         MetricCard(
-          title: "Completion Rate",
-          value: String(format: "%.0f%%", completionRate * 100),
-          icon: "percent",
-          color: .green
+          title: "Updated",
+          value: "\(updatedThisWeek.count)",
+          icon: "arrow.triangle.2.circlepath",
+          color: .orange
         )
-        if let avgDays = avgCompletionDays {
+        if let avgDays = avgCompletionDaysThisWeek {
           MetricCard(
             title: "Avg Completion",
             value: avgDays < 1 ? String(format: "%.0fh", avgDays * 24) : String(format: "%.1fd", avgDays),
@@ -920,6 +1023,12 @@ private struct DetailedStatsView: View {
             color: .orange
           )
         }
+        MetricCard(
+          title: "Completion Rate",
+          value: String(format: "%.0f%%", completionRate * 100),
+          icon: "percent",
+          color: .green
+        )
         if totalOpenResearchRequests > 0 {
           MetricCard(
             title: "Research Requests",
@@ -928,16 +1037,69 @@ private struct DetailedStatsView: View {
             color: .purple
           )
         }
-        MetricCard(
-          title: "Active Owners",
-          value: "\(ownerBreakdown.count)",
-          icon: "person.2",
-          color: .purple
-        )
       }
 
       HStack(alignment: .top, spacing: 24) {
-        // Status breakdown
+        // Weekly completions by project
+        VStack(alignment: .leading, spacing: 10) {
+          Text("Completed This Week")
+            .font(.callout)
+            .fontWeight(.semibold)
+
+          if weeklyCompletionsByProject.isEmpty {
+            Text("No completions this week")
+              .font(.footnote)
+              .foregroundStyle(.secondary)
+              .padding(.vertical, 8)
+          } else {
+            ForEach(weeklyCompletionsByProject, id: \.0) { name, count in
+              HStack(spacing: 8) {
+                RoundedRectangle(cornerRadius: 3)
+                  .fill(Color.green)
+                  .frame(width: 4, height: 16)
+                Text(name)
+                  .font(.callout)
+                  .lineLimit(1)
+                Spacer()
+                Text("\(count)")
+                  .font(.callout)
+                  .fontWeight(.medium)
+                  .monospacedDigit()
+              }
+            }
+
+            Divider()
+
+            // List individual completed tasks
+            ForEach(completedThisWeek.sorted(by: { $0.updatedAt > $1.updatedAt }).prefix(10), id: \.id) { task in
+              HStack(spacing: 6) {
+                Image(systemName: "checkmark.circle.fill")
+                  .font(.system(size: 10))
+                  .foregroundStyle(.green)
+                Text(task.title)
+                  .font(.footnote)
+                  .lineLimit(1)
+                Spacer()
+                if let started = task.startedAt {
+                  let dur = task.updatedAt.timeIntervalSince(started)
+                  Text(formatWeekDuration(dur))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                }
+              }
+            }
+          }
+        }
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(OTheme.cardBg)
+        .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
+        .overlay(
+          RoundedRectangle(cornerRadius: OTheme.cardRadius)
+            .stroke(OTheme.border, lineWidth: 0.5)
+        )
+
+        // Status breakdown (all-time snapshot)
         VStack(alignment: .leading, spacing: 10) {
           Text("Tasks by Status")
             .font(.callout)
@@ -951,7 +1113,6 @@ private struct DetailedStatsView: View {
               Text(label)
                 .font(.callout)
                 .frame(width: 80, alignment: .leading)
-              // Bar
               GeometryReader { geo in
                 RoundedRectangle(cornerRadius: 3)
                   .fill(color.opacity(0.3))
@@ -965,18 +1126,10 @@ private struct DetailedStatsView: View {
                 .frame(width: 30, alignment: .trailing)
             }
           }
-        }
-        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(OTheme.cardBg)
-        .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
-        .overlay(
-          RoundedRectangle(cornerRadius: OTheme.cardRadius)
-            .stroke(OTheme.border, lineWidth: 0.5)
-        )
 
-        // Tasks per project
-        VStack(alignment: .leading, spacing: 10) {
+          Divider()
+
+          // Tasks per project
           Text("Tasks per Project")
             .font(.callout)
             .fontWeight(.semibold)
@@ -1023,36 +1176,8 @@ private struct DetailedStatsView: View {
             .stroke(OTheme.border, lineWidth: 0.5)
         )
 
-        // Most active + owner breakdown
+        // Owner breakdown
         VStack(alignment: .leading, spacing: 16) {
-          // Most active projects
-          VStack(alignment: .leading, spacing: 8) {
-            Text("Most Active (14d)")
-              .font(.callout)
-              .fontWeight(.semibold)
-
-            if mostActiveProjects.isEmpty {
-              Text("No recent activity")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            } else {
-              ForEach(mostActiveProjects, id: \.0) { name, count in
-                HStack {
-                  Text(name)
-                    .font(.callout)
-                    .lineLimit(1)
-                  Spacer()
-                  Text("\(count) updates")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                }
-              }
-            }
-          }
-
-          Divider()
-
-          // Owner breakdown
           VStack(alignment: .leading, spacing: 8) {
             Text("Active by Owner")
               .font(.callout)
@@ -1076,6 +1201,36 @@ private struct DetailedStatsView: View {
               }
             }
           }
+
+          Divider()
+
+          // Created this week list
+          VStack(alignment: .leading, spacing: 8) {
+            Text("Created This Week")
+              .font(.callout)
+              .fontWeight(.semibold)
+
+            if createdThisWeek.isEmpty {
+              Text("No tasks created this week")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            } else {
+              ForEach(createdThisWeek.sorted(by: { $0.createdAt > $1.createdAt }).prefix(8), id: \.id) { task in
+                HStack(spacing: 6) {
+                  Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.blue)
+                  Text(task.title)
+                    .font(.footnote)
+                    .lineLimit(1)
+                  Spacer()
+                  Text(task.status.rawValue)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                }
+              }
+            }
+          }
         }
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
         .padding(16)
@@ -1095,6 +1250,16 @@ private struct DetailedStatsView: View {
         .stroke(OTheme.border, lineWidth: 0.5)
     )
   }
+}
+
+private func formatWeekDuration(_ seconds: TimeInterval) -> String {
+  let totalMinutes = Int(seconds / 60)
+  if totalMinutes < 60 { return "\(totalMinutes)m" }
+  let hours = totalMinutes / 60
+  let mins = totalMinutes % 60
+  if hours < 24 { return mins > 0 ? "\(hours)h \(mins)m" : "\(hours)h" }
+  let days = hours / 24
+  return "\(days)d"
 }
 
 private struct MetricCard: View {
