@@ -271,6 +271,7 @@ struct ContentView: View {
           if showInbox { withAnimation(.easeInOut(duration: 0.25)) { showInbox = false }; return true }
           if showSettings { showSettings = false; return true }
           if showHelp { showHelp = false; return true }
+          if vm.isMultiSelectActive { withAnimation { vm.clearMultiSelect() }; return true }
           return false
         },
       )
@@ -973,39 +974,175 @@ private struct BoardView: View {
   @Binding var quickAddText: String
 
   var body: some View {
-    VStack(spacing: 0) {
-      // Project README (pinned context doc)
-      if !vm.projectReadme.isEmpty || vm.selectedProjectId != "default" {
-        ProjectReadmeBar(vm: vm)
-      }
+    ZStack(alignment: .bottom) {
+      VStack(spacing: 0) {
+        // Project README (pinned context doc)
+        if !vm.projectReadme.isEmpty || vm.selectedProjectId != "default" {
+          ProjectReadmeBar(vm: vm)
+        }
 
-      GeometryReader { geo in
-        let columnCount = CGFloat(vm.columns.count)
-        let totalSpacing: CGFloat = 16 * (columnCount - 1) + 40 // inter-column + padding
-        let perColumn = max(Theme.columnMinWidth, (geo.size.width - totalSpacing) / columnCount)
-        let needsScroll = perColumn <= Theme.columnMinWidth
+        GeometryReader { geo in
+          let columnCount = CGFloat(vm.columns.count)
+          let totalSpacing: CGFloat = 16 * (columnCount - 1) + 40 // inter-column + padding
+          let perColumn = max(Theme.columnMinWidth, (geo.size.width - totalSpacing) / columnCount)
+          let needsScroll = perColumn <= Theme.columnMinWidth
 
-        ScrollView(needsScroll ? .horizontal : [], showsIndicators: false) {
-          HStack(alignment: .top, spacing: 16) {
-            ForEach(vm.columns, id: \.title) { col in
-              BoardColumn(
-                title: col.title,
-                tasks: vm.filteredTasks.filter(col.matches),
-                dropStatus: col.dropStatus,
-                vm: vm,
-                autoPush: $autoPush,
-                showAllDone: $showAllDone,
-                showAllRejected: $showAllRejected,
-                quickAddText: $quickAddText,
-                columnWidth: needsScroll ? Theme.columnMinWidth : perColumn
-              )
+          ScrollView(needsScroll ? .horizontal : [], showsIndicators: false) {
+            HStack(alignment: .top, spacing: 16) {
+              ForEach(vm.columns, id: \.title) { col in
+                BoardColumn(
+                  title: col.title,
+                  tasks: vm.filteredTasks.filter(col.matches),
+                  dropStatus: col.dropStatus,
+                  vm: vm,
+                  autoPush: $autoPush,
+                  showAllDone: $showAllDone,
+                  showAllRejected: $showAllRejected,
+                  quickAddText: $quickAddText,
+                  columnWidth: needsScroll ? Theme.columnMinWidth : perColumn
+                )
+              }
             }
+            .padding(20)
+            .frame(minHeight: geo.size.height)
           }
-          .padding(20)
-          .frame(minHeight: geo.size.height)
         }
       }
+
+      // Bulk action bar — floats at bottom when multi-select is active
+      if vm.isMultiSelectActive {
+        BulkActionBar(vm: vm)
+          .transition(.move(edge: .bottom).combined(with: .opacity))
+          .padding(.bottom, 16)
+          .zIndex(50)
+      }
     }
+    .animation(.spring(response: 0.3, dampingFraction: 0.8), value: vm.isMultiSelectActive)
+  }
+}
+
+// MARK: - Bulk Action Bar
+
+private struct BulkActionBar: View {
+  @ObservedObject var vm: AppViewModel
+
+  private var selectedCount: Int { vm.multiSelectedTaskIds.count }
+
+  /// Determine which bulk actions to show based on the statuses of selected tasks.
+  private var hasInboxTasks: Bool {
+    vm.multiSelectedTaskIds.contains(where: { id in
+      vm.tasks.first(where: { $0.id == id })?.status == .inbox
+    })
+  }
+  private var hasActiveTasks: Bool {
+    vm.multiSelectedTaskIds.contains(where: { id in
+      let t = vm.tasks.first(where: { $0.id == id })
+      return t?.status == .active || t?.status == .waitingOn
+    })
+  }
+  private var hasCompletedTasks: Bool {
+    vm.multiSelectedTaskIds.contains(where: { id in
+      vm.tasks.first(where: { $0.id == id })?.status == .completed
+    })
+  }
+
+  var body: some View {
+    HStack(spacing: 12) {
+      // Selection count
+      HStack(spacing: 6) {
+        Image(systemName: "checkmark.circle.fill")
+          .foregroundStyle(.accentColor)
+        Text("\(selectedCount) selected")
+          .font(.callout)
+          .fontWeight(.semibold)
+      }
+
+      Divider()
+        .frame(height: 20)
+
+      // Approve (for inbox tasks)
+      if hasInboxTasks {
+        BulkActionButton(label: "Approve", icon: "checkmark.seal.fill", color: .green) {
+          vm.bulkApproveSelected()
+        }
+      }
+
+      // Complete (for active tasks)
+      if hasActiveTasks {
+        BulkActionButton(label: "Complete", icon: "checkmark.circle.fill", color: .green) {
+          vm.bulkMoveSelected(to: .completed)
+        }
+      }
+
+      // Move to Active (for completed/rejected tasks)
+      if hasCompletedTasks {
+        BulkActionButton(label: "Reopen", icon: "arrow.counterclockwise.circle.fill", color: .blue) {
+          vm.bulkMoveSelected(to: .active)
+        }
+      }
+
+      // Reject
+      BulkActionButton(label: "Reject", icon: "xmark.seal.fill", color: .red) {
+        vm.bulkRejectSelected()
+      }
+
+      Divider()
+        .frame(height: 20)
+
+      // Clear selection
+      Button {
+        withAnimation { vm.clearMultiSelect() }
+      } label: {
+        HStack(spacing: 4) {
+          Image(systemName: "xmark")
+            .font(.footnote)
+          Text("Clear")
+            .font(.footnote)
+            .fontWeight(.medium)
+        }
+        .foregroundStyle(.secondary)
+      }
+      .buttonStyle(.plain)
+    }
+    .padding(.horizontal, 20)
+    .padding(.vertical, 12)
+    .background(
+      RoundedRectangle(cornerRadius: 14)
+        .fill(.ultraThickMaterial)
+        .shadow(color: .black.opacity(0.15), radius: 20, y: 5)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 14)
+        .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+    )
+  }
+}
+
+private struct BulkActionButton: View {
+  let label: String
+  let icon: String
+  let color: Color
+  let action: () -> Void
+
+  @State private var isHovering = false
+
+  var body: some View {
+    Button(action: action) {
+      HStack(spacing: 4) {
+        Image(systemName: icon)
+          .font(.footnote)
+        Text(label)
+          .font(.footnote)
+          .fontWeight(.medium)
+      }
+      .padding(.horizontal, 12)
+      .padding(.vertical, 7)
+      .background(isHovering ? color.opacity(0.2) : color.opacity(0.12))
+      .foregroundStyle(color)
+      .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+    .buttonStyle(.plain)
+    .onHover { h in isHovering = h }
   }
 }
 
@@ -1276,6 +1413,7 @@ private struct TaskTile: View {
   @State private var inlineTitle = ""
 
   private var isSelected: Bool { vm.selectedTaskId == task.id }
+  private var isMultiSelected: Bool { vm.multiSelectedTaskIds.contains(task.id) }
 
   /// Staleness: tasks sitting in inbox/active too long get visual attention.
   /// Yellow → orange → red border after 3/7/14 days.
@@ -1297,7 +1435,22 @@ private struct TaskTile: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
+    HStack(alignment: .top, spacing: 8) {
+      // Multi-select checkbox — visible when multi-select is active or hovering
+      if vm.isMultiSelectActive || isHovering {
+        Button {
+          vm.toggleMultiSelect(taskId: task.id)
+        } label: {
+          Image(systemName: isMultiSelected ? "checkmark.circle.fill" : "circle")
+            .font(.system(size: 16))
+            .foregroundStyle(isMultiSelected ? Color.accentColor : .secondary)
+        }
+        .buttonStyle(.plain)
+        .transition(.opacity.combined(with: .scale(scale: 0.8)))
+        .padding(.top, 2)
+      }
+
+      VStack(alignment: .leading, spacing: 8) {
       if isEditingTitle {
         TextField("Task title", text: $inlineTitle, onCommit: {
           let trimmed = inlineTitle.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1388,29 +1541,42 @@ private struct TaskTile: View {
           .foregroundStyle(staleColor)
         }
       }
-    }
+      } // end inner VStack
+    } // end HStack
     .padding(12)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(
       RoundedRectangle(cornerRadius: Theme.cardRadius)
-        .fill(isSelected ? Theme.accent.opacity(0.08) : Theme.cardBg)
+        .fill(isMultiSelected ? Theme.accent.opacity(0.12) : (isSelected ? Theme.accent.opacity(0.08) : Theme.cardBg))
         .shadow(color: .black.opacity(isHovering ? 0.06 : 0.02), radius: isHovering ? 6 : 2, y: 1)
     )
     .overlay(
       RoundedRectangle(cornerRadius: Theme.cardRadius)
         .stroke(
-          isSelected ? Theme.accent.opacity(0.4)
-            : (stalenessColor?.opacity(0.4) ?? Theme.border),
-          lineWidth: isSelected ? 1.5 : (stalenessColor != nil ? 1.0 : 0.5)
+          isMultiSelected ? Theme.accent.opacity(0.6)
+            : (isSelected ? Theme.accent.opacity(0.4)
+            : (stalenessColor?.opacity(0.4) ?? Theme.border)),
+          lineWidth: isMultiSelected ? 2.0 : (isSelected ? 1.5 : (stalenessColor != nil ? 1.0 : 0.5))
         )
     )
     .scaleEffect(isHovering ? 1.01 : 1.0)
     .animation(.easeOut(duration: 0.15), value: isHovering)
+    .animation(.easeOut(duration: 0.15), value: isMultiSelected)
     .onHover { h in isHovering = h }
     .onTapGesture {
+      // If multi-select is active, toggle selection instead of opening detail
+      if vm.isMultiSelectActive {
+        vm.toggleMultiSelect(taskId: task.id)
+        return
+      }
       vm.selectTask(task)
       showDetail = true
     }
+    .simultaneousGesture(
+      TapGesture().modifiers(.command).onEnded {
+        vm.toggleMultiSelect(taskId: task.id)
+      }
+    )
     .popover(isPresented: $showDetail, arrowEdge: .trailing) {
       TaskDetailPopover(task: task, vm: vm, autoPush: $autoPush, artifactText: vm.artifactText) {
         showDetail = false

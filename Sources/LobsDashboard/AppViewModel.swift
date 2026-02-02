@@ -81,6 +81,24 @@ final class AppViewModel: ObservableObject {
 
   // Kanban UX
   @Published var searchText: String = ""
+  @Published var multiSelectedTaskIds: Set<String> = []
+
+  /// Whether multi-select mode is currently active.
+  var isMultiSelectActive: Bool { !multiSelectedTaskIds.isEmpty }
+
+  /// Toggle a task in/out of the multi-selection.
+  func toggleMultiSelect(taskId: String) {
+    if multiSelectedTaskIds.contains(taskId) {
+      multiSelectedTaskIds.remove(taskId)
+    } else {
+      multiSelectedTaskIds.insert(taskId)
+    }
+  }
+
+  /// Clear multi-selection.
+  func clearMultiSelect() {
+    multiSelectedTaskIds.removeAll()
+  }
 
   /// Inbox is treated as a filter, not a column.
   @Published var showInboxOnly: Bool = false
@@ -1875,6 +1893,158 @@ final class AppViewModel: ObservableObject {
         message: "Lobs: move \(taskId) to \(status.rawValue)",
         autoPush: true
       )
+    }
+  }
+
+  // MARK: - Bulk Actions
+
+  /// Bulk-move all multi-selected tasks to a new status.
+  func bulkMoveSelected(to status: TaskStatus) {
+    guard let repoURL, !multiSelectedTaskIds.isEmpty else { return }
+    let ids = multiSelectedTaskIds
+
+    // Apply local mutations immediately
+    for id in ids {
+      if let idx = tasks.firstIndex(where: { $0.id == id }) {
+        withAnimation(.easeInOut(duration: 0.25)) {
+          tasks[idx].status = status
+          tasks[idx].updatedAt = Date()
+          if status == .completed {
+            tasks[idx].workState = nil
+            if tasks[idx].finishedAt == nil { tasks[idx].finishedAt = Date() }
+          } else if status == .active {
+            tasks[idx].workState = .notStarted
+            if tasks[idx].startedAt == nil { tasks[idx].startedAt = Date() }
+          }
+        }
+      }
+    }
+
+    // Persist to disk
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      for id in ids {
+        if let task = tasks.first(where: { $0.id == id }) {
+          try store.saveExistingTask(task)
+        }
+      }
+    } catch {
+      flashError("Failed to save bulk move: \(error.localizedDescription)")
+      return
+    }
+
+    clearMultiSelect()
+
+    // Git commit+push
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: bulk move \(ids.count) tasks to \(status.rawValue)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
+    }
+
+    // Auto-unblock dependents for completed tasks
+    if status == .completed {
+      for id in ids {
+        autoUnblockDependents(of: id, autoPush: true)
+      }
+    }
+  }
+
+  /// Bulk-approve all multi-selected tasks (inbox → active).
+  func bulkApproveSelected() {
+    guard let repoURL, !multiSelectedTaskIds.isEmpty else { return }
+    let ids = multiSelectedTaskIds
+
+    for id in ids {
+      if let idx = tasks.firstIndex(where: { $0.id == id }) {
+        withAnimation(.easeInOut(duration: 0.25)) {
+          tasks[idx].reviewState = .approved
+          tasks[idx].status = .active
+          tasks[idx].workState = .notStarted
+          tasks[idx].updatedAt = Date()
+          if tasks[idx].startedAt == nil { tasks[idx].startedAt = Date() }
+        }
+      }
+    }
+
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      for id in ids {
+        if let task = tasks.first(where: { $0.id == id }) {
+          try store.saveExistingTask(task)
+        }
+      }
+    } catch {
+      flashError("Failed to save bulk approve: \(error.localizedDescription)")
+      return
+    }
+
+    clearMultiSelect()
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: bulk approve \(ids.count) tasks",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
+    }
+  }
+
+  /// Bulk-reject all multi-selected tasks.
+  func bulkRejectSelected() {
+    guard let repoURL, !multiSelectedTaskIds.isEmpty else { return }
+    let ids = multiSelectedTaskIds
+
+    for id in ids {
+      if let idx = tasks.firstIndex(where: { $0.id == id }) {
+        withAnimation(.easeInOut(duration: 0.25)) {
+          tasks[idx].reviewState = .rejected
+          tasks[idx].status = .rejected
+          tasks[idx].updatedAt = Date()
+        }
+      }
+    }
+
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      for id in ids {
+        if let task = tasks.first(where: { $0.id == id }) {
+          try store.saveExistingTask(task)
+        }
+      }
+    } catch {
+      flashError("Failed to save bulk reject: \(error.localizedDescription)")
+      return
+    }
+
+    clearMultiSelect()
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: bulk reject \(ids.count) tasks",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
     }
   }
 
