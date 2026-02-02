@@ -233,6 +233,7 @@ final class AppViewModel: ObservableObject {
         loadResearchData(store: store)
         loadTrackerData(store: store)
         loadInboxItems(store: store)
+        loadWorkerStatus(store: store)
       } catch {
         // Silent — don't overwrite errors from user actions.
       }
