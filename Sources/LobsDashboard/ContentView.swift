@@ -147,7 +147,8 @@ struct ContentView: View {
       if showInbox {
         Color.black.opacity(0.3)
           .ignoresSafeArea()
-          .onTapGesture { showInbox = false }
+          .onTapGesture { withAnimation(.easeInOut(duration: 0.25)) { showInbox = false } }
+          .transition(.opacity)
           .zIndex(200)
 
         InboxView(vm: vm, isPresented: $showInbox)
@@ -155,14 +156,13 @@ struct ContentView: View {
           .clipShape(RoundedRectangle(cornerRadius: 16))
           .shadow(color: .black.opacity(0.3), radius: 30, y: 10)
           .padding(40)
-          .onExitCommand { showInbox = false }
+          .onExitCommand { withAnimation(.easeInOut(duration: 0.25)) { showInbox = false } }
           .transition(.opacity.combined(with: .scale(scale: 0.95)))
           .zIndex(201)
       }
     }
     .animation(.easeInOut(duration: 0.3), value: vm.errorBanner != nil)
     .animation(.easeOut(duration: 0.2), value: vm.isGitBusy)
-    .animation(.easeInOut(duration: 0.25), value: showInbox)
     .fileImporter(
       isPresented: $showPicker,
       allowedContentTypes: [.folder]
@@ -201,7 +201,7 @@ struct ContentView: View {
         onPrevTask: { vm.selectPreviousTask() },
         onSearch: { /* Focus is handled by ⌘F via toolbar */ },
         onEscape: {
-          if showInbox { withAnimation { showInbox = false }; return true }
+          if showInbox { withAnimation(.easeInOut(duration: 0.25)) { showInbox = false }; return true }
           if showSettings { showSettings = false; return true }
           return false
         }
@@ -498,7 +498,7 @@ private struct ToolbarArea: View {
 
       // Inbox button
       Button {
-        showInbox = true
+        withAnimation(.easeInOut(duration: 0.25)) { showInbox = true }
       } label: {
         ZStack(alignment: .topTrailing) {
           Image(systemName: "tray.full")
