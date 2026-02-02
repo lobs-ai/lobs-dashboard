@@ -2351,6 +2351,7 @@ private struct AddTaskSheet: View {
         }
         .keyboardShortcut(.defaultAction)
         .buttonStyle(.borderedProminent)
+        .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (shouldShowProjectPicker && selectedProjectId.isEmpty))
       }
     }
     .padding(24)
