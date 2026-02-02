@@ -15,6 +15,8 @@ struct LobsDashboardApp: App {
           QuickCapturePanel.shared.setup(vm: vm)
           // Ensure the app becomes key so keyboard input goes to fields.
           NSApp.activate(ignoringOtherApps: true)
+          // Request notification permissions for worker event alerts
+          vm.requestNotificationPermissions()
           // Set app icon from bundled resource
           if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "png"),
              let img = NSImage(contentsOf: url) {

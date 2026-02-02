@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import SwiftUI
+import UserNotifications
 
 @MainActor
 final class AppViewModel: ObservableObject {
@@ -746,6 +747,7 @@ final class AppViewModel: ObservableObject {
   func loadWorkerStatus(store: LobsControlStore? = nil) {
     guard let repoURL else { workerStatus = nil; workerHistory = nil; return }
     let s = store ?? LobsControlStore(repoRoot: repoURL)
+    let oldStatus = workerStatus
     do {
       workerStatus = try s.loadWorkerStatus()
     } catch {
@@ -756,6 +758,53 @@ final class AppViewModel: ObservableObject {
     } catch {
       workerHistory = nil
     }
+
+    // Detect worker state changes and send macOS notifications
+    if let old = oldStatus, let new = workerStatus {
+      // Worker finished (was active, now inactive)
+      if old.active && !new.active {
+        let count = new.tasksCompleted ?? 0
+        sendSystemNotification(
+          title: "Worker Finished",
+          body: "Completed \(count) task\(count == 1 ? "" : "s")."
+        )
+      }
+      // Worker completed a new task (task count increased)
+      else if old.active && new.active,
+              let oldCount = old.tasksCompleted, let newCount = new.tasksCompleted,
+              newCount > oldCount {
+        let taskName = new.currentTask ?? "a task"
+        sendSystemNotification(
+          title: "Task Completed",
+          body: "Finished: \(taskName). (\(newCount) total)"
+        )
+      }
+      // Worker started (was inactive, now active)
+      else if !old.active && new.active {
+        sendSystemNotification(
+          title: "Worker Started",
+          body: new.currentTask.map { "Working on: \($0)" } ?? "Worker is now active."
+        )
+      }
+    }
+  }
+
+  /// Request notification permissions on first use.
+  func requestNotificationPermissions() {
+    UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+  }
+
+  private func sendSystemNotification(title: String, body: String) {
+    let content = UNMutableNotificationContent()
+    content.title = title
+    content.body = body
+    content.sound = .default
+    let request = UNNotificationRequest(
+      identifier: UUID().uuidString,
+      content: content,
+      trigger: nil // deliver immediately
+    )
+    UNUserNotificationCenter.current().add(request) { _ in }
   }
 
   @Published var templates: [TaskTemplate] = []
