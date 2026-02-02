@@ -478,7 +478,35 @@ final class AppViewModel: ObservableObject {
     guard let repoURL else { projectReadme = ""; return }
     let s = store ?? LobsControlStore(repoRoot: repoURL)
     do {
-      projectReadme = try s.loadProjectReadme(projectId: selectedProjectId) ?? ""
+      let readmeContent = try s.loadProjectReadme(projectId: selectedProjectId) ?? ""
+      let projectNotes = projects.first(where: { $0.id == selectedProjectId })?.notes ?? ""
+
+      // Reconcile: README and project notes should always be the same.
+      // If one is populated and the other isn't, sync the populated one to both.
+      if readmeContent.isEmpty && !projectNotes.isEmpty {
+        // Notes exist but README doesn't — create README from notes
+        projectReadme = projectNotes
+        try s.saveProjectReadme(projectId: selectedProjectId, content: projectNotes)
+      } else if !readmeContent.isEmpty && projectNotes.isEmpty {
+        // README exists but notes are empty — update notes from README
+        projectReadme = readmeContent
+        if let idx = projects.firstIndex(where: { $0.id == selectedProjectId }) {
+          projects[idx].notes = readmeContent
+          projects[idx].updatedAt = Date()
+        }
+        try s.updateProjectNotes(id: selectedProjectId, notes: readmeContent)
+      } else {
+        // Both populated (or both empty) — README is the source of truth since
+        // it supports richer content (multi-line markdown).
+        projectReadme = readmeContent
+        if !readmeContent.isEmpty && readmeContent != projectNotes {
+          if let idx = projects.firstIndex(where: { $0.id == selectedProjectId }) {
+            projects[idx].notes = readmeContent
+            projects[idx].updatedAt = Date()
+          }
+          try s.updateProjectNotes(id: selectedProjectId, notes: readmeContent)
+        }
+      }
     } catch {
       projectReadme = ""
     }
@@ -488,9 +516,17 @@ final class AppViewModel: ObservableObject {
     guard let repoURL else { return }
     projectReadme = content
 
+    // Keep project notes in sync with README (they are the same content)
+    let clean = content.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let idx = projects.firstIndex(where: { $0.id == selectedProjectId }) {
+      projects[idx].notes = clean.isEmpty ? nil : clean
+      projects[idx].updatedAt = Date()
+    }
+
     do {
       let store = LobsControlStore(repoRoot: repoURL)
       try store.saveProjectReadme(projectId: selectedProjectId, content: content)
+      try store.updateProjectNotes(id: selectedProjectId, notes: clean.isEmpty ? nil : clean)
     } catch {
       flashError("Failed to save README: \(error.localizedDescription)")
       return
@@ -1046,6 +1082,11 @@ final class AppViewModel: ObservableObject {
       }
       file.projects.append(p)
       try store.saveProjects(file)
+
+      // Keep README in sync with project notes (they are the same content)
+      if let notes = trimmedNotes, !notes.isEmpty {
+        try store.saveProjectReadme(projectId: id, content: notes)
+      }
     } catch {
       flashError("Failed to save project: \(error.localizedDescription)")
       return
@@ -1112,10 +1153,17 @@ final class AppViewModel: ObservableObject {
       projects[idx].updatedAt = Date()
     }
 
+    // Keep README in sync with project notes (they are the same content)
+    if id == selectedProjectId {
+      projectReadme = clean ?? ""
+    }
+
     // Persist + git
     do {
       let store = LobsControlStore(repoRoot: repoURL)
       try store.updateProjectNotes(id: id, notes: clean)
+      // Sync to README file as well
+      try store.saveProjectReadme(projectId: id, content: clean ?? "")
     } catch {
       flashError("Failed to update project: \(error.localizedDescription)")
       return
