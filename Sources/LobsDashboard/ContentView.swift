@@ -173,6 +173,42 @@ struct ContentView: View {
         .padding(.top, 52)
       }
 
+      // Floating keyboard shortcuts badge (⌘?)
+      VStack {
+        Spacer()
+        HStack {
+          Spacer()
+          Button {
+            showHelp = true
+          } label: {
+            HStack(spacing: 3) {
+              Text("⌘")
+                .font(.system(size: 11, weight: .medium))
+              Text("?")
+                .font(.system(size: 11, weight: .medium))
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(
+              RoundedRectangle(cornerRadius: 6)
+                .stroke(Color.primary.opacity(0.1), lineWidth: 0.5)
+            )
+          }
+          .buttonStyle(.plain)
+          .help("Keyboard Shortcuts (⌘/)")
+          .opacity(showInbox || showHelp ? 0 : 0.7)
+          .animation(.easeInOut(duration: 0.15), value: showInbox)
+          .animation(.easeInOut(duration: 0.15), value: showHelp)
+        }
+        .padding(.trailing, 16)
+        .padding(.bottom, 12)
+      }
+      .zIndex(50)
+      .allowsHitTesting(!showInbox && !showHelp)
+
       // Inbox overlay — clicking outside dismisses (Task #479271CB)
       if showInbox {
         Color.black.opacity(0.3)
