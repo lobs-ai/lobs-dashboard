@@ -622,13 +622,7 @@ final class AppViewModel: ObservableObject {
           // Re-persist from memory after pull
           if let snapshot = taskSnapshot {
             let store = LobsControlStore(repoRoot: repoURL)
-            try store.setStatus(taskId: snapshot.id, status: snapshot.status)
-            if let ws = snapshot.workState {
-              try store.setWorkState(taskId: snapshot.id, workState: ws)
-            }
-            if let rs = snapshot.reviewState {
-              try store.setReviewState(taskId: snapshot.id, reviewState: rs)
-            }
+            try store.saveExistingTask(snapshot)
           }
 
           try await gitWork(repoURL)

@@ -1228,6 +1228,11 @@ private struct TaskDetailPopover: View {
             if let rs = task.reviewState {
               DetailTag(text: rs.rawValue, icon: "eye", color: .green)
             }
+            if let started = task.startedAt {
+              let end = task.finishedAt ?? Date()
+              let dur = end.timeIntervalSince(started)
+              DetailTag(text: formatDuration(dur), icon: "clock", color: .orange)
+            }
           }
 
           VStack(alignment: .leading, spacing: 6) {
@@ -1466,6 +1471,19 @@ private func projectTypeAccentColor(_ type: ProjectType) -> Color {
 }
 
 // MARK: - Relative Time Helper
+
+private func formatDuration(_ seconds: TimeInterval) -> String {
+  let totalMinutes = Int(seconds / 60)
+  if totalMinutes < 60 { return "\(totalMinutes)m" }
+  let hours = totalMinutes / 60
+  let mins = totalMinutes % 60
+  if hours < 24 {
+    return mins > 0 ? "\(hours)h \(mins)m" : "\(hours)h"
+  }
+  let days = hours / 24
+  let remHours = hours % 24
+  return remHours > 0 ? "\(days)d \(remHours)h" : "\(days)d"
+}
 
 private func relativeTime(_ date: Date) -> String {
   let now = Date()

@@ -783,5 +783,38 @@ final class LobsControlStore {
       try FileManager.default.removeItem(at: url)
     }
   }
+
+  // MARK: - Project README
+
+  private func projectReadmeURL(projectId: String) -> URL {
+    repoRoot
+      .appendingPathComponent("state")
+      .appendingPathComponent("projects")
+      .appendingPathComponent(projectId)
+      .appendingPathComponent("README.md")
+  }
+
+  func loadProjectReadme(projectId: String) throws -> String? {
+    let url = projectReadmeURL(projectId: projectId)
+    guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+    return try String(contentsOf: url, encoding: .utf8)
+  }
+
+  func saveProjectReadme(projectId: String, content: String) throws {
+    let url = projectReadmeURL(projectId: projectId)
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty {
+      // Remove file if content is empty
+      if FileManager.default.fileExists(atPath: url.path) {
+        try FileManager.default.removeItem(at: url)
+      }
+    } else {
+      try content.write(to: url, atomically: true, encoding: .utf8)
+    }
+  }
 }
 
