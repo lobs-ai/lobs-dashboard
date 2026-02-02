@@ -226,14 +226,26 @@ struct ResearchDocView: View {
               .frame(width: 16, height: 16)
               .background(Color.orange)
               .clipShape(Circle())
-            VStack(alignment: .leading, spacing: 1) {
-              Text(source.title)
-                .font(.footnote)
-                .fontWeight(.medium)
-                .lineLimit(1)
-              Text(domainFromURL(source.url))
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
+            // Clickable source title — opens URL in browser
+            Button {
+              if let url = URL(string: source.url) {
+                NSWorkspace.shared.open(url)
+              }
+            } label: {
+              VStack(alignment: .leading, spacing: 1) {
+                Text(source.title)
+                  .font(.footnote)
+                  .fontWeight(.medium)
+                  .lineLimit(1)
+                  .foregroundStyle(.primary)
+                Text(domainFromURL(source.url))
+                  .font(.system(size: 10))
+                  .foregroundStyle(.blue)
+              }
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering in
+              if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
             }
             Spacer()
             // Copy citation to clipboard
@@ -733,34 +745,37 @@ private struct SectionedMarkdownPreview: View {
         .padding(.bottom, 6)
 
       ForEach(Array(sources.enumerated()), id: \.element.id) { idx, source in
-        HStack(alignment: .top, spacing: 8) {
-          Text("\(idx + 1)")
-            .font(.system(size: 10, weight: .bold, design: .rounded))
-            .foregroundColor(.white)
-            .frame(width: 18, height: 18)
-            .background(Color.orange)
-            .clipShape(Circle())
+        Button {
+          if let url = URL(string: source.url) {
+            NSWorkspace.shared.open(url)
+          }
+        } label: {
+          HStack(alignment: .top, spacing: 8) {
+            Text("\(idx + 1)")
+              .font(.system(size: 10, weight: .bold, design: .rounded))
+              .foregroundColor(.white)
+              .frame(width: 18, height: 18)
+              .background(Color.orange)
+              .clipShape(Circle())
 
-          VStack(alignment: .leading, spacing: 1) {
-            Text(source.title)
-              .font(.footnote)
-              .fontWeight(.medium)
+            VStack(alignment: .leading, spacing: 1) {
+              Text(source.title)
+                .font(.footnote)
+                .fontWeight(.medium)
+                .foregroundStyle(.primary)
 
-            Text(domainFromURL(source.url))
-              .font(.system(size: 11))
-              .foregroundStyle(.blue)
-              .onTapGesture {
-                if let url = URL(string: source.url) {
-                  NSWorkspace.shared.open(url)
-                }
-              }
-              .onHover { hovering in
-                if hovering {
-                  NSCursor.pointingHand.push()
-                } else {
-                  NSCursor.pop()
-                }
-              }
+              Text(domainFromURL(source.url))
+                .font(.system(size: 11))
+                .foregroundStyle(.blue)
+            }
+          }
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+          if hovering {
+            NSCursor.pointingHand.push()
+          } else {
+            NSCursor.pop()
           }
         }
         .padding(.vertical, 3)
