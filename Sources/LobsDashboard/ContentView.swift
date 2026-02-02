@@ -1051,7 +1051,7 @@ private struct BulkActionBar: View {
       // Selection count
       HStack(spacing: 6) {
         Image(systemName: "checkmark.circle.fill")
-          .foregroundStyle(.accentColor)
+          .foregroundStyle(Color.accentColor)
         Text("\(selectedCount) selected")
           .font(.callout)
           .fontWeight(.semibold)

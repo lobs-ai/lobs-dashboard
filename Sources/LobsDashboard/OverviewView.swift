@@ -987,7 +987,7 @@ private struct DetailedStatsView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
                 .background(Color.accentColor.opacity(0.12))
-                .foregroundStyle(.accentColor)
+                .foregroundStyle(Color.accentColor)
                 .clipShape(Capsule())
             }
             .buttonStyle(.plain)
