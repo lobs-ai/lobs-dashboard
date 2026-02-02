@@ -121,9 +121,27 @@ struct ContentView: View {
         .zIndex(99)
         .padding(.top, 52)
       }
+
+      // Inbox overlay — clicking outside dismisses (Task #479271CB)
+      if showInbox {
+        Color.black.opacity(0.3)
+          .ignoresSafeArea()
+          .onTapGesture { showInbox = false }
+          .zIndex(200)
+
+        InboxView(vm: vm, isPresented: $showInbox)
+          .frame(minWidth: 1000, idealWidth: 1200, minHeight: 700, idealHeight: 800)
+          .clipShape(RoundedRectangle(cornerRadius: 16))
+          .shadow(color: .black.opacity(0.3), radius: 30, y: 10)
+          .padding(40)
+          .onExitCommand { showInbox = false }
+          .transition(.opacity.combined(with: .scale(scale: 0.95)))
+          .zIndex(201)
+      }
     }
     .animation(.easeInOut(duration: 0.3), value: vm.errorBanner != nil)
     .animation(.easeOut(duration: 0.2), value: vm.isGitBusy)
+    .animation(.easeInOut(duration: 0.25), value: showInbox)
     .fileImporter(
       isPresented: $showPicker,
       allowedContentTypes: [.folder]
@@ -148,10 +166,6 @@ struct ContentView: View {
     }
     .sheet(item: $editingProject) { project in
       EditProjectSheet(vm: vm, project: project)
-    }
-    .sheet(isPresented: $showInbox) {
-      InboxView(vm: vm, isPresented: $showInbox)
-        .frame(minWidth: 1200, idealWidth: 1400, minHeight: 800, idealHeight: 900)
     }
     .onAppear { vm.reloadIfPossible() }
     // Keyboard shortcuts (Task #84248F22)
@@ -739,23 +753,135 @@ private struct BoardView: View {
   @Binding var quickAddText: String
 
   var body: some View {
-    ScrollView(.horizontal, showsIndicators: false) {
-      HStack(alignment: .top, spacing: 16) {
-        ForEach(vm.columns, id: \.title) { col in
-          BoardColumn(
-            title: col.title,
-            tasks: vm.filteredTasks.filter(col.matches),
-            dropStatus: col.dropStatus,
-            vm: vm,
-            autoPush: $autoPush,
-            showAllDone: $showAllDone,
-            showAllRejected: $showAllRejected,
-            quickAddText: $quickAddText
-          )
+    VStack(spacing: 0) {
+      // Project README (pinned context doc)
+      if !vm.projectReadme.isEmpty || vm.selectedProjectId != "default" {
+        ProjectReadmeBar(vm: vm)
+      }
+
+      ScrollView(.horizontal, showsIndicators: false) {
+        HStack(alignment: .top, spacing: 16) {
+          ForEach(vm.columns, id: \.title) { col in
+            BoardColumn(
+              title: col.title,
+              tasks: vm.filteredTasks.filter(col.matches),
+              dropStatus: col.dropStatus,
+              vm: vm,
+              autoPush: $autoPush,
+              showAllDone: $showAllDone,
+              showAllRejected: $showAllRejected,
+              quickAddText: $quickAddText
+            )
+          }
+        }
+        .padding(20)
+      }
+    }
+  }
+}
+
+// MARK: - Project README Bar
+
+private struct ProjectReadmeBar: View {
+  @ObservedObject var vm: AppViewModel
+  @State private var isExpanded: Bool = false
+  @State private var isEditing: Bool = false
+  @State private var editText: String = ""
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      // Header
+      HStack(spacing: 8) {
+        Button {
+          withAnimation(.easeInOut(duration: 0.2)) {
+            isExpanded.toggle()
+          }
+        } label: {
+          HStack(spacing: 6) {
+            Image(systemName: "doc.text.fill")
+              .font(.footnote)
+              .foregroundStyle(.blue)
+            Text("README")
+              .font(.footnote)
+              .fontWeight(.semibold)
+            if vm.projectReadme.isEmpty {
+              Text("(empty)")
+                .font(.footnote)
+                .foregroundStyle(.tertiary)
+            }
+            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+              .font(.system(size: 10))
+              .foregroundStyle(.secondary)
+          }
+        }
+        .buttonStyle(.plain)
+
+        Spacer()
+
+        if isExpanded {
+          Button {
+            if isEditing {
+              vm.saveProjectReadme(content: editText)
+              isEditing = false
+            } else {
+              editText = vm.projectReadme
+              isEditing = true
+            }
+          } label: {
+            HStack(spacing: 3) {
+              Image(systemName: isEditing ? "checkmark" : "pencil")
+                .font(.system(size: 11))
+              Text(isEditing ? "Save" : "Edit")
+                .font(.system(size: 11))
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Theme.subtle)
+            .clipShape(Capsule())
+          }
+          .buttonStyle(.plain)
         }
       }
-      .padding(20)
+      .padding(.horizontal, 20)
+      .padding(.vertical, 8)
+
+      if isExpanded {
+        Divider()
+          .padding(.horizontal, 16)
+
+        if isEditing {
+          TextEditor(text: $editText)
+            .font(.system(size: 13, design: .monospaced))
+            .frame(minHeight: 80, maxHeight: 200)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 8)
+        } else if !vm.projectReadme.isEmpty {
+          ScrollView {
+            if let md = try? AttributedString(markdown: vm.projectReadme, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+              Text(md)
+                .font(.system(size: 13))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+              Text(vm.projectReadme)
+                .font(.system(size: 13))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+          }
+          .frame(maxHeight: 150)
+          .padding(.horizontal, 20)
+          .padding(.vertical, 8)
+        } else {
+          Text("No README yet. Click Edit to add project context.")
+            .font(.footnote)
+            .foregroundStyle(.tertiary)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 8)
+        }
+      }
     }
+    .background(Theme.bg.opacity(0.7))
   }
 }
 
@@ -957,10 +1083,24 @@ private struct TaskTile: View {
         }
       }
 
-      // Relative timestamp
-      Text(relativeTime(task.updatedAt))
-        .font(.system(size: 11))
-        .foregroundStyle(.tertiary)
+      // Duration + relative timestamp
+      HStack(spacing: 6) {
+        if let started = task.startedAt {
+          let end = task.finishedAt ?? Date()
+          let dur = end.timeIntervalSince(started)
+          HStack(spacing: 2) {
+            Image(systemName: "clock")
+              .font(.system(size: 10))
+            Text(formatDuration(dur))
+              .font(.system(size: 11))
+          }
+          .foregroundStyle(.tertiary)
+        }
+
+        Text(relativeTime(task.updatedAt))
+          .font(.system(size: 11))
+          .foregroundStyle(.tertiary)
+      }
     }
     .padding(12)
     .frame(maxWidth: .infinity, alignment: .leading)

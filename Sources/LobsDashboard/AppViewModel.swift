@@ -598,12 +598,10 @@ final class AppViewModel: ObservableObject {
     do {
       let store = LobsControlStore(repoRoot: repoURL)
       if let idx = tasks.firstIndex(where: { $0.id == taskId }) {
-        let t = tasks[idx]
-        try store.setStatus(taskId: t.id, status: t.status)
-        if let rs = t.reviewState {
-          try store.setReviewState(taskId: t.id, reviewState: rs)
-        }
-        try store.setWorkState(taskId: t.id, workState: t.workState)
+        var t = tasks[idx]
+        t.updatedAt = Date()
+        tasks[idx] = t
+        try store.saveExistingTask(t)
       }
     } catch {
       flashError("Failed to save: \(error.localizedDescription)")
@@ -657,6 +655,7 @@ final class AppViewModel: ObservableObject {
       $0.reviewState = .approved
       $0.status = .active
       $0.workState = .notStarted
+      if $0.startedAt == nil { $0.startedAt = Date() }
     }) { repoURL in
       // Also persist the status change to disk.
       let store = LobsControlStore(repoRoot: repoURL)
@@ -703,6 +702,7 @@ final class AppViewModel: ObservableObject {
     optimisticUpdate(taskId: id, localMutation: {
       $0.status = .completed
       $0.workState = nil
+      if $0.finishedAt == nil { $0.finishedAt = Date() }
     }) { repoURL in
       try await self.asyncCommitAndMaybePush(
         repoURL: repoURL,
@@ -786,7 +786,9 @@ final class AppViewModel: ObservableObject {
       reviewState: .approved,
       projectId: selectedProjectId,
       artifactPath: nil,
-      notes: trimmedNotes
+      notes: trimmedNotes,
+      startedAt: now,
+      finishedAt: nil
     )
 
     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {

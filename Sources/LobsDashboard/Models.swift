@@ -162,6 +162,10 @@ struct DashboardTask: Codable, Identifiable, Hashable {
 
   var artifactPath: String?
   var notes: String?
+
+  /// Lightweight time tracking
+  var startedAt: Date?
+  var finishedAt: Date?
 }
 
 enum ProjectType: String, Codable, CaseIterable, Hashable {

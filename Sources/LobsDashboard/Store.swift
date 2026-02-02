@@ -321,6 +321,21 @@ final class LobsControlStore {
     return task
   }
 
+  func saveExistingTask(_ task: DashboardTask) throws {
+    if FileManager.default.fileExists(atPath: tasksDirURL.path) {
+      let url = taskFileURL(taskId: task.id)
+      let data = try encoder().encode(task)
+      try data.write(to: url, options: [.atomic])
+      return
+    }
+
+    var file = try loadTasks()
+    if let idx = file.tasks.firstIndex(where: { $0.id == task.id }) {
+      file.tasks[idx] = task
+    }
+    try saveTasks(file)
+  }
+
   func deleteTask(taskId: String) throws {
     if FileManager.default.fileExists(atPath: tasksDirURL.path) {
       let url = taskFileURL(taskId: taskId)
