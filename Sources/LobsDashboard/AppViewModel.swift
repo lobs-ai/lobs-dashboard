@@ -29,6 +29,7 @@ final class AppViewModel: ObservableObject {
 
   // Tracker
   @Published var trackerItems: [TrackerItem] = []
+  @Published var trackerRequests: [ResearchRequest] = []
 
   // Inbox (Design Docs)
   @Published var inboxItems: [InboxItem] = []
@@ -329,10 +330,12 @@ final class AppViewModel: ObservableObject {
     let s = store ?? LobsControlStore(repoRoot: repoURL)
     guard isTrackerProject else {
       trackerItems = []
+      trackerRequests = []
       return
     }
     do {
       trackerItems = try s.loadTrackerItems(projectId: selectedProjectId)
+      trackerRequests = try s.loadTrackerRequests(projectId: selectedProjectId)
     } catch {
       flashError("Failed to load tracker data: \(error.localizedDescription)")
     }
@@ -429,6 +432,48 @@ final class AppViewModel: ObservableObject {
         try await asyncCommitAndMaybePush(
           repoURL: repoURL,
           message: "Lobs: delete tracker item \(item.id)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
+    }
+  }
+
+  // MARK: - Tracker Requests (Ask Lobs)
+
+  func addTrackerRequest(prompt: String) {
+    guard let repoURL else { return }
+    let now = Date()
+    let req = ResearchRequest(
+      id: UUID().uuidString,
+      projectId: selectedProjectId,
+      tileId: nil,
+      prompt: prompt,
+      status: .open,
+      response: nil,
+      author: "rafe",
+      createdAt: now,
+      updatedAt: now
+    )
+
+    trackerRequests.insert(req, at: 0)
+
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.saveTrackerRequest(req)
+    } catch {
+      flashError("Failed to save tracker request: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: add tracker request \(req.id)",
           autoPush: true
         )
       } catch {

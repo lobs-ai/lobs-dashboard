@@ -801,6 +801,51 @@ final class LobsControlStore {
     }
   }
 
+  // MARK: - Tracker Requests
+
+  private func trackerRequestsDirURL(projectId: String) -> URL {
+    trackerDirURL.appendingPathComponent(projectId).appendingPathComponent("requests")
+  }
+
+  func loadTrackerRequests(projectId: String) throws -> [ResearchRequest] {
+    let dir = trackerRequestsDirURL(projectId: projectId)
+    guard FileManager.default.fileExists(atPath: dir.path) else { return [] }
+
+    let items = try FileManager.default.contentsOfDirectory(
+      at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+    )
+
+    let dec = decoder()
+    var requests: [ResearchRequest] = []
+    for url in items where url.pathExtension.lowercased() == "json" {
+      do {
+        let data = try Data(contentsOf: url)
+        let req = try dec.decode(ResearchRequest.self, from: data)
+        requests.append(req)
+      } catch {
+        print("[LobsStore] Skipping tracker request \(url.lastPathComponent): \(error.localizedDescription)")
+        continue
+      }
+    }
+    requests.sort { $0.createdAt > $1.createdAt }
+    return requests
+  }
+
+  func saveTrackerRequest(_ request: ResearchRequest) throws {
+    let dir = trackerRequestsDirURL(projectId: request.projectId)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let url = dir.appendingPathComponent("\(request.id).json")
+    let data = try encoder().encode(request)
+    try data.write(to: url, options: [.atomic])
+  }
+
+  func deleteTrackerRequest(projectId: String, requestId: String) throws {
+    let url = trackerRequestsDirURL(projectId: projectId).appendingPathComponent("\(requestId).json")
+    if FileManager.default.fileExists(atPath: url.path) {
+      try FileManager.default.removeItem(at: url)
+    }
+  }
+
   // MARK: - Task Templates
 
   private var templatesDirURL: URL {

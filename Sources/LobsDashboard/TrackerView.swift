@@ -17,6 +17,7 @@ struct TrackerBoardView: View {
   @ObservedObject var vm: AppViewModel
 
   @State private var showAddItem = false
+  @State private var showAskLobs = false
   @State private var selectedItem: TrackerItem? = nil
   @State private var filterStatus: TrackerItemStatus? = nil
   @State private var filterTag: String? = nil
@@ -194,6 +195,23 @@ struct TrackerBoardView: View {
           .background(TTheme.subtle)
           .clipShape(RoundedRectangle(cornerRadius: 8))
 
+          // Ask Lobs button
+          Button(action: { showAskLobs = true }) {
+            HStack(spacing: 4) {
+              Image(systemName: "questionmark.bubble")
+                .font(.footnote)
+              Text("Ask Lobs")
+                .font(.footnote)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.purple.opacity(0.12))
+            .foregroundStyle(.purple)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+          }
+          .buttonStyle(.plain)
+          .help("Ask Lobs to do work (e.g. create items from the internet)")
+
           // Add button
           Button(action: { showAddItem = true }) {
             Image(systemName: "plus")
@@ -265,6 +283,9 @@ struct TrackerBoardView: View {
     }
     .sheet(isPresented: $showAddItem) {
       AddTrackerItemSheet(vm: vm)
+    }
+    .sheet(isPresented: $showAskLobs) {
+      AskLobsTrackerSheet(vm: vm)
     }
   }
 }
@@ -739,4 +760,103 @@ private func relativeTime(_ date: Date) -> String {
   let days = Int(seconds / 86400)
   if days < 30 { return "\(days)d ago" }
   return "\(Int(seconds / 2_592_000))mo ago"
+}
+
+// MARK: - Ask Lobs Sheet
+
+private struct AskLobsTrackerSheet: View {
+  @ObservedObject var vm: AppViewModel
+  @Environment(\.dismiss) private var dismiss
+
+  @State private var prompt: String = ""
+
+  private var pendingRequests: [ResearchRequest] {
+    vm.trackerRequests.filter { $0.status != .done }
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      HStack {
+        Image(systemName: "questionmark.bubble.fill")
+          .font(.title2)
+          .foregroundStyle(.linearGradient(
+            colors: [.purple, .indigo],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+          ))
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Ask Lobs")
+            .font(.title3)
+            .fontWeight(.bold)
+          Text("Ask Lobs to create items, research topics, or do work on this tracker.")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
+        Spacer()
+      }
+
+      TextEditor(text: $prompt)
+        .font(.system(size: 13))
+        .frame(minHeight: 100, maxHeight: 200)
+        .overlay(
+          Group {
+            if prompt.isEmpty {
+              Text("e.g. \"Find all the best restaurants in Ann Arbor and add them\" or \"Create items for each Swift concurrency feature\"…")
+                .font(.system(size: 13))
+                .foregroundStyle(.tertiary)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 8)
+                .allowsHitTesting(false)
+            }
+          },
+          alignment: .topLeading
+        )
+        .border(Color.primary.opacity(0.1), width: 1)
+
+      // Pending requests
+      if !pendingRequests.isEmpty {
+        VStack(alignment: .leading, spacing: 6) {
+          Text("Pending Requests")
+            .font(.footnote)
+            .fontWeight(.semibold)
+            .foregroundStyle(.secondary)
+          ForEach(pendingRequests) { req in
+            HStack(spacing: 8) {
+              Circle()
+                .fill(req.status == .inProgress ? Color.blue : Color.orange)
+                .frame(width: 6, height: 6)
+              Text(req.prompt)
+                .font(.footnote)
+                .lineLimit(2)
+                .foregroundStyle(.secondary)
+              Spacer()
+              Text(req.status.rawValue.replacingOccurrences(of: "_", with: " "))
+                .font(.system(size: 10, weight: .medium))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.orange.opacity(0.12))
+                .clipShape(Capsule())
+            }
+          }
+        }
+        .padding(10)
+        .background(TTheme.subtle)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+      }
+
+      HStack {
+        Button("Cancel") { dismiss() }
+          .keyboardShortcut(.cancelAction)
+        Spacer()
+        Button("Submit") {
+          vm.addTrackerRequest(prompt: prompt)
+          dismiss()
+        }
+        .keyboardShortcut(.defaultAction)
+        .disabled(prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+      }
+    }
+    .padding(20)
+    .frame(width: 520)
+  }
 }
