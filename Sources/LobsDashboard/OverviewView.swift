@@ -267,7 +267,7 @@ struct OverviewView: View {
                   .foregroundStyle(.white)
                   .padding(.horizontal, 6)
                   .padding(.vertical, 2)
-                  .background(Color.blue)
+                  .background(Color.red)
                   .clipShape(Capsule())
               }
             }

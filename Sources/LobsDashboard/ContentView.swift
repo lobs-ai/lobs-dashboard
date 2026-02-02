@@ -662,7 +662,7 @@ private struct ToolbarArea: View {
               .foregroundStyle(.white)
               .padding(.horizontal, 4)
               .padding(.vertical, 1)
-              .background(Color.blue)
+              .background(Color.red)
               .clipShape(Capsule())
               .offset(x: 4, y: -4)
           }
