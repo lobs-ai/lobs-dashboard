@@ -1527,8 +1527,8 @@ private struct TaskDetailPopover: View {
               .font(.footnote)
               .foregroundStyle(.secondary)
 
-          case .active:
-            // Active: mark complete, toggle blocked, move to waiting
+          case .active, .waitingOn:
+            // Active: mark complete, toggle blocked
             HStack(spacing: 8) {
               ActionButton(label: "Mark Complete", icon: "checkmark.circle.fill", color: .green) {
                 vm.completeSelected(autoPush: autoPush)
@@ -1539,9 +1539,6 @@ private struct TaskDetailPopover: View {
                 color: task.workState == .blocked ? .blue : .red
               ) {
                 vm.toggleBlockSelected(autoPush: autoPush)
-              }
-              ActionButton(label: "Waiting On", icon: "person.badge.clock", color: .yellow) {
-                vm.moveTask(taskId: task.id, to: .waitingOn)
               }
             }
 
@@ -1559,20 +1556,6 @@ private struct TaskDetailPopover: View {
           case .rejected:
             // Rejected: reopen
             HStack(spacing: 8) {
-              ActionButton(label: "Reopen", icon: "arrow.counterclockwise.circle.fill", color: .blue) {
-                vm.reopenSelected(autoPush: autoPush)
-              }
-            }
-
-          case .waitingOn:
-            // Waiting: move back to active, complete, or reopen
-            HStack(spacing: 8) {
-              ActionButton(label: "Back to Active", icon: "arrow.forward.circle.fill", color: .orange) {
-                vm.moveTask(taskId: task.id, to: .active)
-              }
-              ActionButton(label: "Mark Complete", icon: "checkmark.circle.fill", color: .green) {
-                vm.completeSelected(autoPush: autoPush)
-              }
               ActionButton(label: "Reopen", icon: "arrow.counterclockwise.circle.fill", color: .blue) {
                 vm.reopenSelected(autoPush: autoPush)
               }
@@ -1807,7 +1790,7 @@ private struct CreateProjectSheet: View {
           .pickerStyle(.segmented)
 
           Text(projectType == .kanban
-            ? "Track tasks through columns: Active, Waiting, Done."
+            ? "Track tasks through columns: Active, Done."
             : projectType == .research
             ? "Collect research tiles, notes, links, findings. Ask Lobs to investigate."
             : "Track items with status, difficulty, tags, and notes. Great for checklists and learning goals."

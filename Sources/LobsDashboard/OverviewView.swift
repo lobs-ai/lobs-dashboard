@@ -749,16 +749,14 @@ private struct DetailedStatsView: View {
 
   // Status breakdown
   private var statusBreakdown: [(String, Int, Color)] {
-    let active = tasks.filter { $0.status == .active }.count
+    let active = tasks.filter { $0.status == .active || $0.status == .waitingOn }.count
     let completed = tasks.filter { $0.status == .completed }.count
     let inbox = tasks.filter { $0.status == .inbox }.count
-    let waitingOn = tasks.filter { $0.status == .waitingOn }.count
     let rejected = tasks.filter { $0.status == .rejected }.count
     return [
       ("Active", active, .orange),
       ("Completed", completed, .green),
       ("Inbox", inbox, .blue),
-      ("Waiting On", waitingOn, .yellow),
       ("Rejected", rejected, .red),
     ].filter { $0.1 > 0 }
   }
