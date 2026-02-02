@@ -12,7 +12,7 @@ private enum RTheme {
   static let cardRadius: CGFloat = 14
 }
 
-// MARK: - Research Board View (replaces kanban for research projects)
+// MARK: - Research Board View (document-first layout)
 
 struct ResearchBoardView: View {
   @ObservedObject var vm: AppViewModel
@@ -22,25 +22,41 @@ struct ResearchBoardView: View {
   @State private var selectedTile: ResearchTile? = nil
   @State private var pendingRequestTileId: String? = nil
   @State private var pendingRequestPrompt: String = ""
-  @State private var filterType: ResearchTileType? = nil
   @State private var searchText: String = ""
 
-  private var filteredTiles: [ResearchTile] {
-    var tiles = vm.researchTiles.filter { $0.resolvedStatus == .active }
-    if let filterType {
-      tiles = tiles.filter { $0.type == filterType }
-    }
-    let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-    if !q.isEmpty {
-      tiles = tiles.filter { tile in
-        let hay = [tile.title, tile.content, tile.summary, tile.claim, tile.url]
-          .compactMap { $0 }
-          .joined(separator: " ")
-          .lowercased()
-        return hay.contains(q)
+  private var activeTiles: [ResearchTile] {
+    vm.researchTiles.filter { $0.resolvedStatus == .active }
+  }
+
+  /// Tiles sorted into document sections: findings first, then notes, links, comparisons
+  private var documentSections: [(String, String, [ResearchTile])] {
+    let tiles = activeTiles
+    var sections: [(String, String, [ResearchTile])] = []
+
+    let findings = tiles.filter { $0.type == .finding }
+    if !findings.isEmpty { sections.append(("Findings", "lightbulb", findings)) }
+
+    let comparisons = tiles.filter { $0.type == .comparison }
+    if !comparisons.isEmpty { sections.append(("Comparisons", "arrow.left.arrow.right", comparisons)) }
+
+    let notes = tiles.filter { $0.type == .note }
+    if !notes.isEmpty { sections.append(("Notes", "note.text", notes)) }
+
+    let links = tiles.filter { $0.type == .link }
+    if !links.isEmpty { sections.append(("Links & Sources", "link", links)) }
+
+    return sections
+  }
+
+  /// All source URLs collected from tiles
+  private var sources: [(String, String)] { // (title, url)
+    var result: [(String, String)] = []
+    for tile in activeTiles {
+      if let url = tile.url, !url.isEmpty {
+        result.append((tile.title, url))
       }
     }
-    return tiles
+    return result
   }
 
   private var openRequests: [ResearchRequest] {
@@ -51,173 +67,185 @@ struct ResearchBoardView: View {
     vm.researchRequests.filter { $0.status == .done }
   }
 
-  private let columns = [
-    GridItem(.adaptive(minimum: 280, maximum: 400), spacing: 16)
-  ]
-
   var body: some View {
     HSplitView {
-      // Left: Tile Grid + Requests
-      VStack(spacing: 0) {
-        // Filter bar
-        ResearchFilterBar(
-          filterType: $filterType,
-          searchText: $searchText,
-          tileCount: filteredTiles.count,
-          requestCount: openRequests.count,
-          onAddTile: { showAddTile = true },
-          onAddRequest: { showAddRequest = true }
-        )
+      // Left sidebar: sources & requests
+      VStack(alignment: .leading, spacing: 0) {
+        // Sidebar header
+        HStack(spacing: 8) {
+          Image(systemName: "doc.text.magnifyingglass")
+            .foregroundStyle(.orange)
+          Text("Research")
+            .font(.callout)
+            .fontWeight(.bold)
+          Spacer()
+          Button(action: { showAddRequest = true }) {
+            Image(systemName: "questionmark.bubble")
+              .font(.body)
+              .padding(4)
+              .background(Color.orange.opacity(0.12))
+              .clipShape(RoundedRectangle(cornerRadius: 6))
+          }
+          .buttonStyle(.plain)
+          .help("Ask Lobs to research something")
+
+          Button(action: { showAddTile = true }) {
+            Image(systemName: "plus.square")
+              .font(.body)
+              .padding(4)
+              .background(RTheme.subtle)
+              .clipShape(RoundedRectangle(cornerRadius: 6))
+          }
+          .buttonStyle(.plain)
+          .help("Add tile manually")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
 
         Divider()
 
         ScrollView {
-          VStack(alignment: .leading, spacing: 20) {
-            // Open requests section
+          VStack(alignment: .leading, spacing: 16) {
+            // Open requests
             if !openRequests.isEmpty {
-              VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 6) {
-                  Image(systemName: "questionmark.bubble")
-                    .foregroundStyle(.orange)
-                  Text("Open Requests")
-                    .font(.callout)
-                    .fontWeight(.bold)
-                  Text("\(openRequests.count)")
-                    .font(.footnote)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.orange.opacity(0.15))
-                    .foregroundStyle(.orange)
-                    .clipShape(Capsule())
-                }
-
+              SidebarSection(title: "Open Requests", icon: "questionmark.bubble", color: .orange) {
                 ForEach(openRequests) { req in
-                  RequestCard(request: req, vm: vm)
+                  SidebarRequestRow(request: req)
                 }
               }
-              .padding(.horizontal, 20)
-              .padding(.top, 16)
             }
 
-            // Tiles grid
-            if !filteredTiles.isEmpty {
-              VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 6) {
-                  Image(systemName: "square.grid.2x2")
-                    .foregroundStyle(.blue)
-                  Text("Research Tiles")
-                    .font(.callout)
-                    .fontWeight(.bold)
-                  Text("\(filteredTiles.count)")
-                    .font(.footnote)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.blue.opacity(0.15))
-                    .foregroundStyle(.blue)
-                    .clipShape(Capsule())
+            // Sources list
+            if !sources.isEmpty {
+              SidebarSection(title: "Sources", icon: "link", color: .blue) {
+                ForEach(sources, id: \.1) { title, url in
+                  SidebarSourceRow(title: title, url: url)
                 }
-                .padding(.horizontal, 20)
+              }
+            }
 
-                LazyVGrid(columns: columns, spacing: 16) {
-                  ForEach(filteredTiles) { tile in
-                    TileCard(
-                      tile: tile,
-                      onAskFollowUp: {
-                        pendingRequestTileId = tile.id
-                        pendingRequestPrompt = "Follow up on: \(tile.title)"
-                        showAddRequest = true
-                      }
-                    )
-                    .onTapGesture {
-                      selectedTile = tile
-                    }
+            // Document outline / table of contents
+            if !documentSections.isEmpty {
+              SidebarSection(title: "Contents", icon: "list.bullet", color: .secondary) {
+                ForEach(documentSections, id: \.0) { sectionTitle, icon, tiles in
+                  HStack(spacing: 6) {
+                    Image(systemName: icon)
+                      .font(.system(size: 11))
+                      .foregroundStyle(.secondary)
+                    Text(sectionTitle)
+                      .font(.footnote)
+                      .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(tiles.count)")
+                      .font(.system(size: 11))
+                      .foregroundStyle(.tertiary)
                   }
+                  .padding(.vertical, 2)
                 }
-                .padding(.horizontal, 20)
               }
-              .padding(.top, openRequests.isEmpty ? 16 : 8)
             }
 
-            // Completed requests (collapsed)
+            // Completed requests
             if !completedRequests.isEmpty {
               DisclosureGroup {
-                VStack(alignment: .leading, spacing: 8) {
-                  ForEach(completedRequests) { req in
-                    RequestCard(request: req, vm: vm)
-                  }
+                ForEach(completedRequests) { req in
+                  SidebarRequestRow(request: req)
                 }
               } label: {
                 HStack(spacing: 6) {
                   Image(systemName: "checkmark.bubble")
-                    .foregroundStyle(.green)
-                  Text("Completed Requests")
-                    .font(.callout)
-                    .fontWeight(.bold)
-                  Text("\(completedRequests.count)")
                     .font(.footnote)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.green.opacity(0.15))
                     .foregroundStyle(.green)
-                    .clipShape(Capsule())
+                  Text("Done (\(completedRequests.count))")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                 }
               }
-              .padding(.horizontal, 20)
-              .padding(.top, 8)
-            }
-
-            if filteredTiles.isEmpty && openRequests.isEmpty && completedRequests.isEmpty {
-              VStack(spacing: 12) {
-                Image(systemName: "doc.text.magnifyingglass")
-                  .font(.system(size: 40))
-                  .foregroundStyle(.secondary)
-                Text("No research yet")
-                  .font(.title3)
-                  .foregroundStyle(.secondary)
-                Text("Add tiles or ask Lobs to research something")
-                  .font(.footnote)
-                  .foregroundStyle(.tertiary)
-                HStack(spacing: 12) {
-                  Button {
-                    showAddTile = true
-                  } label: {
-                    Label("Add Tile", systemImage: "plus.square")
-                  }
-                  .buttonStyle(.bordered)
-                  Button {
-                    showAddRequest = true
-                  } label: {
-                    Label("Ask Lobs", systemImage: "questionmark.bubble")
-                  }
-                  .buttonStyle(.borderedProminent)
-                }
-              }
-              .frame(maxWidth: .infinity)
-              .padding(.top, 80)
+              .padding(.horizontal, 14)
             }
           }
-          .padding(.bottom, 20)
+          .padding(.vertical, 12)
+        }
+      }
+      .frame(minWidth: 220, idealWidth: 260, maxWidth: 320)
+      .background(RTheme.bg)
+
+      // Main content: document view
+      ScrollView {
+        VStack(alignment: .leading, spacing: 0) {
+          // Document header
+          if let project = vm.selectedProject {
+            VStack(alignment: .leading, spacing: 8) {
+              Text(project.title)
+                .font(.largeTitle)
+                .fontWeight(.bold)
+
+              if let notes = project.notes, !notes.isEmpty {
+                Text(notes)
+                  .font(.body)
+                  .foregroundStyle(.secondary)
+              }
+
+              HStack(spacing: 12) {
+                HStack(spacing: 4) {
+                  Image(systemName: "square.grid.2x2")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                  Text("\(activeTiles.count) items")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                }
+                HStack(spacing: 4) {
+                  Image(systemName: "link")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                  Text("\(sources.count) sources")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                }
+              }
+
+              Divider()
+                .padding(.top, 4)
+            }
+            .padding(.horizontal, 40)
+            .padding(.top, 32)
+            .padding(.bottom, 16)
+          }
+
+          // Document body — render tiles as sections of a brief
+          if activeTiles.isEmpty {
+            emptyState
+          } else {
+            VStack(alignment: .leading, spacing: 32) {
+              ForEach(documentSections, id: \.0) { sectionTitle, icon, tiles in
+                DocumentSection(
+                  title: sectionTitle,
+                  icon: icon,
+                  tiles: tiles,
+                  selectedTile: $selectedTile,
+                  onAskFollowUp: { tile in
+                    pendingRequestTileId = tile.id
+                    pendingRequestPrompt = "Follow up on: \(tile.title)"
+                    showAddRequest = true
+                  }
+                )
+              }
+            }
+            .padding(.horizontal, 40)
+            .padding(.bottom, 40)
+          }
         }
       }
       .frame(minWidth: 500)
+      .background(RTheme.boardBg)
 
-      // Right: Tile detail
+      // Right panel: tile detail editor (when selected)
       if let tile = selectedTile,
          let liveTile = vm.researchTiles.first(where: { $0.id == tile.id }) {
         TileDetailView(tile: liveTile, vm: vm, onClose: { selectedTile = nil })
           .id(liveTile.id)
-          .frame(minWidth: 350, idealWidth: 420)
-      } else {
-        VStack(spacing: 8) {
-          Image(systemName: "sidebar.right")
-            .font(.system(size: 30))
-            .foregroundStyle(.quaternary)
-          Text("Select a tile to view details")
-            .font(.footnote)
-            .foregroundStyle(.tertiary)
-        }
-        .frame(minWidth: 300, idealWidth: 350)
-        .frame(maxHeight: .infinity)
+          .frame(minWidth: 320, idealWidth: 380)
       }
     }
     .sheet(isPresented: $showAddTile) {
@@ -235,265 +263,317 @@ struct ResearchBoardView: View {
       }
     }
   }
-}
 
-// MARK: - Filter Bar
-
-private struct ResearchFilterBar: View {
-  @Binding var filterType: ResearchTileType?
-  @Binding var searchText: String
-  let tileCount: Int
-  let requestCount: Int
-  let onAddTile: () -> Void
-  let onAddRequest: () -> Void
-
-  var body: some View {
-    HStack(spacing: 12) {
-      // Type filter chips
-      FilterChip(label: "All", isActive: filterType == nil) {
-        filterType = nil
-      }
-      ForEach(ResearchTileType.allCases, id: \.self) { type in
-        FilterChip(
-          label: tileTypeLabel(type),
-          icon: tileTypeIcon(type),
-          isActive: filterType == type
-        ) {
-          filterType = (filterType == type) ? nil : type
+  private var emptyState: some View {
+    VStack(spacing: 12) {
+      Image(systemName: "doc.text.magnifyingglass")
+        .font(.system(size: 40))
+        .foregroundStyle(.secondary)
+      Text("No research yet")
+        .font(.title3)
+        .foregroundStyle(.secondary)
+      Text("Ask Lobs to research something, or add tiles manually")
+        .font(.footnote)
+        .foregroundStyle(.tertiary)
+      HStack(spacing: 12) {
+        Button {
+          showAddTile = true
+        } label: {
+          Label("Add Tile", systemImage: "plus.square")
         }
+        .buttonStyle(.bordered)
+        Button {
+          showAddRequest = true
+        } label: {
+          Label("Ask Lobs", systemImage: "questionmark.bubble")
+        }
+        .buttonStyle(.borderedProminent)
       }
-
-      Spacer()
-
-      // Search
-      HStack(spacing: 6) {
-        Image(systemName: "magnifyingglass")
-          .foregroundStyle(.secondary)
-          .font(.footnote)
-        TextField("Search tiles…", text: $searchText)
-          .textFieldStyle(.plain)
-          .frame(width: 160)
-      }
-      .padding(.horizontal, 10)
-      .padding(.vertical, 6)
-      .background(RTheme.subtle)
-      .clipShape(RoundedRectangle(cornerRadius: 8))
-
-      // Action buttons
-      Button(action: onAddTile) {
-        Image(systemName: "plus.square")
-          .font(.body)
-          .padding(6)
-          .background(RTheme.subtle)
-          .clipShape(RoundedRectangle(cornerRadius: 8))
-      }
-      .buttonStyle(.plain)
-      .help("Add research tile")
-
-      Button(action: onAddRequest) {
-        Image(systemName: "questionmark.bubble")
-          .font(.body)
-          .padding(6)
-          .background(Color.orange.opacity(0.12))
-          .clipShape(RoundedRectangle(cornerRadius: 8))
-      }
-      .buttonStyle(.plain)
-      .help("Ask Lobs to research something")
     }
-    .padding(.horizontal, 16)
-    .padding(.vertical, 8)
+    .frame(maxWidth: .infinity)
+    .padding(.top, 80)
+    .padding(.horizontal, 40)
   }
 }
 
-private struct FilterChip: View {
-  let label: String
-  var icon: String? = nil
-  let isActive: Bool
-  let action: () -> Void
+// MARK: - Sidebar Components
+
+private struct SidebarSection<Content: View>: View {
+  let title: String
+  let icon: String
+  let color: Color
+  @ViewBuilder let content: () -> Content
 
   var body: some View {
-    Button(action: action) {
-      HStack(spacing: 4) {
-        if let icon {
-          Image(systemName: icon)
-            .font(.footnote)
-        }
-        Text(label)
+    VStack(alignment: .leading, spacing: 6) {
+      HStack(spacing: 6) {
+        Image(systemName: icon)
           .font(.footnote)
-          .fontWeight(isActive ? .semibold : .regular)
+          .foregroundStyle(color)
+        Text(title)
+          .font(.system(size: 12, weight: .bold))
+          .foregroundStyle(.secondary)
+          .textCase(.uppercase)
       }
-      .padding(.horizontal, 10)
-      .padding(.vertical, 5)
-      .background(isActive ? Color.accentColor.opacity(0.15) : RTheme.subtle)
-      .foregroundStyle(isActive ? .primary : .secondary)
-      .clipShape(Capsule())
+      .padding(.horizontal, 14)
+
+      VStack(alignment: .leading, spacing: 2) {
+        content()
+      }
+      .padding(.horizontal, 14)
+    }
+  }
+}
+
+private struct SidebarSourceRow: View {
+  let title: String
+  let url: String
+  @State private var isHovering = false
+
+  var body: some View {
+    Button {
+      if let u = URL(string: url) { NSWorkspace.shared.open(u) }
+    } label: {
+      HStack(spacing: 6) {
+        Image(systemName: "arrow.up.right.square")
+          .font(.system(size: 11))
+          .foregroundStyle(.blue)
+        Text(title)
+          .font(.footnote)
+          .foregroundStyle(.primary)
+          .lineLimit(2)
+      }
+      .padding(.vertical, 4)
+      .padding(.horizontal, 6)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(isHovering ? RTheme.subtle : Color.clear)
+      .clipShape(RoundedRectangle(cornerRadius: 6))
     }
     .buttonStyle(.plain)
+    .onHover { h in isHovering = h }
+    .help(url)
   }
 }
 
-// MARK: - Tile Card
+private struct SidebarRequestRow: View {
+  let request: ResearchRequest
 
-private struct TileCard: View {
+  var body: some View {
+    VStack(alignment: .leading, spacing: 2) {
+      HStack(spacing: 6) {
+        Circle()
+          .fill(requestStatusColor(request.status))
+          .frame(width: 6, height: 6)
+        Text(request.prompt)
+          .font(.footnote)
+          .lineLimit(2)
+      }
+      Text(relativeTime(request.createdAt))
+        .font(.system(size: 11))
+        .foregroundStyle(.quaternary)
+    }
+    .padding(.vertical, 4)
+    .padding(.horizontal, 6)
+  }
+}
+
+// MARK: - Document Section
+
+private struct DocumentSection: View {
+  let title: String
+  let icon: String
+  let tiles: [ResearchTile]
+  @Binding var selectedTile: ResearchTile?
+  let onAskFollowUp: (ResearchTile) -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      // Section heading
+      HStack(spacing: 8) {
+        Image(systemName: icon)
+          .font(.title3)
+          .foregroundStyle(sectionColor)
+        Text(title)
+          .font(.title2)
+          .fontWeight(.bold)
+      }
+
+      // Render each tile as a paragraph/subsection of the document
+      ForEach(tiles) { tile in
+        DocumentTileBlock(
+          tile: tile,
+          isSelected: selectedTile?.id == tile.id,
+          onTap: { selectedTile = tile },
+          onAskFollowUp: { onAskFollowUp(tile) }
+        )
+      }
+    }
+  }
+
+  private var sectionColor: Color {
+    switch title {
+    case "Findings": return .orange
+    case "Comparisons": return .purple
+    case "Notes": return .green
+    case "Links & Sources": return .blue
+    default: return .secondary
+    }
+  }
+}
+
+// MARK: - Document Tile Block (renders a tile as a document paragraph)
+
+private struct DocumentTileBlock: View {
   let tile: ResearchTile
+  let isSelected: Bool
+  let onTap: () -> Void
   let onAskFollowUp: () -> Void
 
   @State private var isHovering = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      // Type badge + title
-      HStack(spacing: 6) {
-        Image(systemName: tileTypeIcon(tile.type))
-          .font(.footnote)
-          .foregroundStyle(tileTypeColor(tile.type))
-        Text(tileTypeLabel(tile.type))
-          .font(.system(size: 11, weight: .medium))
-          .foregroundStyle(tileTypeColor(tile.type))
-          .padding(.horizontal, 6)
-          .padding(.vertical, 2)
-          .background(tileTypeColor(tile.type).opacity(0.12))
-          .clipShape(Capsule())
+      // Title as a subheading
+      HStack(spacing: 8) {
+        Text(tile.title)
+          .font(.title3)
+          .fontWeight(.semibold)
+
         Spacer()
 
         if isHovering {
-          Button {
-            onAskFollowUp()
-          } label: {
-            Image(systemName: "questionmark.bubble")
-              .font(.footnote)
-              .padding(6)
-              .background(RTheme.subtle)
-              .clipShape(RoundedRectangle(cornerRadius: 8))
-          }
-          .buttonStyle(.plain)
-          .help("Ask follow-up")
-        }
+          HStack(spacing: 4) {
+            Button(action: onAskFollowUp) {
+              Image(systemName: "questionmark.bubble")
+                .font(.footnote)
+                .padding(4)
+                .background(RTheme.subtle)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            .buttonStyle(.plain)
+            .help("Ask follow-up")
 
-        if let author = tile.author {
-          Text(author)
-            .font(.system(size: 11))
-            .foregroundStyle(.tertiary)
+            Button(action: onTap) {
+              Image(systemName: "pencil")
+                .font(.footnote)
+                .padding(4)
+                .background(RTheme.subtle)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            .buttonStyle(.plain)
+            .help("Edit tile")
+          }
         }
       }
 
-      Text(tile.title)
-        .font(.headline)
-        .fontWeight(.semibold)
-        .lineLimit(2)
+      // Confidence label for findings
+      if tile.type == .finding, let confidence = tile.confidence {
+        HStack(spacing: 6) {
+          Text("Certainty:")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+          ConfidenceLabel(value: confidence)
+        }
+      }
 
-      // Type-specific preview
-      Group {
-        switch tile.type {
-        case .link:
-          if let url = tile.url {
+      // Claim / key finding — rendered prominently
+      if let claim = tile.claim, !claim.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        Text(claim)
+          .font(.body)
+          .fontWeight(.medium)
+          .padding(12)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .background(Color.orange.opacity(0.06))
+          .clipShape(RoundedRectangle(cornerRadius: 8))
+      }
+
+      // Main content — rendered as body text
+      if let content = tile.content, !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        Text(contentToAttributed(content))
+          .font(.body)
+          .foregroundStyle(.primary.opacity(0.85))
+          .textSelection(.enabled)
+      }
+
+      // Summary
+      if let summary = tile.summary, !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if tile.content == nil || tile.content?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+          Text(contentToAttributed(summary))
+            .font(.body)
+            .foregroundStyle(.primary.opacity(0.85))
+            .textSelection(.enabled)
+        } else {
+          Text(summary)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .italic()
+        }
+      }
+
+      // URL for link tiles
+      if let url = tile.url, !url.isEmpty {
+        Button {
+          if let u = URL(string: url) { NSWorkspace.shared.open(u) }
+        } label: {
+          HStack(spacing: 4) {
+            Image(systemName: "arrow.up.right.square")
+              .font(.footnote)
             Text(url)
               .font(.footnote)
-              .foregroundStyle(.blue)
               .lineLimit(1)
           }
-          if let summary = tile.summary {
-            Text(summary)
-              .font(.body)
-              .foregroundStyle(.secondary)
-              .lineLimit(3)
-          }
+          .foregroundStyle(.blue)
+        }
+        .buttonStyle(.plain)
+      }
 
-        case .note:
-          if let content = tile.content {
-            Text(content)
-              .font(.footnote)
-              .foregroundStyle(.secondary)
-              .lineLimit(4)
-          }
-
-        case .finding:
-          if let claim = tile.claim, !claim.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
-              Text("Key Finding")
-                .font(.system(size: 11, weight: .semibold))
+      // Evidence
+      if let evidence = tile.evidence, !evidence.isEmpty {
+        VStack(alignment: .leading, spacing: 4) {
+          Text("Evidence")
+            .font(.footnote)
+            .fontWeight(.bold)
+            .foregroundStyle(.secondary)
+          ForEach(evidence, id: \.self) { e in
+            HStack(alignment: .top, spacing: 6) {
+              Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(.green)
+                .padding(.top, 2)
+              Text(e)
+                .font(.callout)
                 .foregroundStyle(.secondary)
-              Text(claim)
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .lineLimit(4)
-            }
-          } else if let content = tile.content, !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            // Fallback: show content preview when claim is absent
-            Text(content)
-              .font(.body)
-              .foregroundStyle(.secondary)
-              .lineLimit(4)
-          }
-
-          if let confidence = tile.confidence {
-            HStack(spacing: 6) {
-              Text("Certainty")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-              ConfidenceLabel(value: confidence)
             }
           }
+        }
+      }
 
-          if let summary = tile.summary, !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
-              Text("Summary")
-                .font(.system(size: 11, weight: .semibold))
+      // Counterpoints
+      if let counterpoints = tile.counterpoints, !counterpoints.isEmpty {
+        VStack(alignment: .leading, spacing: 4) {
+          Text("Counterpoints")
+            .font(.footnote)
+            .fontWeight(.bold)
+            .foregroundStyle(.secondary)
+          ForEach(counterpoints, id: \.self) { c in
+            HStack(alignment: .top, spacing: 6) {
+              Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(.red)
+                .padding(.top, 2)
+              Text(c)
+                .font(.callout)
                 .foregroundStyle(.secondary)
-              ForEach(topBullets(summary, max: 3), id: \.self) { line in
-                Text("• \(line)")
-                  .font(.body)
-                  .foregroundStyle(.secondary)
-                  .lineLimit(2)
-              }
             }
           }
+        }
+      }
 
-          if let evidence = tile.evidence, !evidence.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
-              Text("Evidence")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-              ForEach(evidence.prefix(2), id: \.self) { e in
-                Text("• \(e)")
-                  .font(.system(size: 11))
-                  .foregroundStyle(.secondary)
-                  .lineLimit(2)
-              }
-            }
-          }
-
-          if let counter = tile.counterpoints, !counter.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
-              Text("Counterpoints")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-              ForEach(counter.prefix(2), id: \.self) { c in
-                Text("• \(c)")
-                  .font(.system(size: 11))
-                  .foregroundStyle(.secondary)
-                  .lineLimit(2)
-              }
-            }
-          }
-
-        case .comparison:
-          if let options = tile.options {
-            HStack(spacing: 4) {
-              ForEach(options.prefix(3), id: \.name) { opt in
-                Text(opt.name)
-                  .font(.system(size: 11, weight: .medium))
-                  .padding(.horizontal, 6)
-                  .padding(.vertical, 2)
-                  .background(RTheme.subtle)
-                  .clipShape(Capsule())
-              }
-              if options.count > 3 {
-                Text("+\(options.count - 3)")
-                  .font(.system(size: 11))
-                  .foregroundStyle(.tertiary)
-              }
-            }
+      // Comparison options
+      if let options = tile.options, !options.isEmpty {
+        VStack(alignment: .leading, spacing: 12) {
+          ForEach(options, id: \.name) { opt in
+            ComparisonOptionView(option: opt)
           }
         }
       }
@@ -501,7 +581,7 @@ private struct TileCard: View {
       // Tags
       if let tags = tile.tags, !tags.isEmpty {
         HStack(spacing: 4) {
-          ForEach(tags.prefix(4), id: \.self) { tag in
+          ForEach(tags, id: \.self) { tag in
             Text("#\(tag)")
               .font(.system(size: 11))
               .foregroundStyle(.blue)
@@ -509,24 +589,30 @@ private struct TileCard: View {
         }
       }
 
-      // Timestamp
-      Text(relativeTime(tile.updatedAt))
-        .font(.system(size: 11))
-        .foregroundStyle(.quaternary)
+      // Authorship & timestamp
+      HStack(spacing: 8) {
+        if let author = tile.author {
+          Text("by \(author)")
+            .font(.system(size: 11))
+            .foregroundStyle(.quaternary)
+        }
+        Text(relativeTime(tile.updatedAt))
+          .font(.system(size: 11))
+          .foregroundStyle(.quaternary)
+      }
     }
-    .padding(12)
+    .padding(16)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(
       RoundedRectangle(cornerRadius: RTheme.cardRadius)
-        .fill(RTheme.cardBg)
-        .shadow(color: .black.opacity(isHovering ? 0.08 : 0.03), radius: isHovering ? 8 : 3, y: 1)
+        .fill(isSelected ? RTheme.accent.opacity(0.05) : Color.clear)
     )
     .overlay(
       RoundedRectangle(cornerRadius: RTheme.cardRadius)
-        .stroke(RTheme.border, lineWidth: 0.5)
+        .stroke(isSelected ? RTheme.accent.opacity(0.3) : Color.clear, lineWidth: 1)
     )
-    .scaleEffect(isHovering ? 1.01 : 1.0)
-    .animation(.easeOut(duration: 0.15), value: isHovering)
+    .contentShape(Rectangle())
+    .onTapGesture { onTap() }
     .onHover { h in isHovering = h }
   }
 }
@@ -554,7 +640,68 @@ private struct ConfidenceLabel: View {
   }
 }
 
-// MARK: - Request Card
+// MARK: - Comparison Option View
+
+private struct ComparisonOptionView: View {
+  let option: ComparisonOption
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text(option.name)
+        .font(.callout)
+        .fontWeight(.semibold)
+
+      if let pros = option.pros, !pros.isEmpty {
+        ForEach(pros, id: \.self) { pro in
+          HStack(spacing: 4) {
+            Image(systemName: "plus.circle.fill")
+              .font(.system(size: 11))
+              .foregroundStyle(.green)
+            Text(pro).font(.footnote)
+          }
+        }
+      }
+
+      if let cons = option.cons, !cons.isEmpty {
+        ForEach(cons, id: \.self) { con in
+          HStack(spacing: 4) {
+            Image(systemName: "minus.circle.fill")
+              .font(.system(size: 11))
+              .foregroundStyle(.red)
+            Text(con).font(.footnote)
+          }
+        }
+      }
+
+      HStack(spacing: 12) {
+        if let cost = option.cost {
+          HStack(spacing: 2) {
+            Text("Cost:").font(.system(size: 11)).foregroundStyle(.tertiary)
+            Text(cost).font(.system(size: 11, weight: .medium))
+          }
+        }
+        if let risk = option.risk {
+          HStack(spacing: 2) {
+            Text("Risk:").font(.system(size: 11)).foregroundStyle(.tertiary)
+            Text(risk).font(.system(size: 11, weight: .medium))
+          }
+        }
+      }
+
+      if let notes = option.notes {
+        Text(notes)
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+      }
+    }
+    .padding(10)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(RTheme.subtle)
+    .clipShape(RoundedRectangle(cornerRadius: 8))
+  }
+}
+
+// MARK: - Request Card (used in detail panel)
 
 private struct RequestCard: View {
   let request: ResearchRequest
@@ -938,67 +1085,6 @@ private struct TileDetailView: View {
   }
 }
 
-// MARK: - Comparison Option View
-
-private struct ComparisonOptionView: View {
-  let option: ComparisonOption
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      Text(option.name)
-        .font(.callout)
-        .fontWeight(.semibold)
-
-      if let pros = option.pros, !pros.isEmpty {
-        ForEach(pros, id: \.self) { pro in
-          HStack(spacing: 4) {
-            Image(systemName: "plus.circle.fill")
-              .font(.system(size: 11))
-              .foregroundStyle(.green)
-            Text(pro).font(.footnote)
-          }
-        }
-      }
-
-      if let cons = option.cons, !cons.isEmpty {
-        ForEach(cons, id: \.self) { con in
-          HStack(spacing: 4) {
-            Image(systemName: "minus.circle.fill")
-              .font(.system(size: 11))
-              .foregroundStyle(.red)
-            Text(con).font(.footnote)
-          }
-        }
-      }
-
-      HStack(spacing: 12) {
-        if let cost = option.cost {
-          HStack(spacing: 2) {
-            Text("Cost:").font(.system(size: 11)).foregroundStyle(.tertiary)
-            Text(cost).font(.system(size: 11, weight: .medium))
-          }
-        }
-        if let risk = option.risk {
-          HStack(spacing: 2) {
-            Text("Risk:").font(.system(size: 11)).foregroundStyle(.tertiary)
-            Text(risk).font(.system(size: 11, weight: .medium))
-          }
-        }
-      }
-
-      if let notes = option.notes {
-        Text(notes)
-          .font(.footnote)
-          .foregroundStyle(.secondary)
-      }
-    }
-    .padding(10)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(RTheme.subtle)
-    .clipShape(RoundedRectangle(cornerRadius: 8))
-  }
-}
-
 // MARK: - Add Tile Sheet
 
 private struct AddTileSheet: View {
@@ -1220,32 +1306,12 @@ private func relativeTime(_ date: Date) -> String {
   return "\(Int(seconds / 2_592_000))mo ago"
 }
 
-private func topBullets(_ text: String, max: Int) -> [String] {
-  var lines = text
-    .split(separator: "\n", omittingEmptySubsequences: true)
-    .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-    .filter { !$0.isEmpty }
-
-  if lines.isEmpty { return [] }
-
-  // If it's a single long paragraph, try a naive sentence split.
-  if lines.count == 1 {
-    let s = lines[0]
-    if s.count > 140 {
-      lines = s
-        .split(separator: ".")
-        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        .filter { !$0.isEmpty }
-    }
+/// Simple markdown-like rendering: converts **bold** and bullet points for display.
+private func contentToAttributed(_ text: String) -> AttributedString {
+  var result = AttributedString(text)
+  // SwiftUI's Text handles basic markdown in AttributedString
+  if let parsed = try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+    result = parsed
   }
-
-  func normalize(_ s: String) -> String {
-    var out = s
-    for prefix in ["- ", "* ", "• "] {
-      if out.hasPrefix(prefix) { out = String(out.dropFirst(prefix.count)) }
-    }
-    return out.trimmingCharacters(in: .whitespacesAndNewlines)
-  }
-
-  return Array(lines.prefix(max)).map(normalize).filter { !$0.isEmpty }
+  return result
 }
