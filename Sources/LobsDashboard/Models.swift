@@ -367,6 +367,22 @@ struct WorkerStatus: Codable {
   var endedAt: Date?
 }
 
+// MARK: - Worker History
+
+struct WorkerHistoryRun: Codable, Identifiable {
+  var workerId: String?
+  var startedAt: Date?
+  var endedAt: Date?
+  var tasksCompleted: Int?
+  var timeoutReason: String?
+
+  var id: String { "\(workerId ?? "unknown")-\(startedAt?.timeIntervalSince1970 ?? 0)" }
+}
+
+struct WorkerHistory: Codable {
+  var runs: [WorkerHistoryRun]
+}
+
 struct ProjectsFile: Codable {
   var schemaVersion: Int
   var generatedAt: Date

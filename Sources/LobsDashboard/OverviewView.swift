@@ -156,7 +156,7 @@ struct OverviewView: View {
 
         // Worker status
         if let ws = vm.workerStatus {
-          WorkerStatusCard(status: ws)
+          WorkerStatusCard(status: ws, history: vm.workerHistory)
         }
 
         // Project cards
@@ -1138,6 +1138,8 @@ private func overviewProjectTypeColor(_ type: ProjectType) -> Color {
 
 private struct WorkerStatusCard: View {
   let status: WorkerStatus
+  var history: WorkerHistory? = nil
+  @State private var showHistory = false
 
   private var isActive: Bool { status.active }
 
@@ -1266,6 +1268,102 @@ private struct WorkerStatusCard: View {
       RoundedRectangle(cornerRadius: OTheme.cardRadius)
         .stroke(isActive ? Color.green.opacity(0.2) : OTheme.border, lineWidth: isActive ? 1.5 : 0.5)
     )
+
+    // Recent runs history
+    if let history = history, !history.runs.isEmpty {
+      VStack(alignment: .leading, spacing: 0) {
+        Button {
+          withAnimation(.easeInOut(duration: 0.2)) { showHistory.toggle() }
+        } label: {
+          HStack(spacing: 6) {
+            Image(systemName: showHistory ? "chevron.down" : "chevron.right")
+              .font(.system(size: 10, weight: .semibold))
+              .foregroundStyle(.secondary)
+            Text("Recent Runs")
+              .font(.footnote)
+              .fontWeight(.medium)
+              .foregroundStyle(.secondary)
+            Text("(\(history.runs.count))")
+              .font(.footnote)
+              .foregroundStyle(.tertiary)
+            Spacer()
+          }
+          .padding(.horizontal, 14)
+          .padding(.vertical, 8)
+        }
+        .buttonStyle(.plain)
+
+        if showHistory {
+          Divider().padding(.horizontal, 14)
+          VStack(alignment: .leading, spacing: 6) {
+            ForEach(history.runs.suffix(10).reversed()) { run in
+              WorkerHistoryRow(run: run)
+            }
+          }
+          .padding(.horizontal, 14)
+          .padding(.vertical, 10)
+        }
+      }
+      .background(
+        RoundedRectangle(cornerRadius: OTheme.cardRadius)
+          .fill(OTheme.cardBg)
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: OTheme.cardRadius)
+          .stroke(OTheme.border, lineWidth: 0.5)
+      )
+    }
+  }
+}
+
+private struct WorkerHistoryRow: View {
+  let run: WorkerHistoryRun
+
+  var body: some View {
+    HStack(spacing: 10) {
+      // Tasks count
+      HStack(spacing: 4) {
+        Image(systemName: "checkmark.circle.fill")
+          .font(.system(size: 10))
+          .foregroundStyle(run.tasksCompleted ?? 0 > 0 ? .green : .secondary)
+        Text("\(run.tasksCompleted ?? 0)")
+          .font(.footnote.monospacedDigit())
+          .foregroundStyle(.secondary)
+      }
+      .frame(width: 36, alignment: .leading)
+
+      // Duration
+      if let started = run.startedAt, let ended = run.endedAt {
+        let minutes = Int(ended.timeIntervalSince(started) / 60)
+        HStack(spacing: 4) {
+          Image(systemName: "clock")
+            .font(.system(size: 10))
+            .foregroundStyle(.secondary)
+          Text(minutes < 60
+            ? "\(max(1, minutes))m"
+            : "\(minutes / 60)h \(minutes % 60)m")
+            .font(.footnote.monospacedDigit())
+            .foregroundStyle(.secondary)
+        }
+        .frame(width: 50, alignment: .leading)
+      }
+
+      // Timestamp
+      if let ended = run.endedAt {
+        Text(relativeTime(ended))
+          .font(.footnote)
+          .foregroundStyle(.tertiary)
+      }
+
+      if run.timeoutReason != nil {
+        Image(systemName: "exclamationmark.triangle.fill")
+          .font(.system(size: 10))
+          .foregroundStyle(.orange)
+          .help("Session timed out")
+      }
+
+      Spacer()
+    }
   }
 }
 

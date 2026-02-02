@@ -51,6 +51,7 @@ final class AppViewModel: ObservableObject {
 
   // Worker Status
   @Published var workerStatus: WorkerStatus? = nil
+  @Published var workerHistory: WorkerHistory? = nil
 
   // Projects
   @Published var projects: [Project] = []
@@ -743,12 +744,17 @@ final class AppViewModel: ObservableObject {
   // MARK: - Worker Status
 
   func loadWorkerStatus(store: LobsControlStore? = nil) {
-    guard let repoURL else { workerStatus = nil; return }
+    guard let repoURL else { workerStatus = nil; workerHistory = nil; return }
     let s = store ?? LobsControlStore(repoRoot: repoURL)
     do {
       workerStatus = try s.loadWorkerStatus()
     } catch {
       workerStatus = nil
+    }
+    do {
+      workerHistory = try s.loadWorkerHistory()
+    } catch {
+      workerHistory = nil
     }
   }
 

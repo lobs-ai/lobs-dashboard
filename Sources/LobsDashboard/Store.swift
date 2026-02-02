@@ -1025,6 +1025,15 @@ final class LobsControlStore {
     return try decoder().decode(WorkerStatus.self, from: data)
   }
 
+  func loadWorkerHistory() throws -> WorkerHistory? {
+    let url = repoRoot
+      .appendingPathComponent("state")
+      .appendingPathComponent("worker-history.json")
+    guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+    let data = try Data(contentsOf: url)
+    return try decoder().decode(WorkerHistory.self, from: data)
+  }
+
   // MARK: - Text Dumps
 
   private var textDumpsDir: URL {
