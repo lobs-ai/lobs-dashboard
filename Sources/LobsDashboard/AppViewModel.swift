@@ -27,6 +27,9 @@ final class AppViewModel: ObservableObject {
   @Published var researchRequests: [ResearchRequest] = []
   @Published var selectedTileId: String? = nil
 
+  // Tracker
+  @Published var trackerItems: [TrackerItem] = []
+
   // Inbox (Design Docs)
   @Published var inboxItems: [InboxItem] = []
   @Published var readItemIds: Set<String> = [] {
@@ -43,6 +46,7 @@ final class AppViewModel: ObservableObject {
     didSet {
       settings.set(selectedProjectId, forKey: selectedProjectIdKey)
       loadResearchData()
+      loadTrackerData()
     }
   }
 
@@ -130,6 +134,10 @@ final class AppViewModel: ObservableObject {
     selectedProject?.resolvedType == .research
   }
 
+  var isTrackerProject: Bool {
+    selectedProject?.resolvedType == .tracker
+  }
+
   func startAutoRefreshIfNeeded() {
     refreshTimer?.invalidate()
     refreshTimer = nil
@@ -184,6 +192,7 @@ final class AppViewModel: ObservableObject {
 
       // Refresh research data too
       loadResearchData(store: store)
+      loadTrackerData(store: store)
       loadInboxItems(store: store)
     } catch {
       // Silent — don't overwrite errors from user actions.
@@ -238,6 +247,7 @@ final class AppViewModel: ObservableObject {
 
       // Load research data if applicable
       loadResearchData(store: store)
+      loadTrackerData(store: store)
       loadInboxItems(store: store)
 
     } catch {
@@ -258,6 +268,122 @@ final class AppViewModel: ObservableObject {
       researchRequests = try s.loadRequests(projectId: selectedProjectId)
     } catch {
       flashError("Failed to load research data: \(error.localizedDescription)")
+    }
+  }
+
+  // MARK: - Tracker
+
+  func loadTrackerData(store: LobsControlStore? = nil) {
+    guard let repoURL else { return }
+    let s = store ?? LobsControlStore(repoRoot: repoURL)
+    guard isTrackerProject else {
+      trackerItems = []
+      return
+    }
+    do {
+      trackerItems = try s.loadTrackerItems(projectId: selectedProjectId)
+    } catch {
+      flashError("Failed to load tracker data: \(error.localizedDescription)")
+    }
+  }
+
+  func addTrackerItem(title: String, difficulty: String? = nil, tags: [String]? = nil, notes: String? = nil, links: [String]? = nil) {
+    guard let repoURL else { return }
+    let now = Date()
+    let item = TrackerItem(
+      id: UUID().uuidString,
+      projectId: selectedProjectId,
+      title: title,
+      status: .notStarted,
+      difficulty: difficulty,
+      tags: tags,
+      notes: notes,
+      links: links,
+      createdAt: now,
+      updatedAt: now
+    )
+
+    trackerItems.append(item)
+
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.saveTrackerItem(item)
+    } catch {
+      flashError("Failed to save tracker item: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: add tracker item \(item.id)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
+    }
+  }
+
+  func updateTrackerItem(_ item: TrackerItem) {
+    guard let repoURL else { return }
+    var updated = item
+    updated.updatedAt = Date()
+
+    if let idx = trackerItems.firstIndex(where: { $0.id == item.id }) {
+      trackerItems[idx] = updated
+    }
+
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.saveTrackerItem(updated)
+    } catch {
+      flashError("Failed to save tracker item: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: update tracker item \(item.id)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
+    }
+  }
+
+  func removeTrackerItem(_ item: TrackerItem) {
+    guard let repoURL else { return }
+    trackerItems.removeAll { $0.id == item.id }
+
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.deleteTrackerItem(projectId: item.projectId, itemId: item.id)
+    } catch {
+      flashError("Failed to delete tracker item: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: delete tracker item \(item.id)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
     }
   }
 

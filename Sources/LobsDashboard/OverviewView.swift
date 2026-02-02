@@ -358,9 +358,9 @@ private struct ProjectCard: View {
       VStack(alignment: .leading, spacing: 12) {
         // Title row
         HStack(spacing: 8) {
-          Image(systemName: project.resolvedType == .research ? "doc.text.magnifyingglass" : "rectangle.split.3x1")
+          Image(systemName: overviewProjectTypeIcon(project.resolvedType))
             .font(.body)
-            .foregroundStyle(project.resolvedType == .research ? .orange : .blue)
+            .foregroundStyle(overviewProjectTypeColor(project.resolvedType))
 
           Text(project.title)
             .font(.callout)
@@ -379,8 +379,8 @@ private struct ProjectCard: View {
             .font(.system(size: 11, weight: .medium))
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(project.resolvedType == .research ? Color.orange.opacity(0.15) : Color.blue.opacity(0.15))
-            .foregroundStyle(project.resolvedType == .research ? .orange : .blue)
+            .background(overviewProjectTypeColor(project.resolvedType).opacity(0.15))
+            .foregroundStyle(overviewProjectTypeColor(project.resolvedType))
             .clipShape(Capsule())
         }
 
@@ -1034,6 +1034,24 @@ private struct MetricCard: View {
       RoundedRectangle(cornerRadius: OTheme.cardRadius)
         .stroke(OTheme.border, lineWidth: 0.5)
     )
+  }
+}
+
+// MARK: - Project Type Helpers (Overview)
+
+private func overviewProjectTypeIcon(_ type: ProjectType) -> String {
+  switch type {
+  case .kanban: return "rectangle.split.3x1"
+  case .research: return "doc.text.magnifyingglass"
+  case .tracker: return "checklist"
+  }
+}
+
+private func overviewProjectTypeColor(_ type: ProjectType) -> Color {
+  switch type {
+  case .kanban: return .blue
+  case .research: return .orange
+  case .tracker: return .cyan
   }
 }
 

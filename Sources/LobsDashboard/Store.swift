@@ -14,6 +14,12 @@ final class LobsControlStore {
   private var projectsURL: URL { repoRoot.appendingPathComponent("state/projects.json") }
   private var researchDirURL: URL { repoRoot.appendingPathComponent("state/research") }
 
+  private var trackerDirURL: URL { repoRoot.appendingPathComponent("state/tracker") }
+
+  private func trackerItemsDirURL(projectId: String) -> URL {
+    trackerDirURL.appendingPathComponent(projectId).appendingPathComponent("items")
+  }
+
   private func tilesDirURL(projectId: String) -> URL {
     researchDirURL.appendingPathComponent(projectId).appendingPathComponent("tiles")
   }
@@ -591,6 +597,47 @@ final class LobsControlStore {
 
   func deleteRequest(projectId: String, requestId: String) throws {
     let url = requestsDirURL(projectId: projectId).appendingPathComponent("\(requestId).json")
+    if FileManager.default.fileExists(atPath: url.path) {
+      try FileManager.default.removeItem(at: url)
+    }
+  }
+
+  // MARK: - Tracker Items
+
+  func loadTrackerItems(projectId: String) throws -> [TrackerItem] {
+    let dir = trackerItemsDirURL(projectId: projectId)
+    guard FileManager.default.fileExists(atPath: dir.path) else { return [] }
+
+    let items = try FileManager.default.contentsOfDirectory(
+      at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+    )
+
+    let dec = decoder()
+    var trackerItems: [TrackerItem] = []
+    for url in items where url.pathExtension.lowercased() == "json" {
+      do {
+        let data = try Data(contentsOf: url)
+        let item = try dec.decode(TrackerItem.self, from: data)
+        trackerItems.append(item)
+      } catch {
+        print("[LobsStore] Skipping tracker item \(url.lastPathComponent): \(error.localizedDescription)")
+        continue
+      }
+    }
+    trackerItems.sort { $0.createdAt < $1.createdAt }
+    return trackerItems
+  }
+
+  func saveTrackerItem(_ item: TrackerItem) throws {
+    let dir = trackerItemsDirURL(projectId: item.projectId)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let url = dir.appendingPathComponent("\(item.id).json")
+    let data = try encoder().encode(item)
+    try data.write(to: url, options: [.atomic])
+  }
+
+  func deleteTrackerItem(projectId: String, itemId: String) throws {
+    let url = trackerItemsDirURL(projectId: projectId).appendingPathComponent("\(itemId).json")
     if FileManager.default.fileExists(atPath: url.path) {
       try FileManager.default.removeItem(at: url)
     }

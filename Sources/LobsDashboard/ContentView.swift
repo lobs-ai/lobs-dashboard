@@ -79,6 +79,8 @@ struct ContentView: View {
           }
         } else if vm.isResearchProject {
           ResearchBoardView(vm: vm)
+        } else if vm.isTrackerProject {
+          TrackerBoardView(vm: vm)
         } else {
           // Kanban board
           BoardView(
@@ -293,7 +295,7 @@ private struct ToolbarArea: View {
               if vm.selectedProjectId == p.id {
                 Image(systemName: "checkmark")
               }
-              Image(systemName: p.resolvedType == .research ? "doc.text.magnifyingglass" : "rectangle.split.3x1")
+              Image(systemName: projectTypeIcon(p.resolvedType))
               Text(p.title)
             }
           }
@@ -368,19 +370,19 @@ private struct ToolbarArea: View {
         }
       } label: {
         HStack(spacing: 6) {
-          Image(systemName: vm.isResearchProject ? "doc.text.magnifyingglass" : "folder")
-            .foregroundStyle(vm.isResearchProject ? .orange : .secondary)
+          Image(systemName: projectTypeIcon(vm.selectedProject?.resolvedType ?? .kanban))
+            .foregroundStyle(projectTypeAccentColor(vm.selectedProject?.resolvedType ?? .kanban))
             .font(.footnote)
           Text(vm.projects.first(where: { $0.id == vm.selectedProjectId })?.title ?? "Default")
             .font(.footnote)
             .foregroundStyle(.secondary)
-          if vm.isResearchProject {
-            Text("Research")
+          if let type = vm.selectedProject?.resolvedType, type != .kanban {
+            Text(type.rawValue.capitalized)
               .font(.system(size: 11, weight: .medium))
               .padding(.horizontal, 5)
               .padding(.vertical, 1)
-              .background(Color.orange.opacity(0.15))
-              .foregroundStyle(.orange)
+              .background(projectTypeAccentColor(type).opacity(0.15))
+              .foregroundStyle(projectTypeAccentColor(type))
               .clipShape(Capsule())
           }
         }
@@ -1257,6 +1259,24 @@ private struct TaskDetailPopover: View {
   }
 }
 
+// MARK: - Project Type Helpers
+
+private func projectTypeIcon(_ type: ProjectType) -> String {
+  switch type {
+  case .kanban: return "rectangle.split.3x1"
+  case .research: return "doc.text.magnifyingglass"
+  case .tracker: return "checklist"
+  }
+}
+
+private func projectTypeAccentColor(_ type: ProjectType) -> Color {
+  switch type {
+  case .kanban: return .secondary
+  case .research: return .orange
+  case .tracker: return .cyan
+  }
+}
+
 // MARK: - Relative Time Helper
 
 private func relativeTime(_ date: Date) -> String {
@@ -1379,12 +1399,15 @@ private struct CreateProjectSheet: View {
           Picker("Type", selection: $projectType) {
             Text("Kanban").tag(ProjectType.kanban)
             Text("Research").tag(ProjectType.research)
+            Text("Tracker").tag(ProjectType.tracker)
           }
           .pickerStyle(.segmented)
 
           Text(projectType == .kanban
             ? "Track tasks through columns: Active, Waiting, Done."
-            : "Collect research tiles, notes, links, findings. Ask Lobs to investigate."
+            : projectType == .research
+            ? "Collect research tiles, notes, links, findings. Ask Lobs to investigate."
+            : "Track items with status, difficulty, tags, and notes. Great for checklists and learning goals."
           )
             .font(.footnote)
             .foregroundStyle(.tertiary)

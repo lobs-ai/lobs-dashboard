@@ -167,6 +167,7 @@ struct DashboardTask: Codable, Identifiable, Hashable {
 enum ProjectType: String, Codable, CaseIterable, Hashable {
   case kanban
   case research
+  case tracker
 }
 
 struct Project: Codable, Identifiable, Hashable {
@@ -300,4 +301,26 @@ struct Reminder: Codable, Identifiable, Hashable {
   var id: String
   var title: String
   var dueAt: Date
+}
+
+// MARK: - Tracker Items
+
+enum TrackerItemStatus: String, Codable, CaseIterable, Hashable {
+  case notStarted = "not_started"
+  case inProgress = "in_progress"
+  case done
+  case skipped
+}
+
+struct TrackerItem: Codable, Identifiable, Hashable {
+  var id: String
+  var projectId: String
+  var title: String
+  var status: TrackerItemStatus
+  var difficulty: String?    // e.g. "Easy", "Medium", "Hard" or custom
+  var tags: [String]?
+  var notes: String?
+  var links: [String]?
+  var createdAt: Date
+  var updatedAt: Date
 }
