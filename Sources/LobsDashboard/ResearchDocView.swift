@@ -26,7 +26,7 @@ struct ResearchDocView: View {
   @State private var showAddRequest = false
   /// When non-nil, triggers the "Ask Lobs" sheet with context. Wraps section name for Identifiable.
   @State private var followUpSheetContext: FollowUpContext? = nil
-  @State private var isEditing = true
+  @State private var isEditing = false
   @State private var isCondensed = false
   @State private var editContent: String = ""
   @State private var saveTimer: Timer? = nil
