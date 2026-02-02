@@ -279,6 +279,23 @@ struct InboxResponse: Codable, Identifiable, Hashable {
   var updatedAt: Date
 }
 
+// MARK: - Inbox Thread (threaded conversations per document)
+
+struct InboxThreadMessage: Codable, Identifiable, Hashable {
+  var id: String
+  var author: String   // "rafe" or "lobs"
+  var text: String
+  var createdAt: Date
+}
+
+struct InboxThread: Codable, Identifiable, Hashable {
+  var id: String       // same as docId
+  var docId: String
+  var messages: [InboxThreadMessage]
+  var createdAt: Date
+  var updatedAt: Date
+}
+
 struct ProjectsFile: Codable {
   var schemaVersion: Int
   var generatedAt: Date

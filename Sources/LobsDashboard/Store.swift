@@ -321,6 +321,35 @@ final class LobsControlStore {
     return task
   }
 
+  func deleteTask(taskId: String) throws {
+    if FileManager.default.fileExists(atPath: tasksDirURL.path) {
+      let url = taskFileURL(taskId: taskId)
+      if FileManager.default.fileExists(atPath: url.path) {
+        try FileManager.default.removeItem(at: url)
+      }
+      return
+    }
+
+    // Legacy mode: remove from tasks.json
+    var file = try loadTasks()
+    file.tasks.removeAll { $0.id == taskId }
+    try saveTasks(file)
+  }
+
+  func deleteResearchData(projectId: String) throws {
+    let dir = researchDirURL.appendingPathComponent(projectId)
+    if FileManager.default.fileExists(atPath: dir.path) {
+      try FileManager.default.removeItem(at: dir)
+    }
+  }
+
+  func deleteTrackerData(projectId: String) throws {
+    let dir = trackerDirURL.appendingPathComponent(projectId)
+    if FileManager.default.fileExists(atPath: dir.path) {
+      try FileManager.default.removeItem(at: dir)
+    }
+  }
+
   func archiveTask(taskId: String) throws {
     // Per-file mode: move the task JSON into state/tasks-archive/
     if FileManager.default.fileExists(atPath: tasksDirURL.path) {
@@ -484,6 +513,103 @@ final class LobsControlStore {
     let data = try encoder().encode(existing!)
     try data.write(to: url, options: [.atomic])
     return existing!
+  }
+
+  // MARK: - Inbox Threads (threaded conversations)
+
+  func loadInboxThread(docId: String) throws -> InboxThread? {
+    // Sanitize docId for filesystem (replace / with _)
+    let safeId = docId.replacingOccurrences(of: "/", with: "_")
+    let url = inboxResponsesDirURL
+      .appendingPathComponent(safeId)
+      .appendingPathExtension("json")
+    guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+    let data = try Data(contentsOf: url)
+
+    // Try loading as InboxThread first, fall back to legacy InboxResponse
+    if let thread = try? decoder().decode(InboxThread.self, from: data) {
+      return thread
+    }
+
+    // Migrate legacy InboxResponse to thread format
+    if let legacy = try? decoder().decode(InboxResponse.self, from: data),
+       !legacy.response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      let msg = InboxThreadMessage(
+        id: UUID().uuidString,
+        author: "rafe",
+        text: legacy.response,
+        createdAt: legacy.createdAt
+      )
+      let thread = InboxThread(
+        id: legacy.id,
+        docId: legacy.docId,
+        messages: [msg],
+        createdAt: legacy.createdAt,
+        updatedAt: legacy.updatedAt
+      )
+      // Save migrated thread
+      try saveInboxThread(thread)
+      return thread
+    }
+
+    return nil
+  }
+
+  func loadAllInboxThreads() throws -> [String: InboxThread] {
+    guard FileManager.default.fileExists(atPath: inboxResponsesDirURL.path) else { return [:] }
+    var result: [String: InboxThread] = [:]
+
+    guard let e = FileManager.default.enumerator(at: inboxResponsesDirURL, includingPropertiesForKeys: nil) else {
+      return [:]
+    }
+
+    for case let url as URL in e {
+      guard url.pathExtension.lowercased() == "json" else { continue }
+      let data = try Data(contentsOf: url)
+
+      // Try thread format first
+      if let thread = try? decoder().decode(InboxThread.self, from: data) {
+        result[thread.docId] = thread
+        continue
+      }
+
+      // Migrate legacy
+      if let legacy = try? decoder().decode(InboxResponse.self, from: data),
+         !legacy.response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        let msg = InboxThreadMessage(
+          id: UUID().uuidString,
+          author: "rafe",
+          text: legacy.response,
+          createdAt: legacy.createdAt
+        )
+        let thread = InboxThread(
+          id: legacy.id,
+          docId: legacy.docId,
+          messages: [msg],
+          createdAt: legacy.createdAt,
+          updatedAt: legacy.updatedAt
+        )
+        result[thread.docId] = thread
+      }
+    }
+
+    return result
+  }
+
+  func saveInboxThread(_ thread: InboxThread) throws {
+    let safeId = thread.docId.replacingOccurrences(of: "/", with: "_")
+    let url = inboxResponsesDirURL
+      .appendingPathComponent(safeId)
+      .appendingPathExtension("json")
+
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(),
+      withIntermediateDirectories: true,
+      attributes: nil
+    )
+
+    let data = try encoder().encode(thread)
+    try data.write(to: url, options: [.atomic])
   }
 
   private func extractTitle(from content: String, filename: String) -> String {

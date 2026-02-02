@@ -944,10 +944,17 @@ private struct TaskTile: View {
       }
 
       if let notes = task.notes, !notes.isEmpty {
-        Text(notes)
-          .font(.footnote)
-          .foregroundStyle(.secondary)
-          .lineLimit(2)
+        if let md = try? AttributedString(markdown: notes, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+          Text(md)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+        } else {
+          Text(notes)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+        }
       }
 
       // Relative timestamp
@@ -1048,6 +1055,7 @@ private struct TaskDetailPopover: View {
   @State private var autosaveWorkItem: DispatchWorkItem? = nil
   @State private var lastAutosavedTitle: String = ""
   @State private var lastAutosavedNotes: String = ""
+  @State private var showMarkdownPreview: Bool = false
 
   var body: some View {
     ScrollView {
@@ -1087,24 +1095,64 @@ private struct TaskDetailPopover: View {
               Text("Notes")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+
               Spacer()
-              Text("Shift+Enter for new line")
-                .font(.footnote)
-                .foregroundStyle(.tertiary)
+
+              Button {
+                showMarkdownPreview.toggle()
+              } label: {
+                HStack(spacing: 3) {
+                  Image(systemName: showMarkdownPreview ? "pencil" : "eye")
+                    .font(.system(size: 11))
+                  Text(showMarkdownPreview ? "Edit" : "Preview")
+                    .font(.system(size: 11))
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Theme.subtle)
+                .clipShape(Capsule())
+              }
+              .buttonStyle(.plain)
+
+              if !showMarkdownPreview {
+                Text("Shift+Enter for new line")
+                  .font(.footnote)
+                  .foregroundStyle(.tertiary)
+              }
             }
 
-            SpellCheckingTextEditor(
-              text: $editNotes,
-              font: .systemFont(ofSize: NSFont.smallSystemFontSize),
-              placeholder: "Add notes…",
-              onSubmit: {
-                vm.editTask(taskId: task.id, title: editTitle, notes: editNotes, autoPush: autoPush)
-                lastAutosavedTitle = editTitle
-                lastAutosavedNotes = editNotes
+            if showMarkdownPreview {
+              ScrollView {
+                if let md = try? AttributedString(markdown: editNotes, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+                  Text(md)
+                    .font(.system(size: NSFont.smallSystemFontSize))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                  Text(editNotes)
+                    .font(.system(size: NSFont.smallSystemFontSize))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
               }
-            )
-            .frame(minHeight: 80, maxHeight: 160)
-            .onChange(of: editNotes) { _ in scheduleAutosave() }
+              .frame(minHeight: 80, maxHeight: 160)
+              .padding(8)
+              .background(Theme.subtle)
+              .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+              SpellCheckingTextEditor(
+                text: $editNotes,
+                font: .systemFont(ofSize: NSFont.smallSystemFontSize),
+                placeholder: "Add notes…",
+                onSubmit: {
+                  vm.editTask(taskId: task.id, title: editTitle, notes: editNotes, autoPush: autoPush)
+                  lastAutosavedTitle = editTitle
+                  lastAutosavedNotes = editNotes
+                }
+              )
+              .frame(minHeight: 80, maxHeight: 160)
+              .onChange(of: editNotes) { _ in scheduleAutosave() }
+            }
           }
 
           HStack(spacing: 8) {

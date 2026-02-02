@@ -39,6 +39,10 @@ final class AppViewModel: ObservableObject {
   }
   @Published var showInbox: Bool = false
   @Published var inboxResponsesByDocId: [String: InboxResponse] = [:]
+  @Published var inboxThreadsByDocId: [String: InboxThread] = [:]
+
+  // Project README
+  @Published var projectReadme: String = ""
 
   // Projects
   @Published var projects: [Project] = []
@@ -47,6 +51,7 @@ final class AppViewModel: ObservableObject {
       settings.set(selectedProjectId, forKey: selectedProjectIdKey)
       loadResearchData()
       loadTrackerData()
+      loadProjectReadme()
     }
   }
 
@@ -249,6 +254,7 @@ final class AppViewModel: ObservableObject {
       loadResearchData(store: store)
       loadTrackerData(store: store)
       loadInboxItems(store: store)
+      loadProjectReadme(store: store)
 
     } catch {
       lastError = String(describing: error)
@@ -402,6 +408,8 @@ final class AppViewModel: ObservableObject {
 
       let responses = try s.loadInboxResponses()
       inboxResponsesByDocId = Dictionary(uniqueKeysWithValues: responses.map { ($0.docId, $0) })
+
+      inboxThreadsByDocId = try s.loadAllInboxThreads()
     } catch {
       flashError("Failed to load inbox: \(error.localizedDescription)")
     }
@@ -447,6 +455,103 @@ final class AppViewModel: ObservableObject {
         try await asyncCommitAndMaybePush(
           repoURL: repoURL,
           message: "Lobs: respond to inbox \(docId)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
+    }
+  }
+
+  // MARK: - Project README
+
+  func loadProjectReadme(store: LobsControlStore? = nil) {
+    guard let repoURL else { projectReadme = ""; return }
+    let s = store ?? LobsControlStore(repoRoot: repoURL)
+    do {
+      projectReadme = try s.loadProjectReadme(projectId: selectedProjectId) ?? ""
+    } catch {
+      projectReadme = ""
+    }
+  }
+
+  func saveProjectReadme(content: String) {
+    guard let repoURL else { return }
+    projectReadme = content
+
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.saveProjectReadme(projectId: selectedProjectId, content: content)
+    } catch {
+      flashError("Failed to save README: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: update project \(selectedProjectId) README",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
+    }
+  }
+
+  func postInboxThreadMessage(docId: String, author: String, text: String) {
+    guard let repoURL else { return }
+    let now = Date()
+    let msg = InboxThreadMessage(
+      id: UUID().uuidString,
+      author: author,
+      text: text,
+      createdAt: now
+    )
+
+    // Update in-memory thread
+    if var thread = inboxThreadsByDocId[docId] {
+      thread.messages.append(msg)
+      thread.updatedAt = now
+      inboxThreadsByDocId[docId] = thread
+
+      do {
+        let store = LobsControlStore(repoRoot: repoURL)
+        try store.saveInboxThread(thread)
+      } catch {
+        flashError("Failed to save thread: \(error.localizedDescription)")
+        return
+      }
+    } else {
+      // Create new thread
+      let thread = InboxThread(
+        id: UUID().uuidString,
+        docId: docId,
+        messages: [msg],
+        createdAt: now,
+        updatedAt: now
+      )
+      inboxThreadsByDocId[docId] = thread
+
+      do {
+        let store = LobsControlStore(repoRoot: repoURL)
+        try store.saveInboxThread(thread)
+      } catch {
+        flashError("Failed to save thread: \(error.localizedDescription)")
+        return
+      }
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: thread reply on \(docId)",
           autoPush: true
         )
       } catch {
@@ -884,28 +989,35 @@ final class AppViewModel: ObservableObject {
   func deleteProject(id: String) {
     guard id != "default", let repoURL else { return }
 
-    // Move tasks in this project to "default"
-    for i in tasks.indices where (tasks[i].projectId ?? "default") == id {
-      tasks[i].projectId = "default"
-    }
+    // Cascade delete: remove all tasks belonging to this project
+    let taskIdsToDelete = tasks.filter { ($0.projectId ?? "default") == id }.map { $0.id }
+    tasks.removeAll { ($0.projectId ?? "default") == id }
 
     // Remove locally
     projects.removeAll { $0.id == id }
+
+    // Navigate back to home screen
     if selectedProjectId == id {
       selectedProjectId = "default"
+      showOverview = true
     }
 
-    // Persist tasks + project removal + git
+    // Persist cascade deletion + git
     do {
       let store = LobsControlStore(repoRoot: repoURL)
-      // Update tasks that were in this project
-      let file = try store.loadTasks()
-      var updated = file
-      for i in updated.tasks.indices where (updated.tasks[i].projectId ?? "default") == id {
-        updated.tasks[i].projectId = "default"
-        updated.tasks[i].updatedAt = Date()
+
+      // Delete task files
+      for taskId in taskIdsToDelete {
+        try store.deleteTask(taskId: taskId)
       }
-      try store.saveTasks(updated)
+
+      // Delete research data (state/research/<projectId>/)
+      try store.deleteResearchData(projectId: id)
+
+      // Delete tracker data (state/tracker/<projectId>/)
+      try store.deleteTrackerData(projectId: id)
+
+      // Delete the project entry itself
       try store.deleteProject(id: id)
     } catch {
       flashError("Failed to delete project: \(error.localizedDescription)")
@@ -917,7 +1029,7 @@ final class AppViewModel: ObservableObject {
       do {
         try await asyncCommitAndMaybePush(
           repoURL: repoURL,
-          message: "Lobs: delete project \(id), tasks moved to default",
+          message: "Lobs: delete project \(id) and all associated data",
           autoPush: true
         )
       } catch {
@@ -1383,7 +1495,16 @@ final class AppViewModel: ObservableObject {
 
   var columns: [AnyTaskColumn] {
     [
-      .init(title: "Active", dropStatus: .active) { $0.status == .active },
+      .init(title: "Active", dropStatus: .active) { t in
+        if t.status == .active { return true }
+        // Unknown statuses default to Active column
+        switch t.status {
+        case .inbox, .active, .waitingOn, .completed, .rejected:
+          return false
+        case .other:
+          return true
+        }
+      },
       .init(title: "Waiting on", dropStatus: .waitingOn) { $0.status == .waitingOn },
 
       .init(title: "Done", dropStatus: .completed) { t in
@@ -1391,14 +1512,6 @@ final class AppViewModel: ObservableObject {
       },
 
       .init(title: "Rejected", dropStatus: .rejected) { $0.status == .rejected },
-      .init(title: "Other", dropStatus: .other("inbox")) {
-        switch $0.status {
-        case .inbox, .active, .waitingOn, .completed, .rejected:
-          return false
-        case .other:
-          return true
-        }
-      },
     ]
   }
 

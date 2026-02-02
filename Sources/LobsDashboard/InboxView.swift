@@ -257,7 +257,11 @@ private struct DocumentViewer: View {
   let item: InboxItem
   @ObservedObject var vm: AppViewModel
 
-  @State private var responseText: String = ""
+  @State private var replyText: String = ""
+
+  private var thread: InboxThread? {
+    vm.inboxThreadsByDocId[item.id]
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -326,58 +330,149 @@ private struct DocumentViewer: View {
 
       Divider()
 
-      // Response editor
-      VStack(alignment: .leading, spacing: 10) {
-        HStack {
-          Text("Response")
-            .font(.callout)
-            .fontWeight(.semibold)
+      // Document content + thread
+      ScrollViewReader { proxy in
+        ScrollView {
+          VStack(alignment: .leading, spacing: 0) {
+            // Document content
+            Text(item.content)
+              .font(.system(size: 13, design: .monospaced))
+              .lineSpacing(4)
+              .textSelection(.enabled)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .padding(24)
 
-          Spacer()
+            // Thread messages
+            if let thread = thread, !thread.messages.isEmpty {
+              Divider()
+                .padding(.horizontal, 20)
 
-          Button("Save") {
-            vm.saveInboxResponse(docId: item.id, response: responseText)
+              VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                  Image(systemName: "bubble.left.and.bubble.right")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                  Text("Thread")
+                    .font(.callout)
+                    .fontWeight(.semibold)
+                  Text("(\(thread.messages.count))")
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 16)
+                .padding(.bottom, 8)
+
+                ForEach(thread.messages) { msg in
+                  ThreadMessageBubble(message: msg)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 3)
+                }
+              }
+              .id("thread-bottom")
+            }
           }
-          .disabled(responseText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
+        .onChange(of: thread?.messages.count) { _ in
+          withAnimation {
+            proxy.scrollTo("thread-bottom", anchor: .bottom)
+          }
+        }
+      }
 
+      Divider()
+
+      // Reply box at bottom
+      HStack(spacing: 10) {
         ZStack(alignment: .topLeading) {
-          TextEditor(text: $responseText)
-            .font(.system(.body, design: .monospaced))
+          TextEditor(text: $replyText)
+            .font(.system(.body))
             .frame(minHeight: 32, maxHeight: 80)
             .padding(6)
             .background(ITheme.cardBg)
             .clipShape(RoundedRectangle(cornerRadius: 10))
 
-          if responseText.isEmpty {
-            Text("Write a short response for Lobs…")
+          if replyText.isEmpty {
+            Text("Reply to this document…")
               .foregroundStyle(.tertiary)
               .padding(.horizontal, 14)
               .padding(.vertical, 14)
               .allowsHitTesting(false)
           }
         }
+
+        Button {
+          let text = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
+          guard !text.isEmpty else { return }
+          vm.postInboxThreadMessage(docId: item.id, author: "rafe", text: text)
+          replyText = ""
+        } label: {
+          Image(systemName: "arrow.up.circle.fill")
+            .font(.title2)
+            .foregroundStyle(
+              replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? Color.secondary : Color.accentColor
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        .help("Send reply")
       }
       .padding(.horizontal, 20)
-      .padding(.vertical, 14)
+      .padding(.vertical, 12)
       .background(ITheme.bg.opacity(0.5))
-
-      Divider()
-
-      // Document content
-      ScrollView {
-        Text(item.content)
-          .font(.system(size: 13, design: .monospaced))
-          .lineSpacing(4)
-          .textSelection(.enabled)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(24)
-      }
     }
     .background(ITheme.bg)
-    .onAppear {
-      responseText = vm.inboxResponseText(docId: item.id)
+  }
+}
+
+// MARK: - Thread Message Bubble
+
+private struct ThreadMessageBubble: View {
+  let message: InboxThreadMessage
+
+  private var isLobs: Bool { message.author.lowercased() == "lobs" }
+
+  private var authorColor: Color {
+    isLobs ? .purple : .blue
+  }
+
+  var body: some View {
+    HStack(alignment: .top, spacing: 8) {
+      // Author avatar
+      ZStack {
+        Circle()
+          .fill(authorColor.opacity(0.15))
+          .frame(width: 28, height: 28)
+        Text(isLobs ? "L" : "R")
+          .font(.system(size: 13, weight: .bold))
+          .foregroundStyle(authorColor)
+      }
+
+      VStack(alignment: .leading, spacing: 4) {
+        HStack(spacing: 6) {
+          Text(message.author.capitalized)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(authorColor)
+
+          Text(message.createdAt.formatted(date: .abbreviated, time: .shortened))
+            .font(.system(size: 11))
+            .foregroundStyle(.tertiary)
+        }
+
+        Text(message.text)
+          .font(.system(size: 13))
+          .textSelection(.enabled)
+          .lineSpacing(3)
+      }
+
+      Spacer()
     }
+    .padding(10)
+    .background(
+      RoundedRectangle(cornerRadius: 10)
+        .fill(isLobs ? Color.purple.opacity(0.05) : Color.blue.opacity(0.05))
+    )
   }
 }
 
