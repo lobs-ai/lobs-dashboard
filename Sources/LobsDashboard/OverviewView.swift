@@ -83,6 +83,11 @@ struct OverviewView: View {
     allTasks.filter { $0.status == .inbox }.count
   }
 
+  /// Inbox items needing attention (unread docs or unread follow-ups).
+  private var inboxNeedsAttentionCount: Int {
+    vm.unreadInboxCount
+  }
+
   // Recent activity: tasks updated in the last 7 days, sorted by recency
   private var recentActivity: [DashboardTask] {
     let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
@@ -119,7 +124,8 @@ struct OverviewView: View {
             completedThisWeek: completedThisWeek,
             openResearchRequests: openResearchRequests,
             blockedTasks: blockedTasks,
-            inboxTasks: inboxTasks
+            inboxTasks: inboxTasks,
+            inboxNeedsAttentionCount: inboxNeedsAttentionCount
           )
           Spacer()
           Button {
@@ -273,14 +279,21 @@ struct OverviewView: View {
                 .frame(maxWidth: .infinity)
             } else {
               VStack(spacing: 0) {
-                ForEach(Array(vm.inboxItems.prefix(8).enumerated()), id: \.element.id) { idx, item in
-                  InboxRow(item: item, onTap: {
+                // Sort: items needing attention first, then by modified date
+                let sortedItems = vm.inboxItems.sorted { a, b in
+                  let aNeeds = !a.isRead || vm.unreadFollowupCount(docId: a.id) > 0
+                  let bNeeds = !b.isRead || vm.unreadFollowupCount(docId: b.id) > 0
+                  if aNeeds != bNeeds { return aNeeds }
+                  return a.modifiedAt > b.modifiedAt
+                }
+                ForEach(Array(sortedItems.prefix(8).enumerated()), id: \.element.id) { idx, item in
+                  InboxRow(item: item, unreadFollowups: vm.unreadFollowupCount(docId: item.id), onTap: {
                     vm.markInboxItemRead(item)
                     if let onOpenInbox {
                       onOpenInbox(item.id)
                     }
                   })
-                  if idx < min(vm.inboxItems.count, 8) - 1 {
+                  if idx < min(sortedItems.count, 8) - 1 {
                     Divider().padding(.leading, 36)
                   }
                 }
@@ -314,6 +327,7 @@ private struct StatsRow: View {
   let openResearchRequests: Int
   let blockedTasks: Int
   let inboxTasks: Int
+  let inboxNeedsAttentionCount: Int
 
   var body: some View {
     HStack(spacing: 16) {
@@ -324,7 +338,10 @@ private struct StatsRow: View {
         StatCard(label: "Blocked", value: "\(blockedTasks)", icon: "exclamationmark.octagon.fill", color: .red)
       }
       if inboxTasks > 0 {
-        StatCard(label: "Inbox", value: "\(inboxTasks)", icon: "tray.full.fill", color: .blue)
+        StatCard(label: "Inbox Tasks", value: "\(inboxTasks)", icon: "tray.full.fill", color: .blue)
+      }
+      if inboxNeedsAttentionCount > 0 {
+        StatCard(label: "Inbox", value: "\(inboxNeedsAttentionCount)", icon: "envelope.badge", color: .red)
       }
     }
   }
@@ -612,28 +629,50 @@ private struct ActivityRow: View {
 
 private struct InboxRow: View {
   let item: InboxItem
+  var unreadFollowups: Int = 0
   let onTap: () -> Void
 
   @State private var isHovering = false
 
+  /// Whether this item needs attention (unread doc or has unread follow-up replies).
+  private var needsAttention: Bool {
+    !item.isRead || unreadFollowups > 0
+  }
+
   var body: some View {
     Button(action: onTap) {
       HStack(spacing: 10) {
-        Image(systemName: item.isRead ? "doc.text" : "doc.text.fill")
+        Image(systemName: needsAttention ? "doc.text.fill" : "doc.text")
           .font(.footnote)
-          .foregroundStyle(item.isRead ? .secondary : Color.blue)
+          .foregroundStyle(needsAttention ? (unreadFollowups > 0 ? Color.purple : Color.blue) : .secondary)
           .frame(width: 24)
 
         VStack(alignment: .leading, spacing: 2) {
           Text(item.title)
             .font(.footnote)
-            .fontWeight(item.isRead ? .regular : .semibold)
+            .fontWeight(needsAttention ? .semibold : .regular)
             .lineLimit(1)
 
-          Text(item.summary)
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
+          HStack(spacing: 6) {
+            Text(item.summary)
+              .font(.footnote)
+              .foregroundStyle(.secondary)
+              .lineLimit(1)
+
+            if unreadFollowups > 0 {
+              HStack(spacing: 3) {
+                Image(systemName: "bubble.left.and.bubble.right.fill")
+                  .font(.system(size: 9))
+                Text("+\(unreadFollowups)")
+                  .font(.system(size: 10, weight: .semibold))
+              }
+              .padding(.horizontal, 5)
+              .padding(.vertical, 2)
+              .background(Color.purple.opacity(0.12))
+              .foregroundStyle(.purple)
+              .clipShape(Capsule())
+            }
+          }
         }
 
         Spacer()
