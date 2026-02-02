@@ -200,7 +200,7 @@ struct ContentView: View {
       HelpPanelSheet()
     }
     .sheet(isPresented: $showTextDump) {
-      TextDumpSheet(vm: vm, projectId: vm.showOverview ? "default" : vm.selectedProjectId)
+      TextDumpSheet(vm: vm, projectId: vm.showOverview ? nil : vm.selectedProjectId)
     }
     .onAppear { vm.reloadIfPossible() }
     // Keyboard shortcuts (Task #84248F22)
@@ -2507,10 +2507,16 @@ private struct HelpPanelSheet: View {
 
 private struct TextDumpSheet: View {
   @ObservedObject var vm: AppViewModel
-  let projectId: String
+  /// When nil, the user must choose a project (invoked from home screen).
+  let projectId: String?
   @Environment(\.dismiss) private var dismiss
 
   @State private var text: String = ""
+  @State private var selectedProjectId: String = ""
+  @State private var shakeProject: Bool = false
+
+  private var shouldShowPicker: Bool { projectId == nil }
+  private var resolvedProjectId: String { projectId ?? selectedProjectId }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
@@ -2533,14 +2539,40 @@ private struct TextDumpSheet: View {
         Spacer()
       }
 
-      // Target project
-      HStack(spacing: 6) {
-        Text("Project:")
-          .font(.footnote)
-          .foregroundStyle(.secondary)
-        Text(vm.projects.first(where: { $0.id == projectId })?.title ?? projectId)
-          .font(.footnote)
-          .fontWeight(.medium)
+      // Project picker or static label
+      if shouldShowPicker {
+        VStack(alignment: .leading, spacing: 6) {
+          Text("Project")
+            .font(.callout)
+            .fontWeight(.medium)
+          Picker("Project", selection: $selectedProjectId) {
+            Text("Choose a project")
+              .tag("")
+            ForEach(vm.sortedActiveProjects) { project in
+              HStack(spacing: 6) {
+                Image(systemName: project.resolvedType == .research ? "doc.text.magnifyingglass" : "rectangle.split.3x1")
+                Text(project.title)
+              }
+              .tag(project.id)
+            }
+          }
+          .labelsHidden()
+          .padding(4)
+          .background(
+            RoundedRectangle(cornerRadius: 6)
+              .stroke(shakeProject ? Color.red : Color.clear, lineWidth: 2)
+          )
+          .modifier(ShakeEffect(shaking: shakeProject))
+        }
+      } else {
+        HStack(spacing: 6) {
+          Text("Project:")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+          Text(vm.projects.first(where: { $0.id == resolvedProjectId })?.title ?? resolvedProjectId)
+            .font(.footnote)
+            .fontWeight(.medium)
+        }
       }
 
       TextEditor(text: $text)
@@ -2575,7 +2607,14 @@ private struct TextDumpSheet: View {
         }
 
         Button("Submit") {
-          vm.submitTextDump(text: text, projectId: projectId)
+          if shouldShowPicker && selectedProjectId.isEmpty {
+            withAnimation(.default) { shakeProject = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+              withAnimation { shakeProject = false }
+            }
+            return
+          }
+          vm.submitTextDump(text: text, projectId: resolvedProjectId)
           dismiss()
         }
         .keyboardShortcut(.defaultAction)
