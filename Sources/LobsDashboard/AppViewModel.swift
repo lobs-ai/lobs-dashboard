@@ -1598,6 +1598,59 @@ final class AppViewModel: ObservableObject {
     }
   }
 
+  /// Reorder a project by moving it before another project (drag-and-drop).
+  func reorderProject(fromId: String, beforeId: String) {
+    guard fromId != beforeId, let repoURL else { return }
+
+    var sorted = sortedActiveProjects
+    guard let fromIndex = sorted.firstIndex(where: { $0.id == fromId }) else { return }
+    let moved = sorted.remove(at: fromIndex)
+    if let toIndex = sorted.firstIndex(where: { $0.id == beforeId }) {
+      sorted.insert(moved, at: toIndex)
+    } else {
+      sorted.append(moved)
+    }
+
+    // Reassign sortOrder
+    for (i, project) in sorted.enumerated() {
+      if let idx = projects.firstIndex(where: { $0.id == project.id }) {
+        projects[idx].sortOrder = i
+        projects[idx].updatedAt = Date()
+      }
+    }
+
+    // Persist + git
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      var file = try store.loadProjects()
+      for (i, project) in sorted.enumerated() {
+        if let idx = file.projects.firstIndex(where: { $0.id == project.id }) {
+          file.projects[idx].sortOrder = i
+          file.projects[idx].updatedAt = Date()
+        }
+      }
+      try store.saveProjects(file)
+    } catch {
+      flashError("Failed to reorder projects: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: reorder projects (drag)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+        reload()
+      }
+      isGitBusy = false
+    }
+  }
+
   private func uniqueProjectId(for title: String) -> String {
     func slugify(_ s: String) -> String {
       let lower = s.lowercased()

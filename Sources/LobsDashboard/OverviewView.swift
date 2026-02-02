@@ -12,6 +12,31 @@ private enum OTheme {
   static let cardRadius: CGFloat = 14
 }
 
+// MARK: - Project Drop Delegate
+
+private struct ProjectDropDelegate: DropDelegate {
+  let targetId: String
+  @Binding var draggingId: String?
+  let vm: AppViewModel
+
+  func validateDrop(info: DropInfo) -> Bool { true }
+
+  func performDrop(info: DropInfo) -> Bool {
+    guard let fromId = draggingId, fromId != targetId else { return false }
+    vm.reorderProject(fromId: fromId, beforeId: targetId)
+    draggingId = nil
+    return true
+  }
+
+  func dropEntered(info: DropInfo) {}
+
+  func dropExited(info: DropInfo) {}
+
+  func dropUpdated(info: DropInfo) -> DropProposal? {
+    DropProposal(operation: .move)
+  }
+}
+
 // MARK: - Overview View
 
 struct OverviewView: View {
@@ -22,6 +47,7 @@ struct OverviewView: View {
   @State private var showInboxSheet: Bool = false
   @State private var pendingInboxItemId: String? = nil
   @State private var showDetailedStats: Bool = false
+  @State private var draggingProjectId: String? = nil
 
   private var allTasks: [DashboardTask] { vm.tasks }
 
@@ -145,6 +171,15 @@ struct OverviewView: View {
                 tasks: allTasks.filter { ($0.projectId ?? "default") == project.id },
                 onTap: { onSelectProject(project.id) }
               )
+              .onDrag {
+                draggingProjectId = project.id
+                return NSItemProvider(object: project.id as NSString)
+              }
+              .onDrop(of: [.text], delegate: ProjectDropDelegate(
+                targetId: project.id,
+                draggingId: $draggingProjectId,
+                vm: vm
+              ))
             }
           }
         }
