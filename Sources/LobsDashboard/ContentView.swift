@@ -89,25 +89,29 @@ struct ContentView: View {
         Divider()
 
         // Switch view: overview (home) vs project board
-        if vm.showOverview {
-          OverviewView(vm: vm) { projectId in
-            vm.selectedProjectId = projectId
-            vm.showOverview = false
+        // Content fills remaining space below the pinned header
+        Group {
+          if vm.showOverview {
+            OverviewView(vm: vm) { projectId in
+              vm.selectedProjectId = projectId
+              vm.showOverview = false
+            }
+          } else if vm.isResearchProject {
+            ResearchBoardView(vm: vm)
+          } else if vm.isTrackerProject {
+            TrackerBoardView(vm: vm)
+          } else {
+            // Kanban board
+            BoardView(
+              vm: vm,
+              showAllDone: $showAllDone,
+              showAllRejected: $showAllRejected,
+              autoPush: $autoPush,
+              quickAddText: $quickAddText
+            )
           }
-        } else if vm.isResearchProject {
-          ResearchBoardView(vm: vm)
-        } else if vm.isTrackerProject {
-          TrackerBoardView(vm: vm)
-        } else {
-          // Kanban board
-          BoardView(
-            vm: vm,
-            showAllDone: $showAllDone,
-            showAllRejected: $showAllRejected,
-            autoPush: $autoPush,
-            quickAddText: $quickAddText
-          )
         }
+        .frame(maxHeight: .infinity)
       }
       .background(Theme.boardBg)
 
@@ -569,6 +573,7 @@ private struct ToolbarArea: View {
     .padding(.horizontal, 16)
     .padding(.vertical, 10)
     .background(.ultraThinMaterial)
+    .fixedSize(horizontal: false, vertical: true)
   }
 }
 
