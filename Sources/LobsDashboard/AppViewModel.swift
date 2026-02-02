@@ -1024,6 +1024,33 @@ final class AppViewModel: ObservableObject {
     }
   }
 
+  // MARK: - Dependency Auto-Unblock
+
+  /// When a task is completed, remove it from the `blockedBy` list of all dependent tasks.
+  /// If a dependent task has no remaining blockers, auto-unblock it (set workState back from blocked).
+  private func autoUnblockDependents(of completedTaskId: String, autoPush: Bool) {
+    guard let repoURL else { return }
+    let store = LobsControlStore(repoRoot: repoURL)
+
+    for i in tasks.indices {
+      guard var blockers = tasks[i].blockedBy, blockers.contains(completedTaskId) else { continue }
+      blockers.removeAll { $0 == completedTaskId }
+      tasks[i].blockedBy = blockers.isEmpty ? nil : blockers
+      tasks[i].updatedAt = Date()
+
+      // If no remaining blockers and task was blocked, unblock it
+      if blockers.isEmpty && tasks[i].workState == .blocked {
+        tasks[i].workState = .notStarted
+      }
+
+      do {
+        try store.saveExistingTask(tasks[i])
+      } catch {
+        flashError("Failed to save unblocked task: \(error.localizedDescription)")
+      }
+    }
+  }
+
   // MARK: - Actions (now optimistic + async)
 
   // MARK: - Context-Aware Task Actions
@@ -1093,6 +1120,7 @@ final class AppViewModel: ObservableObject {
         autoPush: autoPush
       )
     }
+    autoUnblockDependents(of: id, autoPush: autoPush)
   }
 
   /// Mark a completed task as Done (approved).
@@ -1778,6 +1806,42 @@ final class AppViewModel: ObservableObject {
       try await self.asyncCommitAndMaybePush(
         repoURL: repoURL,
         message: "Lobs: edit \(taskId)",
+        autoPush: autoPush
+      )
+    }
+  }
+
+  // MARK: - Task Dependencies
+
+  func addBlocker(taskId: String, blockerTaskId: String, autoPush: Bool) {
+    optimisticUpdate(taskId: taskId, localMutation: {
+      var blockers = $0.blockedBy ?? []
+      if !blockers.contains(blockerTaskId) {
+        blockers.append(blockerTaskId)
+      }
+      $0.blockedBy = blockers
+      $0.workState = .blocked
+    }) { repoURL in
+      try await self.asyncCommitAndMaybePush(
+        repoURL: repoURL,
+        message: "Lobs: add blocker \(blockerTaskId) to \(taskId)",
+        autoPush: autoPush
+      )
+    }
+  }
+
+  func removeBlocker(taskId: String, blockerTaskId: String, autoPush: Bool) {
+    optimisticUpdate(taskId: taskId, localMutation: {
+      var blockers = $0.blockedBy ?? []
+      blockers.removeAll { $0 == blockerTaskId }
+      $0.blockedBy = blockers.isEmpty ? nil : blockers
+      if blockers.isEmpty && $0.workState == .blocked {
+        $0.workState = .notStarted
+      }
+    }) { repoURL in
+      try await self.asyncCommitAndMaybePush(
+        repoURL: repoURL,
+        message: "Lobs: remove blocker \(blockerTaskId) from \(taskId)",
         autoPush: autoPush
       )
     }

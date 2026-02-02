@@ -1374,6 +1374,18 @@ private struct TaskTile: View {
         }
       }
 
+      // Blocked-by dependency indicator
+      if let blockers = task.blockedBy, !blockers.isEmpty {
+        HStack(spacing: 4) {
+          Image(systemName: "link")
+            .font(.system(size: 10))
+            .foregroundStyle(.red)
+          Text("Blocked by \(blockers.count) task\(blockers.count == 1 ? "" : "s")")
+            .font(.system(size: 11))
+            .foregroundStyle(.red.opacity(0.8))
+        }
+      }
+
       if let notes = task.notes, !notes.isEmpty {
         if let md = try? AttributedString(markdown: notes, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
           Text(md)
@@ -1638,6 +1650,9 @@ private struct TaskDetailPopover: View {
           }
         }
 
+        // Dependencies section
+        DependencySection(task: task, vm: vm, autoPush: $autoPush)
+
         Divider()
 
         // Context-aware actions based on task status
@@ -1815,6 +1830,148 @@ private struct ShakeEffect: ViewModifier {
           : .default,
         value: shaking
       )
+  }
+}
+
+// MARK: - Dependency Section (Task Detail)
+
+private struct DependencySection: View {
+  let task: DashboardTask
+  @ObservedObject var vm: AppViewModel
+  @Binding var autoPush: Bool
+  @State private var showBlockerPicker = false
+
+  private var blockerTasks: [DashboardTask] {
+    guard let blockerIds = task.blockedBy else { return [] }
+    return blockerIds.compactMap { id in
+      vm.tasks.first(where: { $0.id == id })
+    }
+  }
+
+  /// Tasks that could be added as blockers (same project, not self, not already blocking).
+  private var availableBlockers: [DashboardTask] {
+    let existingBlockers = Set(task.blockedBy ?? [])
+    return vm.tasks.filter { t in
+      t.id != task.id
+      && !existingBlockers.contains(t.id)
+      && (t.projectId ?? "default") == (task.projectId ?? "default")
+      && t.status != .completed
+      && t.status != .rejected
+    }
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack {
+        Label("Dependencies", systemImage: "link")
+          .font(.callout)
+          .fontWeight(.bold)
+        Spacer()
+        Button {
+          showBlockerPicker = true
+        } label: {
+          Image(systemName: "plus.circle")
+            .font(.footnote)
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: $showBlockerPicker) {
+          BlockerPickerPopover(
+            availableBlockers: availableBlockers,
+            onSelect: { blockerTaskId in
+              vm.addBlocker(taskId: task.id, blockerTaskId: blockerTaskId, autoPush: autoPush)
+              showBlockerPicker = false
+            }
+          )
+        }
+      }
+
+      if blockerTasks.isEmpty {
+        Text("No dependencies")
+          .font(.footnote)
+          .foregroundStyle(.tertiary)
+      } else {
+        ForEach(blockerTasks) { blocker in
+          HStack(spacing: 6) {
+            Circle()
+              .fill(blocker.status == .completed ? Color.green : Color.red)
+              .frame(width: 6, height: 6)
+            Text(blocker.title)
+              .font(.footnote)
+              .lineLimit(1)
+              .strikethrough(blocker.status == .completed)
+              .foregroundStyle(blocker.status == .completed ? .secondary : .primary)
+            Spacer()
+            Button {
+              vm.removeBlocker(taskId: task.id, blockerTaskId: blocker.id, autoPush: autoPush)
+            } label: {
+              Image(systemName: "xmark.circle")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+          }
+        }
+      }
+    }
+  }
+}
+
+private struct BlockerPickerPopover: View {
+  let availableBlockers: [DashboardTask]
+  let onSelect: (String) -> Void
+  @State private var searchText = ""
+
+  private var filtered: [DashboardTask] {
+    let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    if q.isEmpty { return availableBlockers }
+    return availableBlockers.filter { $0.title.lowercased().contains(q) }
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("Add Blocker")
+        .font(.callout)
+        .fontWeight(.bold)
+
+      TextField("Search tasks…", text: $searchText)
+        .textFieldStyle(.roundedBorder)
+        .font(.footnote)
+
+      ScrollView {
+        LazyVStack(alignment: .leading, spacing: 4) {
+          ForEach(filtered) { task in
+            Button {
+              onSelect(task.id)
+            } label: {
+              HStack(spacing: 6) {
+                Image(systemName: "circle")
+                  .font(.system(size: 10))
+                  .foregroundStyle(.secondary)
+                Text(task.title)
+                  .font(.footnote)
+                  .lineLimit(2)
+                  .foregroundStyle(.primary)
+                Spacer()
+              }
+              .padding(.vertical, 4)
+              .padding(.horizontal, 6)
+              .background(Color.primary.opacity(0.04))
+              .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            .buttonStyle(.plain)
+          }
+
+          if filtered.isEmpty {
+            Text("No matching tasks")
+              .font(.footnote)
+              .foregroundStyle(.tertiary)
+          }
+        }
+      }
+      .frame(maxHeight: 200)
+    }
+    .padding(12)
+    .frame(width: 280)
   }
 }
 

@@ -169,6 +169,9 @@ struct DashboardTask: Codable, Identifiable, Hashable {
 
   /// Manual sort order within a column (lower = higher priority)
   var sortOrder: Int?
+
+  /// Task IDs this task is blocked by. When all blockers complete, the task auto-unblocks.
+  var blockedBy: [String]?
 }
 
 enum ProjectType: String, Codable, CaseIterable, Hashable {
