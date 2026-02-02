@@ -54,8 +54,13 @@ struct OverviewView: View {
   }
 
   private var completedThisWeek: Int {
-    let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
-    return allTasks.filter { $0.status == .completed && $0.updatedAt >= weekAgo }.count
+    // Use calendar week (Monday–Sunday) to match detailed stats view
+    let calendar = Calendar.current
+    var comps = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())
+    comps.weekday = 2 // Monday
+    let weekStart = calendar.date(from: comps) ?? Date()
+    let weekEnd = calendar.date(byAdding: .day, value: 7, to: weekStart) ?? Date()
+    return allTasks.filter { $0.status == .completed && $0.updatedAt >= weekStart && $0.updatedAt < weekEnd }.count
   }
 
   /// Open research request counts per project.
