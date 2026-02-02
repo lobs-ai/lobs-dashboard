@@ -1832,7 +1832,7 @@ private struct ActionButton: View {
 
 // MARK: - Create Project Sheet
 
-private struct CreateProjectSheet: View {
+struct CreateProjectSheet: View {
   @ObservedObject var vm: AppViewModel
 
   @Environment(\.dismiss) private var dismiss

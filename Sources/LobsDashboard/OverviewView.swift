@@ -48,6 +48,7 @@ struct OverviewView: View {
   @State private var pendingInboxItemId: String? = nil
   @State private var showDetailedStats: Bool = false
   @State private var draggingProjectId: String? = nil
+  @State private var showCreateProject: Bool = false
 
   private var allTasks: [DashboardTask] { vm.tasks }
 
@@ -188,6 +189,29 @@ struct OverviewView: View {
                 vm: vm
               ))
             }
+
+            // New Project button card
+            Button { showCreateProject = true } label: {
+              VStack(spacing: 8) {
+                Image(systemName: "plus.circle")
+                  .font(.system(size: 24))
+                  .foregroundStyle(.secondary)
+                Text("New Project")
+                  .font(.callout)
+                  .fontWeight(.medium)
+                  .foregroundStyle(.secondary)
+              }
+              .frame(maxWidth: .infinity, minHeight: 100)
+              .background(
+                RoundedRectangle(cornerRadius: OTheme.cardRadius)
+                  .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
+                  .foregroundStyle(Color.secondary.opacity(0.3))
+              )
+            }
+            .buttonStyle(.plain)
+          }
+          .sheet(isPresented: $showCreateProject) {
+            CreateProjectSheet(vm: vm)
           }
         }
 
