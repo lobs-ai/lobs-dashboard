@@ -205,6 +205,7 @@ struct ResearchBoardView: View {
       if let tile = selectedTile,
          let liveTile = vm.researchTiles.first(where: { $0.id == tile.id }) {
         TileDetailView(tile: liveTile, vm: vm, onClose: { selectedTile = nil })
+          .id(liveTile.id)
           .frame(minWidth: 350, idealWidth: 420)
       } else {
         VStack(spacing: 8) {
