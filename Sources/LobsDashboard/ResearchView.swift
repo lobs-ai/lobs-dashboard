@@ -1066,8 +1066,14 @@ private struct AddTileSheet: View {
 
 private struct AddRequestSheet: View {
   @ObservedObject var vm: AppViewModel
-  let initialPrompt: String = ""
-  let initialTileId: String? = nil
+  let initialPrompt: String
+  let initialTileId: String?
+
+  init(vm: AppViewModel, initialPrompt: String = "", initialTileId: String? = nil) {
+    self.vm = vm
+    self.initialPrompt = initialPrompt
+    self.initialTileId = initialTileId
+  }
 
   @Environment(\.dismiss) private var dismiss
 
