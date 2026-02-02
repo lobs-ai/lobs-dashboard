@@ -119,7 +119,8 @@ struct OverviewView: View {
 
         if showDetailedStats {
           DetailedStatsView(tasks: allTasks, projects: activeProjects)
-            .transition(.opacity.combined(with: .move(edge: .top)))
+            .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .top)))
+            .clipped()
         }
 
         // Project cards
