@@ -1278,6 +1278,8 @@ private struct TaskTile: View {
 
   @State private var isHovering = false
   @State private var showDetail = false
+  @State private var isEditingTitle = false
+  @State private var inlineTitle = ""
 
   private var isSelected: Bool { vm.selectedTaskId == task.id }
 
@@ -1293,10 +1295,28 @@ private struct TaskTile: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      Text(task.title)
+      if isEditingTitle {
+        TextField("Task title", text: $inlineTitle, onCommit: {
+          let trimmed = inlineTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+          if !trimmed.isEmpty && trimmed != task.title {
+            vm.editTask(taskId: task.id, title: trimmed, notes: task.notes ?? "", autoPush: autoPush)
+          }
+          isEditingTitle = false
+        })
         .font(.callout)
         .fontWeight(.medium)
-        .lineLimit(3)
+        .textFieldStyle(.plain)
+        .onExitCommand { isEditingTitle = false }
+      } else {
+        Text(task.title)
+          .font(.callout)
+          .fontWeight(.medium)
+          .lineLimit(3)
+          .onTapGesture(count: 2) {
+            inlineTitle = task.title
+            isEditingTitle = true
+          }
+      }
 
       HStack(spacing: 5) {
         MiniTag(text: task.owner.rawValue, color: ownerColor)
