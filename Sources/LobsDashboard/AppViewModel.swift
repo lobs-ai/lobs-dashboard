@@ -83,6 +83,7 @@ final class AppViewModel: ObservableObject {
 
   /// Inbox is treated as a filter, not a column.
   @Published var showInboxOnly: Bool = false
+  @Published var focusMode: Bool = false
   @Published var ownerFilter: String = "all" {
     didSet { settings.set(ownerFilter, forKey: ownerFilterKey) }
   }
@@ -2184,17 +2185,24 @@ final class AppViewModel: ObservableObject {
   }
 
   var columns: [AnyTaskColumn] {
-    [
-      .init(title: "Active", dropStatus: .active) { t in
-        if t.status == .active || t.status == .waitingOn { return true }
-        // Unknown statuses default to Active column
-        switch t.status {
-        case .inbox, .active, .waitingOn, .completed, .rejected:
-          return false
-        case .other:
-          return true
-        }
-      },
+    let activeCol = AnyTaskColumn(title: "Active", dropStatus: .active) { t in
+      if t.status == .active || t.status == .waitingOn { return true }
+      // Unknown statuses default to Active column
+      switch t.status {
+      case .inbox, .active, .waitingOn, .completed, .rejected:
+        return false
+      case .other:
+        return true
+      }
+    }
+
+    // Focus mode: only show the Active column
+    if focusMode {
+      return [activeCol]
+    }
+
+    return [
+      activeCol,
 
       .init(title: "Done", dropStatus: .completed) { t in
         t.status == .completed

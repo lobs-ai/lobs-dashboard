@@ -88,8 +88,10 @@ struct ContentView: View {
           showTextDump: $showTextDump
         )
 
-        // Stats bar
-        StatsBar(vm: vm)
+        // Stats bar (hidden in focus mode)
+        if !vm.focusMode {
+          StatsBar(vm: vm)
+        }
 
         Divider()
 
@@ -275,10 +277,19 @@ struct ContentView: View {
         onSearch: { /* Focus is handled by ⌘F via toolbar */ },
         onHelp: { showHelp = true },
         onEscape: {
+          if vm.focusMode { withAnimation(.easeInOut(duration: 0.25)) { vm.focusMode = false }; return true }
           if showInbox { withAnimation(.easeInOut(duration: 0.25)) { showInbox = false }; return true }
           if showSettings { showSettings = false; return true }
           if showHelp { showHelp = false; return true }
           return false
+        },
+        onFocusToggle: {
+          withAnimation(.easeInOut(duration: 0.25)) {
+            vm.focusMode.toggle()
+            if vm.focusMode && vm.showOverview {
+              vm.showOverview = false
+            }
+          }
         }
       )
     )
@@ -295,6 +306,7 @@ private struct KeyboardShortcutReceiver: View {
   let onSearch: () -> Void
   var onHelp: (() -> Void)? = nil
   var onEscape: (() -> Bool)? = nil
+  var onFocusToggle: (() -> Void)? = nil
 
   var body: some View {
     Group {
@@ -308,6 +320,10 @@ private struct KeyboardShortcutReceiver: View {
 
       Button("") { onHelp?() }
         .keyboardShortcut("/", modifiers: .command)
+        .opacity(0)
+
+      Button("") { onFocusToggle?() }
+        .keyboardShortcut(".", modifiers: .command)
         .opacity(0)
     }
     .frame(width: 0, height: 0)
@@ -424,6 +440,25 @@ private struct ToolbarArea: View {
       }
       .buttonStyle(.plain)
       .help("Home — Overview")
+
+      // Focus mode toggle (⌘.)
+      Button {
+        withAnimation(.easeInOut(duration: 0.25)) {
+          vm.focusMode.toggle()
+          if vm.focusMode && vm.showOverview {
+            // Exit overview when entering focus mode
+            vm.showOverview = false
+          }
+        }
+      } label: {
+        Image(systemName: vm.focusMode ? "eye.slash.fill" : "eye.slash")
+          .font(.body)
+          .padding(6)
+          .background(vm.focusMode ? Color.purple.opacity(0.2) : Theme.subtle)
+          .clipShape(RoundedRectangle(cornerRadius: 8))
+      }
+      .buttonStyle(.plain)
+      .help(vm.focusMode ? "Exit Focus Mode (⌘.)" : "Focus Mode (⌘.)")
 
       // Project
       Menu {
@@ -562,8 +597,8 @@ private struct ToolbarArea: View {
       }
       .menuStyle(.borderlessButton)
 
-      // Search (hidden on home/overview — no task list to filter)
-      if !vm.showOverview {
+      // Search (hidden on home/overview and focus mode)
+      if !vm.showOverview && !vm.focusMode {
         HStack(spacing: 6) {
           Image(systemName: "magnifyingglass")
             .foregroundStyle(.secondary)
@@ -578,8 +613,8 @@ private struct ToolbarArea: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
       }
 
-      // Filter (hidden on home/overview — no task list to filter)
-      if !vm.showOverview {
+      // Filter (hidden on home/overview and focus mode)
+      if !vm.showOverview && !vm.focusMode {
         Menu {
           Button { vm.ownerFilter = "all" } label: {
             Label("All tasks", systemImage: vm.ownerFilter == "all" ? "checkmark" : "")
@@ -980,8 +1015,8 @@ private struct BoardView: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      // Project README (pinned context doc)
-      if !vm.projectReadme.isEmpty || vm.selectedProjectId != "default" {
+      // Project README (pinned context doc, hidden in focus mode)
+      if !vm.focusMode && (!vm.projectReadme.isEmpty || vm.selectedProjectId != "default") {
         ProjectReadmeBar(vm: vm)
       }
 
@@ -2475,6 +2510,7 @@ private struct HelpPanelSheet: View {
             VStack(spacing: 8) {
               ShortcutRow(keys: "⌘ N", description: "Create new task")
               ShortcutRow(keys: "⌘ R", description: "Refresh / sync with git")
+              ShortcutRow(keys: "⌘ .", description: "Toggle focus mode")
               ShortcutRow(keys: "⌘ /", description: "Show this help panel")
               ShortcutRow(keys: "↑ ↓", description: "Navigate between tasks")
               ShortcutRow(keys: "Esc", description: "Close overlays / deselect")
