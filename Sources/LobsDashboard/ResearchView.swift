@@ -431,7 +431,7 @@ private struct TileCard: View {
               Text("Certainty")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
-              ConfidenceBar(value: confidence)
+              ConfidenceLabel(value: confidence)
             }
           }
 
@@ -531,34 +531,26 @@ private struct TileCard: View {
   }
 }
 
-// MARK: - Confidence Bar
+// MARK: - Confidence Label (Strong / Moderate / Weak)
 
-private struct ConfidenceBar: View {
+private struct ConfidenceLabel: View {
   let value: Double
 
-  var body: some View {
-    HStack(spacing: 2) {
-      GeometryReader { geo in
-        ZStack(alignment: .leading) {
-          RoundedRectangle(cornerRadius: 2)
-            .fill(Color.primary.opacity(0.08))
-          RoundedRectangle(cornerRadius: 2)
-            .fill(confidenceColor)
-            .frame(width: geo.size.width * min(max(value, 0), 1))
-        }
-      }
-      .frame(width: 50, height: 6)
-
-      Text("\(Int(value * 100))%")
-        .font(.system(size: 11, weight: .medium, design: .monospaced))
-        .foregroundStyle(.secondary)
-    }
+  private var tier: (String, Color) {
+    if value >= 0.7 { return ("Strong", .green) }
+    if value >= 0.4 { return ("Moderate", .yellow) }
+    return ("Weak", .red)
   }
 
-  private var confidenceColor: Color {
-    if value >= 0.8 { return .green }
-    if value >= 0.5 { return .orange }
-    return .red
+  var body: some View {
+    let (label, color) = tier
+    Text(label)
+      .font(.system(size: 11, weight: .semibold))
+      .padding(.horizontal, 7)
+      .padding(.vertical, 2)
+      .background(color.opacity(0.15))
+      .foregroundStyle(color)
+      .clipShape(Capsule())
   }
 }
 
@@ -744,10 +736,7 @@ private struct TileDetailView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
               Slider(value: $editConfidence, in: 0...1, step: 0.05)
-              Text("\(Int(editConfidence * 100))%")
-                .font(.callout)
-                .monospacedDigit()
-                .frame(width: 35, alignment: .trailing)
+              ConfidenceLabel(value: editConfidence)
             }
 
             // Evidence
