@@ -180,11 +180,15 @@ struct ResearchDocView: View {
           .foregroundStyle(.tertiary)
           .italic()
       } else {
-        ForEach(vm.researchSources) { source in
+        ForEach(Array(vm.researchSources.enumerated()), id: \.element.id) { idx, source in
           HStack(spacing: 6) {
-            Image(systemName: "globe")
-              .font(.system(size: 10))
-              .foregroundStyle(.blue)
+            // Citation number badge
+            Text("\(idx + 1)")
+              .font(.system(size: 9, weight: .bold, design: .rounded))
+              .foregroundColor(.white)
+              .frame(width: 16, height: 16)
+              .background(Color.orange)
+              .clipShape(Circle())
             VStack(alignment: .leading, spacing: 1) {
               Text(source.title)
                 .font(.footnote)
@@ -195,19 +199,39 @@ struct ResearchDocView: View {
                 .foregroundStyle(.tertiary)
             }
             Spacer()
-            // Copy citation button
+            // Copy citation to clipboard
+            Button {
+              let citation = "[\(idx + 1)]"
+              NSPasteboard.general.clearContents()
+              NSPasteboard.general.setString(citation, forType: .string)
+            } label: {
+              Image(systemName: "doc.on.clipboard")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Copy citation [\(idx + 1)] to clipboard")
+            // Insert citation into doc
             Button {
               insertCitation(source: source)
             } label: {
-              Image(systemName: "quote.opening")
+              Image(systemName: "text.insert")
                 .font(.system(size: 10))
                 .foregroundStyle(.orange)
             }
             .buttonStyle(.plain)
-            .help("Insert citation")
+            .help("Insert [\(idx + 1)] into document")
           }
           .padding(.vertical, 2)
           .contextMenu {
+            Button("Insert Citation [\(idx + 1)]") {
+              insertCitation(source: source)
+            }
+            Button("Copy Citation [\(idx + 1)]") {
+              NSPasteboard.general.clearContents()
+              NSPasteboard.general.setString("[\(idx + 1)]", forType: .string)
+            }
+            Divider()
             Button("Open in Browser") {
               if let url = URL(string: source.url) {
                 NSWorkspace.shared.open(url)
@@ -380,6 +404,68 @@ struct ResearchDocView: View {
   }
 }
 
+// MARK: - Markdown Line with Citations
+
+/// Renders a single line of text, replacing [N] patterns with hoverable citation badges.
+/// Uses Text concatenation for natural text flow with styled citation markers.
+private struct CitationRichText: View {
+  let text: String
+  let sources: [ResearchSource]
+
+  // Regex to match [N] citation patterns
+  private static let citationPattern = try! NSRegularExpression(pattern: #"\[(\d+)\]"#)
+
+  /// Parse text into segments: plain text and citation references
+  private var segments: [(String, Int?)] { // (text, citationIndex or nil)
+    let nsText = text as NSString
+    let matches = Self.citationPattern.matches(in: text, range: NSRange(location: 0, length: nsText.length))
+
+    var result: [(String, Int?)] = []
+    var lastEnd = 0
+
+    for match in matches {
+      let matchRange = match.range
+      if matchRange.location > lastEnd {
+        let plainRange = NSRange(location: lastEnd, length: matchRange.location - lastEnd)
+        result.append((nsText.substring(with: plainRange), nil))
+      }
+      let numRange = match.range(at: 1)
+      if let num = Int(nsText.substring(with: numRange)) {
+        result.append(("[\(num)]", num))
+      }
+      lastEnd = matchRange.location + matchRange.length
+    }
+
+    if lastEnd < nsText.length {
+      result.append((nsText.substring(from: lastEnd), nil))
+    }
+
+    return result
+  }
+
+  /// Build concatenated Text with styled citations inline
+  private var richText: Text {
+    segments.reduce(Text("")) { accumulated, segment in
+      let (segText, citIdx) = segment
+      if let idx = citIdx, idx >= 1, idx <= sources.count {
+        return accumulated + Text("[\(idx)]")
+          .font(.system(size: 11, weight: .bold, design: .rounded))
+          .foregroundColor(.orange)
+          .baselineOffset(4)
+      } else if citIdx != nil {
+        // Out-of-range citation — render as plain text
+        return accumulated + Text(segText)
+      } else {
+        return accumulated + Text(segText)
+      }
+    }
+  }
+
+  var body: some View {
+    richText
+  }
+}
+
 // MARK: - Markdown Preview
 
 private struct MarkdownPreview: View {
@@ -387,45 +473,96 @@ private struct MarkdownPreview: View {
   let sources: [ResearchSource]
 
   var body: some View {
-    if #available(macOS 15.0, *) {
-      // Use native Markdown rendering if available
-      Text(try! AttributedString(markdown: content, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-        .textSelection(.enabled)
-    } else {
-      // Fallback: simple line-by-line rendering
-      VStack(alignment: .leading, spacing: 8) {
-        ForEach(Array(content.split(separator: "\n", omittingEmptySubsequences: false).enumerated()), id: \.offset) { _, line in
-          let text = String(line)
-          if text.hasPrefix("### ") {
-            Text(text.dropFirst(4))
-              .font(.title3)
-              .fontWeight(.semibold)
-              .padding(.top, 8)
-          } else if text.hasPrefix("## ") {
-            Text(text.dropFirst(3))
-              .font(.title2)
-              .fontWeight(.bold)
-              .padding(.top, 12)
-          } else if text.hasPrefix("# ") {
-            Text(text.dropFirst(2))
-              .font(.title)
-              .fontWeight(.bold)
-              .padding(.top, 16)
-          } else if text.hasPrefix("- ") {
-            HStack(alignment: .top, spacing: 6) {
-              Text("•")
-                .foregroundStyle(.secondary)
-              Text(text.dropFirst(2))
-            }
-          } else if text.isEmpty {
-            Spacer().frame(height: 4)
-          } else {
-            Text(text)
+    VStack(alignment: .leading, spacing: 8) {
+      ForEach(Array(content.split(separator: "\n", omittingEmptySubsequences: false).enumerated()), id: \.offset) { _, line in
+        let text = String(line)
+        if text.hasPrefix("### ") {
+          CitationRichText(text: String(text.dropFirst(4)), sources: sources)
+            .font(.title3)
+            .fontWeight(.semibold)
+            .padding(.top, 8)
+        } else if text.hasPrefix("## ") {
+          CitationRichText(text: String(text.dropFirst(3)), sources: sources)
+            .font(.title2)
+            .fontWeight(.bold)
+            .padding(.top, 12)
+        } else if text.hasPrefix("# ") {
+          CitationRichText(text: String(text.dropFirst(2)), sources: sources)
+            .font(.title)
+            .fontWeight(.bold)
+            .padding(.top, 16)
+        } else if text.hasPrefix("- ") {
+          HStack(alignment: .top, spacing: 6) {
+            Text("•")
+              .foregroundStyle(.secondary)
+            CitationRichText(text: String(text.dropFirst(2)), sources: sources)
           }
+        } else if text.isEmpty {
+          Spacer().frame(height: 4)
+        } else {
+          CitationRichText(text: text, sources: sources)
         }
       }
-      .textSelection(.enabled)
+
+      // Citation footnotes at bottom of document
+      if !sources.isEmpty {
+        citationFootnotes
+      }
     }
+    .textSelection(.enabled)
+  }
+
+  /// Footnote-style citation list at the bottom of the preview
+  private var citationFootnotes: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      Divider()
+        .padding(.vertical, 12)
+
+      Text("Sources")
+        .font(.footnote)
+        .fontWeight(.bold)
+        .foregroundStyle(.secondary)
+        .padding(.bottom, 6)
+
+      ForEach(Array(sources.enumerated()), id: \.element.id) { idx, source in
+        HStack(alignment: .top, spacing: 8) {
+          Text("\(idx + 1)")
+            .font(.system(size: 10, weight: .bold, design: .rounded))
+            .foregroundColor(.white)
+            .frame(width: 18, height: 18)
+            .background(Color.orange)
+            .clipShape(Circle())
+
+          VStack(alignment: .leading, spacing: 1) {
+            Text(source.title)
+              .font(.footnote)
+              .fontWeight(.medium)
+
+            Text(domainFromURL(source.url))
+              .font(.system(size: 11))
+              .foregroundStyle(.blue)
+              .onTapGesture {
+                if let url = URL(string: source.url) {
+                  NSWorkspace.shared.open(url)
+                }
+              }
+              .onHover { hovering in
+                if hovering {
+                  NSCursor.pointingHand.push()
+                } else {
+                  NSCursor.pop()
+                }
+              }
+          }
+        }
+        .padding(.vertical, 3)
+      }
+    }
+  }
+
+  private func domainFromURL(_ urlString: String) -> String {
+    guard let url = URL(string: urlString), let host = url.host else { return urlString }
+    return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
   }
 }
 
