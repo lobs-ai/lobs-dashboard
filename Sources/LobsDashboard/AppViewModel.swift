@@ -841,6 +841,24 @@ final class AppViewModel: ObservableObject {
     }
   }
 
+  /// Whether a worker request is already pending (file exists on disk).
+  var workerRequestPending: Bool {
+    guard let repoURL else { return false }
+    return LobsControlStore(repoRoot: repoURL).workerRequestExists
+  }
+
+  /// Request a worker run by writing state/worker-request.json, committing, and pushing.
+  func requestWorker() {
+    guard let repoURL else { return }
+    let store = LobsControlStore(repoRoot: repoURL)
+    do {
+      try store.writeWorkerRequest()
+      try commitAndMaybePush(repoURL: repoURL, message: "Request worker from dashboard", autoPush: true)
+    } catch {
+      print("Failed to request worker: \(error)")
+    }
+  }
+
   /// Request notification permissions on first use.
   func requestNotificationPermissions() {
     UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }

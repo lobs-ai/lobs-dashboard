@@ -160,7 +160,13 @@ struct OverviewView: View {
 
         // Worker status
         if let ws = vm.workerStatus {
-          WorkerStatusCard(status: ws, history: vm.workerHistory)
+          WorkerStatusCard(
+            status: ws,
+            history: vm.workerHistory,
+            canRequestWorker: !ws.active && !vm.workerRequestPending,
+            workerRequested: vm.workerRequestPending,
+            onRequestWorker: { vm.requestWorker() }
+          )
         }
 
         // Project cards
@@ -1362,6 +1368,9 @@ private func overviewProjectTypeColor(_ type: ProjectType) -> Color {
 private struct WorkerStatusCard: View {
   let status: WorkerStatus
   var history: WorkerHistory? = nil
+  var canRequestWorker: Bool = false
+  var workerRequested: Bool = false
+  var onRequestWorker: (() -> Void)? = nil
   @State private var showHistory = false
 
   private var isActive: Bool { status.active }
@@ -1481,6 +1490,43 @@ private struct WorkerStatusCard: View {
       }
 
       Spacer()
+
+      // Request Worker button (only when idle)
+      if !isActive {
+        if workerRequested {
+          HStack(spacing: 4) {
+            Image(systemName: "checkmark.circle.fill")
+              .font(.footnote)
+              .foregroundStyle(.green)
+            Text("Requested")
+              .font(.footnote)
+              .fontWeight(.medium)
+              .foregroundStyle(.green)
+          }
+          .padding(.horizontal, 12)
+          .padding(.vertical, 6)
+          .background(Color.green.opacity(0.1))
+          .clipShape(Capsule())
+        } else if canRequestWorker {
+          Button {
+            onRequestWorker?()
+          } label: {
+            HStack(spacing: 4) {
+              Image(systemName: "play.circle.fill")
+                .font(.footnote)
+              Text("Request Worker")
+                .font(.footnote)
+                .fontWeight(.medium)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color.accentColor.opacity(0.12))
+            .foregroundStyle(Color.accentColor)
+            .clipShape(Capsule())
+          }
+          .buttonStyle(.plain)
+        }
+      }
     }
     .padding(14)
     .background(
