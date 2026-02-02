@@ -130,6 +130,31 @@ struct ContentView: View {
         .padding(.top, 52)
       }
 
+      // Sync blocked warning — uncommitted changes in local repo
+      if vm.syncBlockedByUncommitted {
+        HStack(spacing: 8) {
+          Image(systemName: "exclamationmark.triangle.fill")
+            .foregroundStyle(.orange)
+          Text("Local repo has uncommitted changes — sync paused")
+            .font(.footnote.weight(.medium))
+          Spacer()
+          Button("Dismiss") {
+            vm.syncBlockedByUncommitted = false
+          }
+          .buttonStyle(.plain)
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.orange.opacity(0.15))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 16)
+        .transition(.move(edge: .top).combined(with: .opacity))
+        .zIndex(98)
+        .padding(.top, 52)
+      }
+
       // Git busy indicator
       if vm.isGitBusy {
         HStack(spacing: 6) {
@@ -167,6 +192,7 @@ struct ContentView: View {
       }
     }
     .animation(.easeInOut(duration: 0.3), value: vm.errorBanner != nil)
+    .animation(.easeInOut(duration: 0.3), value: vm.syncBlockedByUncommitted)
     .animation(.easeOut(duration: 0.2), value: vm.isGitBusy)
     .fileImporter(
       isPresented: $showPicker,

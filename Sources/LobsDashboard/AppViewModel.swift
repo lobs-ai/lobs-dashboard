@@ -74,6 +74,9 @@ final class AppViewModel: ObservableObject {
   /// Whether a background git operation is in flight.
   @Published var isGitBusy: Bool = false
 
+  /// Whether sync is blocked because the local repo has uncommitted changes.
+  @Published var syncBlockedByUncommitted: Bool = false
+
   // Kanban UX
   @Published var searchText: String = ""
 
@@ -2008,8 +2011,10 @@ final class AppViewModel: ObservableObject {
     // otherwise a transient git failure can appear to "delete" the user's work.
     let status = try Git.run(["status", "--porcelain"], cwd: repoURL)
     if status.exitCode == 0 && !status.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      syncBlockedByUncommitted = true
       return
     }
+    syncBlockedByUncommitted = false
 
     _ = try Git.run(["fetch", "origin"], cwd: repoURL)
     _ = try Git.run(["reset", "--hard", "origin/main"], cwd: repoURL)
@@ -2025,8 +2030,10 @@ final class AppViewModel: ObservableObject {
 
     let status = try await Git.runAsync(["status", "--porcelain"], cwd: repoURL)
     if status.exitCode == 0 && !status.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      syncBlockedByUncommitted = true
       return
     }
+    syncBlockedByUncommitted = false
 
     _ = try await Git.runAsync(["fetch", "origin"], cwd: repoURL)
     _ = try await Git.runAsync(["reset", "--hard", "origin/main"], cwd: repoURL)
