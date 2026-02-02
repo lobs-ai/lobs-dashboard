@@ -168,10 +168,8 @@ final class LobsControlStore {
 
       let enc = encoder()
       for task in file.tasks {
-        var t = task
-        t.updatedAt = Date()
-        let data = try enc.encode(t)
-        try data.write(to: taskFileURL(taskId: t.id), options: [.atomic])
+        let data = try enc.encode(task)
+        try data.write(to: taskFileURL(taskId: task.id), options: [.atomic])
       }
 
       // Keep legacy tasks.json updated too (helps older tooling).

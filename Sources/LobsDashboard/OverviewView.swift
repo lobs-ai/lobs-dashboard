@@ -1170,6 +1170,7 @@ private struct WorkerStatusCard: View {
 private func relativeTime(_ date: Date) -> String {
   let now = Date()
   let seconds = now.timeIntervalSince(date)
+  if seconds < 0 { return "just now" } // future date — treat as now
   if seconds < 60 { return "just now" }
   let minutes = Int(seconds / 60)
   if minutes < 60 { return "\(minutes)m ago" }
