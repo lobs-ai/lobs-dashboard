@@ -255,7 +255,8 @@ private struct ArrowKeyMonitor: NSViewRepresentable {
       // Escape key — close overlays first (works even when text fields are focused)
       if event.keyCode == 53 { // escape
         if let handler = context.coordinator.onEscape {
-          let handled = DispatchQueue.main.sync { handler() }
+          // Already on main thread — calling DispatchQueue.main.sync here would deadlock
+          let handled = handler()
           if handled { return nil }
         }
         return event
