@@ -535,8 +535,10 @@ private struct ToolbarArea: View {
         Divider()
 
         // Project management submenu for selected project
-        if let selected = vm.projects.first(where: { $0.id == vm.selectedProjectId }),
-           selected.id != "default" {
+        // Only show this when you're actually viewing a project (not on the home/overview screen).
+        if !vm.showOverview,
+           let selected = vm.projects.first(where: { $0.id == vm.selectedProjectId }),
+           selected.id != "default" { 
           Menu("Manage \"\(selected.title)\"") {
             Button {
               editingProject = selected
