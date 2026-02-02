@@ -149,7 +149,7 @@ struct ContentView: View {
     }
     .sheet(isPresented: $showInbox) {
       InboxView(vm: vm, isPresented: $showInbox)
-        .frame(minWidth: 900, minHeight: 600)
+        .frame(minWidth: 1000, minHeight: 650)
     }
     .onAppear { vm.reloadIfPossible() }
     // Keyboard shortcuts (Task #84248F22)

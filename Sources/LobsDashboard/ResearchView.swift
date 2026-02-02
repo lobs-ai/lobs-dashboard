@@ -417,6 +417,12 @@ private struct TileCard: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(4)
             }
+          } else if let content = tile.content, !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            // Fallback: show content preview when claim is absent
+            Text(content)
+              .font(.footnote)
+              .foregroundStyle(.secondary)
+              .lineLimit(4)
           }
 
           if let confidence = tile.confidence {
@@ -710,6 +716,15 @@ private struct TileDetailView: View {
 
         case .finding:
           VStack(alignment: .leading, spacing: 8) {
+            // Summary
+            Text("Summary")
+              .font(.footnote)
+              .foregroundStyle(.secondary)
+            TextField("Summarize the finding…", text: $editSummary, axis: .vertical)
+              .textFieldStyle(.roundedBorder)
+              .lineLimit(4, reservesSpace: true)
+
+            // Claim
             Text("Claim")
               .font(.footnote)
               .foregroundStyle(.secondary)
@@ -717,6 +732,7 @@ private struct TileDetailView: View {
               .textFieldStyle(.roundedBorder)
               .lineLimit(4, reservesSpace: true)
 
+            // Confidence
             HStack {
               Text("Confidence")
                 .font(.footnote)
@@ -728,6 +744,7 @@ private struct TileDetailView: View {
                 .frame(width: 35, alignment: .trailing)
             }
 
+            // Evidence
             if let evidence = tile.evidence, !evidence.isEmpty {
               VStack(alignment: .leading, spacing: 4) {
                 Text("Evidence")
@@ -745,6 +762,7 @@ private struct TileDetailView: View {
               }
             }
 
+            // Counterpoints
             if let counterpoints = tile.counterpoints, !counterpoints.isEmpty {
               VStack(alignment: .leading, spacing: 4) {
                 Text("Counterpoints")
@@ -759,6 +777,19 @@ private struct TileDetailView: View {
                       .font(.footnote)
                   }
                 }
+              }
+            }
+
+            // Content (detailed notes/body text)
+            if let content = tile.content, !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+              VStack(alignment: .leading, spacing: 4) {
+                Text("Content")
+                  .font(.footnote)
+                  .foregroundStyle(.secondary)
+                Text(content)
+                  .font(.footnote)
+                  .foregroundStyle(.secondary)
+                  .textSelection(.enabled)
               }
             }
           }
@@ -901,6 +932,7 @@ private struct TileDetailView: View {
       updated.content = editContent.isEmpty ? nil : editContent
     case .finding:
       updated.claim = editClaim.isEmpty ? nil : editClaim
+      updated.summary = editSummary.isEmpty ? nil : editSummary
       updated.confidence = editConfidence
     case .comparison:
       break // Options editing is complex; keep existing for now

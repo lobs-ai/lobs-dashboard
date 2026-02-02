@@ -24,7 +24,18 @@ final class LobsControlStore {
 
   private func decoder() -> JSONDecoder {
     let d = JSONDecoder()
-    d.dateDecodingStrategy = .iso8601
+    d.dateDecodingStrategy = .custom { decoder in
+      let container = try decoder.singleValueContainer()
+      let str = try container.decode(String.self)
+      // Try standard ISO 8601 first
+      let isoFormatter = ISO8601DateFormatter()
+      isoFormatter.formatOptions = [.withInternetDateTime]
+      if let date = isoFormatter.date(from: str) { return date }
+      // Try with fractional seconds
+      isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+      if let date = isoFormatter.date(from: str) { return date }
+      throw DecodingError.dataCorruptedError(in: container, debugDescription: "Cannot decode date: \(str)")
+    }
     return d
   }
 
@@ -515,9 +526,15 @@ final class LobsControlStore {
     let dec = decoder()
     var tiles: [ResearchTile] = []
     for url in items where url.pathExtension.lowercased() == "json" {
-      let data = try Data(contentsOf: url)
-      let tile = try dec.decode(ResearchTile.self, from: data)
-      tiles.append(tile)
+      do {
+        let data = try Data(contentsOf: url)
+        let tile = try dec.decode(ResearchTile.self, from: data)
+        tiles.append(tile)
+      } catch {
+        // Skip individual bad tiles instead of failing the entire load
+        print("[LobsStore] Skipping tile \(url.lastPathComponent): \(error.localizedDescription)")
+        continue
+      }
     }
     tiles.sort { $0.createdAt > $1.createdAt }
     return tiles
@@ -551,9 +568,14 @@ final class LobsControlStore {
     let dec = decoder()
     var requests: [ResearchRequest] = []
     for url in items where url.pathExtension.lowercased() == "json" {
-      let data = try Data(contentsOf: url)
-      let req = try dec.decode(ResearchRequest.self, from: data)
-      requests.append(req)
+      do {
+        let data = try Data(contentsOf: url)
+        let req = try dec.decode(ResearchRequest.self, from: data)
+        requests.append(req)
+      } catch {
+        print("[LobsStore] Skipping request \(url.lastPathComponent): \(error.localizedDescription)")
+        continue
+      }
     }
     requests.sort { $0.createdAt > $1.createdAt }
     return requests

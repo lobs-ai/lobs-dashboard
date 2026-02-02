@@ -16,10 +16,12 @@ private enum ITheme {
 struct InboxView: View {
   @ObservedObject var vm: AppViewModel
   @Binding var isPresented: Bool
+  var initialSelectedItemId: String? = nil
 
   @State private var selectedItem: InboxItem? = nil
   @State private var searchText: String = ""
   @State private var showReadItems: Bool = true
+  @State private var didApplyInitialSelection: Bool = false
 
   private var filteredItems: [InboxItem] {
     var items = vm.inboxItems
@@ -147,12 +149,12 @@ struct InboxView: View {
           }
           .padding(12)
         }
-        .frame(minWidth: 300, idealWidth: 360)
+        .frame(minWidth: 260, idealWidth: 300, maxWidth: 360)
 
         // Right: Document viewer
         if let item = selectedItem {
           DocumentViewer(item: item, vm: vm)
-            .frame(minWidth: 400, idealWidth: 600)
+            .frame(minWidth: 500, idealWidth: 700)
         } else {
           VStack(spacing: 12) {
             Image(systemName: "doc.text")
@@ -167,6 +169,14 @@ struct InboxView: View {
       }
     }
     .background(ITheme.boardBg)
+    .onAppear {
+      if !didApplyInitialSelection, let targetId = initialSelectedItemId,
+         let item = vm.inboxItems.first(where: { $0.id == targetId }) {
+        selectedItem = item
+        vm.markInboxItemRead(item)
+        didApplyInitialSelection = true
+      }
+    }
   }
 }
 
@@ -255,15 +265,15 @@ private struct DocumentViewer: View {
       HStack(spacing: 10) {
         VStack(alignment: .leading, spacing: 4) {
           Text(item.title)
-            .font(.title3)
+            .font(.title2)
             .fontWeight(.bold)
 
           HStack(spacing: 8) {
             HStack(spacing: 3) {
               Image(systemName: "doc.text")
-                .font(.system(size: 11))
+                .font(.system(size: 12))
               Text(item.filename)
-                .font(.system(size: 11, design: .monospaced))
+                .font(.system(size: 12, design: .monospaced))
             }
             .foregroundStyle(.secondary)
 
@@ -271,7 +281,7 @@ private struct DocumentViewer: View {
               .foregroundStyle(.quaternary)
 
             Text(item.modifiedAt.formatted(date: .abbreviated, time: .shortened))
-              .font(.system(size: 11))
+              .font(.system(size: 12))
               .foregroundStyle(.tertiary)
           }
         }
@@ -357,10 +367,11 @@ private struct DocumentViewer: View {
       // Document content
       ScrollView {
         Text(item.content)
-          .font(.system(.body, design: .monospaced))
+          .font(.system(size: 15, design: .monospaced))
+          .lineSpacing(4)
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(20)
+          .padding(24)
       }
     }
     .background(ITheme.bg)

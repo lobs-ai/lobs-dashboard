@@ -20,6 +20,7 @@ struct OverviewView: View {
 
   @State private var detailTask: DashboardTask? = nil
   @State private var showInboxSheet: Bool = false
+  @State private var pendingInboxItemId: String? = nil
 
   private var allTasks: [DashboardTask] { vm.tasks }
 
@@ -184,6 +185,7 @@ struct OverviewView: View {
                 ForEach(Array(vm.inboxItems.prefix(8).enumerated()), id: \.element.id) { idx, item in
                   InboxRow(item: item, onTap: {
                     vm.markInboxItemRead(item)
+                    pendingInboxItemId = item.id
                     showInboxSheet = true
                   })
                   if idx < min(vm.inboxItems.count, 8) - 1 {
@@ -210,8 +212,9 @@ struct OverviewView: View {
         .frame(minWidth: 480, minHeight: 500)
     }
     .sheet(isPresented: $showInboxSheet) {
-      InboxView(vm: vm, isPresented: $showInboxSheet)
-        .frame(minWidth: 900, minHeight: 600)
+      InboxView(vm: vm, isPresented: $showInboxSheet, initialSelectedItemId: pendingInboxItemId)
+        .frame(minWidth: 1000, minHeight: 650)
+        .onDisappear { pendingInboxItemId = nil }
     }
   }
 }
