@@ -130,7 +130,7 @@ struct ResearchBoardView: View {
                 ForEach(documentSections, id: \.0) { sectionTitle, icon, tiles in
                   HStack(spacing: 6) {
                     Image(systemName: icon)
-                      .font(.system(size: 11))
+                      .font(.system(size: 13))
                       .foregroundStyle(.secondary)
                     Text(sectionTitle)
                       .font(.footnote)
@@ -336,7 +336,7 @@ private struct SidebarSourceRow: View {
     } label: {
       HStack(spacing: 6) {
         Image(systemName: "arrow.up.right.square")
-          .font(.system(size: 11))
+          .font(.system(size: 13))
           .foregroundStyle(.blue)
         Text(title)
           .font(.footnote)
@@ -655,7 +655,7 @@ private struct ComparisonOptionView: View {
         ForEach(pros, id: \.self) { pro in
           HStack(spacing: 4) {
             Image(systemName: "plus.circle.fill")
-              .font(.system(size: 11))
+              .font(.system(size: 13))
               .foregroundStyle(.green)
             Text(pro).font(.footnote)
           }
@@ -666,7 +666,7 @@ private struct ComparisonOptionView: View {
         ForEach(cons, id: \.self) { con in
           HStack(spacing: 4) {
             Image(systemName: "minus.circle.fill")
-              .font(.system(size: 11))
+              .font(.system(size: 13))
               .foregroundStyle(.red)
             Text(con).font(.footnote)
           }
