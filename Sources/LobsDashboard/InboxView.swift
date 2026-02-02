@@ -20,7 +20,7 @@ struct InboxView: View {
 
   @State private var selectedItem: InboxItem? = nil
   @State private var searchText: String = ""
-  @State private var showReadItems: Bool = true
+  @AppStorage("inboxShowReadItems") private var showReadItems: Bool = true
   @State private var didApplyInitialSelection: Bool = false
 
   private var filteredItems: [InboxItem] {
