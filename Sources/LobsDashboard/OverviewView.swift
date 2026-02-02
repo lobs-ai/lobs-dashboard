@@ -149,7 +149,7 @@ struct OverviewView: View {
         }
 
         if showDetailedStats {
-          DetailedStatsView(tasks: allTasks, projects: activeProjects)
+          DetailedStatsView(tasks: allTasks, projects: activeProjects, researchRequestCountsByProject: researchRequestCountsByProject)
             .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .top)))
             .clipped()
         }
@@ -791,6 +791,11 @@ private struct OverviewDetailTag: View {
 private struct DetailedStatsView: View {
   let tasks: [DashboardTask]
   let projects: [Project]
+  var researchRequestCountsByProject: [String: Int] = [:]
+
+  private var totalOpenResearchRequests: Int {
+    researchRequestCountsByProject.values.reduce(0, +)
+  }
 
   // Status breakdown
   private var statusBreakdown: [(String, Int, Color)] {
@@ -806,13 +811,14 @@ private struct DetailedStatsView: View {
     ].filter { $0.1 > 0 }
   }
 
-  // Tasks per project
-  private var tasksPerProject: [(String, Int, Int, Int)] { // (name, total, active, completed)
+  // Tasks per project (name, total, active, completed, research requests)
+  private var tasksPerProject: [(String, Int, Int, Int, Int)] {
     projects.map { project in
       let projectTasks = tasks.filter { ($0.projectId ?? "default") == project.id }
       let active = projectTasks.filter { $0.status == .active }.count
       let completed = projectTasks.filter { $0.status == .completed }.count
-      return (project.title, projectTasks.count, active, completed)
+      let research = researchRequestCountsByProject[project.id] ?? 0
+      return (project.title, projectTasks.count, active, completed, research)
     }
     .sorted { $0.1 > $1.1 }
   }
@@ -889,6 +895,14 @@ private struct DetailedStatsView: View {
             color: .orange
           )
         }
+        if totalOpenResearchRequests > 0 {
+          MetricCard(
+            title: "Research Requests",
+            value: "\(totalOpenResearchRequests)",
+            icon: "magnifyingglass",
+            color: .purple
+          )
+        }
         MetricCard(
           title: "Active Owners",
           value: "\(ownerBreakdown.count)",
@@ -942,7 +956,7 @@ private struct DetailedStatsView: View {
             .font(.callout)
             .fontWeight(.semibold)
 
-          ForEach(tasksPerProject, id: \.0) { name, total, active, completed in
+          ForEach(tasksPerProject, id: \.0) { name, total, active, completed, research in
             VStack(alignment: .leading, spacing: 4) {
               HStack {
                 Text(name)
@@ -964,6 +978,11 @@ private struct DetailedStatsView: View {
                   Text("\(active) active")
                     .font(.system(size: 11))
                     .foregroundStyle(.orange)
+                }
+                if research > 0 {
+                  Text("\(research) research")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.purple)
                 }
               }
             }
