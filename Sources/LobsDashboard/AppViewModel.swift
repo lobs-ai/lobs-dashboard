@@ -173,40 +173,54 @@ final class AppViewModel: ObservableObject {
   /// Reload without clearing error state if nothing changed.
   func silentReload() {
     guard let repoURL else { return }
-    do {
-      try syncRepo(repoURL: repoURL)
-      let store = LobsControlStore(repoRoot: repoURL)
-
-      // Projects
-      let pfile = try store.loadProjects()
-      if pfile.projects.map({ $0.id }) != projects.map({ $0.id }) {
-        projects = pfile.projects
-      }
-      if !projects.contains(where: { $0.id == "default" }) {
-        let now = Date()
-        projects.insert(Project(id: "default", title: "Default", createdAt: now, updatedAt: now, notes: nil, archived: false), at: 0)
-      }
-      if !projects.contains(where: { $0.id == selectedProjectId }) {
-        selectedProjectId = "default"
+    // Skip if already syncing to avoid stacking requests
+    guard !isGitBusy else { return }
+    isGitBusy = true
+    Task {
+      do {
+        // Run git sync off the main thread to avoid UI lag
+        try await syncRepoAsync(repoURL: repoURL)
+      } catch {
+        isGitBusy = false
+        return
       }
 
-      if autoArchiveCompleted {
-        try store.archiveCompleted(olderThanDays: archiveCompletedAfterDays)
-      }
-      let file = try store.loadTasks()
-      // Only update if something changed (avoid UI flicker).
-      if file.tasks.map({ $0.id }).sorted() != tasks.map({ $0.id }).sorted()
-        || file.tasks.map({ $0.updatedAt }) != tasks.map({ $0.updatedAt }) {
-        tasks = file.tasks
-        try loadArtifactForSelected(store: store)
-      }
+      // Back on main actor — load local data (fast file I/O)
+      do {
+        let store = LobsControlStore(repoRoot: repoURL)
 
-      // Refresh research data too
-      loadResearchData(store: store)
-      loadTrackerData(store: store)
-      loadInboxItems(store: store)
-    } catch {
-      // Silent — don't overwrite errors from user actions.
+        // Projects
+        let pfile = try store.loadProjects()
+        if pfile.projects.map({ $0.id }) != projects.map({ $0.id }) {
+          projects = pfile.projects
+        }
+        if !projects.contains(where: { $0.id == "default" }) {
+          let now = Date()
+          projects.insert(Project(id: "default", title: "Default", createdAt: now, updatedAt: now, notes: nil, archived: false), at: 0)
+        }
+        if !projects.contains(where: { $0.id == selectedProjectId }) {
+          selectedProjectId = "default"
+        }
+
+        if autoArchiveCompleted {
+          try store.archiveCompleted(olderThanDays: archiveCompletedAfterDays)
+        }
+        let file = try store.loadTasks()
+        // Only update if something changed (avoid UI flicker).
+        if file.tasks.map({ $0.id }).sorted() != tasks.map({ $0.id }).sorted()
+          || file.tasks.map({ $0.updatedAt }) != tasks.map({ $0.updatedAt }) {
+          tasks = file.tasks
+          try loadArtifactForSelected(store: store)
+        }
+
+        // Refresh research data too
+        loadResearchData(store: store)
+        loadTrackerData(store: store)
+        loadInboxItems(store: store)
+      } catch {
+        // Silent — don't overwrite errors from user actions.
+      }
+      isGitBusy = false
     }
   }
 
@@ -231,41 +245,53 @@ final class AppViewModel: ObservableObject {
       return
     }
 
-    do {
-      try syncRepo(repoURL: repoURL)
-
-      let store = LobsControlStore(repoRoot: repoURL)
-
-      // Projects
-      let pfile = try store.loadProjects()
-      projects = pfile.projects
-      if !projects.contains(where: { $0.id == "default" }) {
-        let now = Date()
-        projects.insert(Project(id: "default", title: "Default", createdAt: now, updatedAt: now, notes: nil, archived: false), at: 0)
-      }
-      if !projects.contains(where: { $0.id == selectedProjectId }) {
-        selectedProjectId = "default"
+    isGitBusy = true
+    Task {
+      do {
+        // Run git sync off the main thread to avoid UI lag
+        try await syncRepoAsync(repoURL: repoURL)
+      } catch {
+        lastError = String(describing: error)
+        isGitBusy = false
+        return
       }
 
-      if autoArchiveCompleted {
-        try store.archiveCompleted(olderThanDays: archiveCompletedAfterDays)
+      // Back on main actor — load local data (fast file I/O)
+      do {
+        let store = LobsControlStore(repoRoot: repoURL)
+
+        // Projects
+        let pfile = try store.loadProjects()
+        projects = pfile.projects
+        if !projects.contains(where: { $0.id == "default" }) {
+          let now = Date()
+          projects.insert(Project(id: "default", title: "Default", createdAt: now, updatedAt: now, notes: nil, archived: false), at: 0)
+        }
+        if !projects.contains(where: { $0.id == selectedProjectId }) {
+          selectedProjectId = "default"
+        }
+
+        if autoArchiveCompleted {
+          try store.archiveCompleted(olderThanDays: archiveCompletedAfterDays)
+        }
+
+        let file = try store.loadTasks()
+        tasks = file.tasks
+        lastError = nil
+        try loadArtifactForSelected(store: store)
+
+        // Load research data if applicable
+        loadResearchData(store: store)
+        loadTrackerData(store: store)
+        loadInboxItems(store: store)
+        loadProjectReadme(store: store)
+        loadTemplates()
+        loadWorkerStatus(store: store)
+
+      } catch {
+        lastError = String(describing: error)
       }
-
-      let file = try store.loadTasks()
-      tasks = file.tasks
-      lastError = nil
-      try loadArtifactForSelected(store: store)
-
-      // Load research data if applicable
-      loadResearchData(store: store)
-      loadTrackerData(store: store)
-      loadInboxItems(store: store)
-      loadProjectReadme(store: store)
-      loadTemplates()
-      loadWorkerStatus(store: store)
-
-    } catch {
-      lastError = String(describing: error)
+      isGitBusy = false
     }
   }
 
@@ -1677,6 +1703,23 @@ final class AppViewModel: ObservableObject {
     _ = try Git.run(["fetch", "origin"], cwd: repoURL)
     _ = try Git.run(["reset", "--hard", "origin/main"], cwd: repoURL)
     _ = try Git.run(["clean", "-fd"], cwd: repoURL)
+  }
+
+  /// Async version of syncRepo — runs git commands off the main thread to avoid UI lag.
+  private func syncRepoAsync(repoURL: URL) async throws {
+    let remotes = try await Git.runAsync(["remote"], cwd: repoURL)
+    if remotes.exitCode != 0 { return }
+    let hasOrigin = remotes.stdout.split(separator: "\n").map(String.init).contains("origin")
+    if !hasOrigin { return }
+
+    let status = try await Git.runAsync(["status", "--porcelain"], cwd: repoURL)
+    if status.exitCode == 0 && !status.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      return
+    }
+
+    _ = try await Git.runAsync(["fetch", "origin"], cwd: repoURL)
+    _ = try await Git.runAsync(["reset", "--hard", "origin/main"], cwd: repoURL)
+    _ = try await Git.runAsync(["clean", "-fd"], cwd: repoURL)
   }
 
   private func commitAndMaybePush(repoURL: URL, message: String, autoPush: Bool) throws {
