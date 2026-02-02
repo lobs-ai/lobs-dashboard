@@ -135,7 +135,7 @@ struct ContentView: View {
         HStack(spacing: 8) {
           Image(systemName: "exclamationmark.triangle.fill")
             .foregroundStyle(.orange)
-          Text("Local repo has uncommitted changes — sync paused")
+          Text("Sync conflict — local changes couldn't be rebased automatically")
             .font(.footnote.weight(.medium))
           Spacer()
           Button("Dismiss") {

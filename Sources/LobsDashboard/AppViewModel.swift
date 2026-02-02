@@ -2007,18 +2007,29 @@ final class AppViewModel: ObservableObject {
     let hasOrigin = remotes.stdout.split(separator: "\n").map(String.init).contains("origin")
     if !hasOrigin { return }
 
-    // Safety: never hard-reset if there are local changes (e.g. a newly-created task) —
-    // otherwise a transient git failure can appear to "delete" the user's work.
+    // Auto-commit local changes so sync can proceed (instead of silently skipping).
     let status = try Git.run(["status", "--porcelain"], cwd: repoURL)
-    if status.exitCode == 0 && !status.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-      syncBlockedByUncommitted = true
-      return
+    let hasLocalChanges = status.exitCode == 0
+      && !status.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+    if hasLocalChanges {
+      try autoCommitLocalChanges(repoURL: repoURL)
     }
     syncBlockedByUncommitted = false
 
     _ = try Git.run(["fetch", "origin"], cwd: repoURL)
-    _ = try Git.run(["reset", "--hard", "origin/main"], cwd: repoURL)
-    _ = try Git.run(["clean", "-fd"], cwd: repoURL)
+    if hasLocalChanges {
+      // Rebase local commits on top of remote to preserve them.
+      let rebase = try Git.run(["rebase", "origin/main"], cwd: repoURL)
+      if rebase.exitCode != 0 {
+        _ = try Git.run(["rebase", "--abort"], cwd: repoURL)
+        syncBlockedByUncommitted = true
+        return
+      }
+    } else {
+      _ = try Git.run(["reset", "--hard", "origin/main"], cwd: repoURL)
+      _ = try Git.run(["clean", "-fd"], cwd: repoURL)
+    }
   }
 
   /// Async version of syncRepo — runs git commands off the main thread to avoid UI lag.
@@ -2028,10 +2039,13 @@ final class AppViewModel: ObservableObject {
     let hasOrigin = remotes.stdout.split(separator: "\n").map(String.init).contains("origin")
     if !hasOrigin { return }
 
+    // Auto-commit local changes so sync can proceed.
     let status = try await Git.runAsync(["status", "--porcelain"], cwd: repoURL)
-    if status.exitCode == 0 && !status.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-      syncBlockedByUncommitted = true
-      return
+    let hasLocalChanges = status.exitCode == 0
+      && !status.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+    if hasLocalChanges {
+      try await autoCommitLocalChangesAsync(repoURL: repoURL)
     }
     syncBlockedByUncommitted = false
 
@@ -2040,12 +2054,48 @@ final class AppViewModel: ObservableObject {
       print("[sync] git fetch failed (exit \(fetch.exitCode)): \(fetch.stderr)")
       return
     }
-    let reset = try await Git.runAsync(["reset", "--hard", "origin/main"], cwd: repoURL)
-    if !reset.ok {
-      print("[sync] git reset failed (exit \(reset.exitCode)): \(reset.stderr)")
-      return
+    if hasLocalChanges {
+      let rebase = try await Git.runAsync(["rebase", "origin/main"], cwd: repoURL)
+      if !rebase.ok {
+        _ = try await Git.runAsync(["rebase", "--abort"], cwd: repoURL)
+        syncBlockedByUncommitted = true
+        print("[sync] rebase conflict — sync blocked, user intervention needed")
+        return
+      }
+    } else {
+      let reset = try await Git.runAsync(["reset", "--hard", "origin/main"], cwd: repoURL)
+      if !reset.ok {
+        print("[sync] git reset failed (exit \(reset.exitCode)): \(reset.stderr)")
+        return
+      }
+      _ = try await Git.runAsync(["clean", "-fd"], cwd: repoURL)
     }
-    _ = try await Git.runAsync(["clean", "-fd"], cwd: repoURL)
+  }
+
+  /// Auto-commit any uncommitted changes with a standard message before sync.
+  private func autoCommitLocalChanges(repoURL: URL) throws {
+    let author = "Lobs <thelobsbot@gmail.com>"
+    let committerEnv: [String: String] = [
+      "GIT_COMMITTER_NAME": "Lobs",
+      "GIT_COMMITTER_EMAIL": "thelobsbot@gmail.com",
+    ]
+    _ = try Git.run(["add", "-A"], cwd: repoURL)
+    _ = try Git.run([
+      "commit", "--author", author, "-m", "Auto-commit local changes before sync"
+    ], cwd: repoURL, env: committerEnv)
+  }
+
+  /// Async version of autoCommitLocalChanges.
+  private func autoCommitLocalChangesAsync(repoURL: URL) async throws {
+    let author = "Lobs <thelobsbot@gmail.com>"
+    let committerEnv: [String: String] = [
+      "GIT_COMMITTER_NAME": "Lobs",
+      "GIT_COMMITTER_EMAIL": "thelobsbot@gmail.com",
+    ]
+    _ = try await Git.runAsync(["add", "-A"], cwd: repoURL)
+    _ = try await Git.runAsync([
+      "commit", "--author", author, "-m", "Auto-commit local changes before sync"
+    ], cwd: repoURL, env: committerEnv)
   }
 
   private func commitAndMaybePush(repoURL: URL, message: String, autoPush: Bool) throws {
