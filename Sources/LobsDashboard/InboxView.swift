@@ -344,7 +344,7 @@ private struct DocumentViewer: View {
         ZStack(alignment: .topLeading) {
           TextEditor(text: $responseText)
             .font(.system(.body, design: .monospaced))
-            .frame(minHeight: 44, maxHeight: 120)
+            .frame(minHeight: 32, maxHeight: 80)
             .padding(6)
             .background(ITheme.cardBg)
             .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -367,7 +367,7 @@ private struct DocumentViewer: View {
       // Document content
       ScrollView {
         Text(item.content)
-          .font(.system(size: 15, design: .monospaced))
+          .font(.system(size: 13, design: .monospaced))
           .lineSpacing(4)
           .textSelection(.enabled)
           .frame(maxWidth: .infinity, alignment: .leading)
