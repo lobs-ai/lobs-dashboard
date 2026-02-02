@@ -26,7 +26,7 @@ struct OverviewView: View {
   private var allTasks: [DashboardTask] { vm.tasks }
 
   private var activeProjects: [Project] {
-    vm.projects.filter { ($0.archived ?? false) == false }
+    vm.sortedActiveProjects
   }
 
   // Stats

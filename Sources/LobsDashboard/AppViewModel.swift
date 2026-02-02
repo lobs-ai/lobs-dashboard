@@ -138,6 +138,17 @@ final class AppViewModel: ObservableObject {
     projects.first(where: { $0.id == selectedProjectId })
   }
 
+  /// Active (non-archived) projects sorted by sortOrder then createdAt.
+  var sortedActiveProjects: [Project] {
+    projects.filter { ($0.archived ?? false) == false }
+      .sorted { a, b in
+        let oa = a.sortOrder ?? Int.max
+        let ob = b.sortOrder ?? Int.max
+        if oa != ob { return oa < ob }
+        return a.createdAt < b.createdAt
+      }
+  }
+
   var isResearchProject: Bool {
     selectedProject?.resolvedType == .research
   }
@@ -1331,6 +1342,59 @@ final class AppViewModel: ObservableObject {
         try await asyncCommitAndMaybePush(
           repoURL: repoURL,
           message: "Lobs: unarchive project \(id)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+        reload()
+      }
+      isGitBusy = false
+    }
+  }
+
+  /// Move a project up or down in the sorted list. `direction` is -1 (up) or +1 (down).
+  func moveProject(id: String, direction: Int) {
+    guard let repoURL else { return }
+
+    // Work with the sorted active list to determine new order
+    var sorted = sortedActiveProjects
+    guard let fromIndex = sorted.firstIndex(where: { $0.id == id }) else { return }
+    let toIndex = fromIndex + direction
+    guard toIndex >= 0, toIndex < sorted.count else { return }
+
+    // Swap
+    sorted.swapAt(fromIndex, toIndex)
+
+    // Reassign sortOrder based on new positions
+    for (i, project) in sorted.enumerated() {
+      if let idx = projects.firstIndex(where: { $0.id == project.id }) {
+        projects[idx].sortOrder = i
+        projects[idx].updatedAt = Date()
+      }
+    }
+
+    // Persist + git
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      var file = try store.loadProjects()
+      for (i, project) in sorted.enumerated() {
+        if let idx = file.projects.firstIndex(where: { $0.id == project.id }) {
+          file.projects[idx].sortOrder = i
+          file.projects[idx].updatedAt = Date()
+        }
+      }
+      try store.saveProjects(file)
+    } catch {
+      flashError("Failed to reorder projects: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: reorder projects",
           autoPush: true
         )
       } catch {

@@ -346,7 +346,7 @@ private struct ToolbarArea: View {
 
       // Project
       Menu {
-        ForEach(vm.projects.filter { ($0.archived ?? false) == false }) { p in
+        ForEach(vm.sortedActiveProjects) { p in
           Button {
             vm.selectedProjectId = p.id
             vm.showOverview = false
@@ -372,6 +372,25 @@ private struct ToolbarArea: View {
             } label: {
               Label("Edit…", systemImage: "pencil")
             }
+
+            let sortedActive = vm.sortedActiveProjects
+            let currentIndex = sortedActive.firstIndex(where: { $0.id == selected.id })
+
+            Button {
+              vm.moveProject(id: selected.id, direction: -1)
+            } label: {
+              Label("Move Up", systemImage: "arrow.up")
+            }
+            .disabled(currentIndex == nil || currentIndex == 0)
+
+            Button {
+              vm.moveProject(id: selected.id, direction: 1)
+            } label: {
+              Label("Move Down", systemImage: "arrow.down")
+            }
+            .disabled(currentIndex == nil || currentIndex == (sortedActive.count - 1))
+
+            Divider()
 
             Button {
               vm.archiveProject(id: selected.id)
@@ -1866,7 +1885,7 @@ private struct AddTaskSheet: View {
   @State private var shakeProject: Bool = false
 
   private var activeProjects: [Project] {
-    vm.projects.filter { ($0.archived ?? false) == false }
+    vm.sortedActiveProjects
   }
 
   private var shouldShowProjectPicker: Bool { projectId == nil }

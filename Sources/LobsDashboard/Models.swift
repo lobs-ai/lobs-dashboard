@@ -186,6 +186,9 @@ struct Project: Codable, Identifiable, Hashable {
   var archived: Bool?
   var type: ProjectType?
 
+  /// Manual sort order (lower = higher in list). Nil means unsorted (append to end).
+  var sortOrder: Int?
+
   /// Resolved type (defaults to kanban for backwards compatibility).
   var resolvedType: ProjectType { type ?? .kanban }
 }
