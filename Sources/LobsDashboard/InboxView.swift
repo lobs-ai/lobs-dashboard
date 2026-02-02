@@ -1,4 +1,69 @@
 import SwiftUI
+import AppKit
+
+// MARK: - Enter-to-Send Text View
+
+/// A text view that sends on Return and inserts newline on Shift+Return.
+private struct EnterToSendTextView: NSViewRepresentable {
+  @Binding var text: String
+  var onSend: () -> Void
+
+  func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+  func makeNSView(context: Context) -> NSScrollView {
+    let scrollView = NSScrollView()
+    let textView = NSTextView()
+    textView.delegate = context.coordinator
+    textView.isRichText = false
+    textView.font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+    textView.isEditable = true
+    textView.isSelectable = true
+    textView.allowsUndo = true
+    textView.drawsBackground = false
+    textView.isVerticallyResizable = true
+    textView.isHorizontallyResizable = false
+    textView.textContainer?.widthTracksTextView = true
+    textView.textContainer?.lineFragmentPadding = 4
+    textView.textContainerInset = NSSize(width: 4, height: 6)
+
+    scrollView.documentView = textView
+    scrollView.hasVerticalScroller = false
+    scrollView.drawsBackground = false
+    scrollView.borderType = .noBorder
+    return scrollView
+  }
+
+  func updateNSView(_ scrollView: NSScrollView, context: Context) {
+    guard let textView = scrollView.documentView as? NSTextView else { return }
+    if textView.string != text {
+      textView.string = text
+    }
+  }
+
+  class Coordinator: NSObject, NSTextViewDelegate {
+    var parent: EnterToSendTextView
+    init(_ parent: EnterToSendTextView) { self.parent = parent }
+
+    func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+      if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+        // Check for shift key
+        if NSApp.currentEvent?.modifierFlags.contains(.shift) == true {
+          textView.insertNewlineIgnoringFieldEditor(nil)
+          return true
+        }
+        // Send on plain Enter
+        parent.onSend()
+        return true
+      }
+      return false
+    }
+
+    func textDidChange(_ notification: Notification) {
+      guard let textView = notification.object as? NSTextView else { return }
+      parent.text = textView.string
+    }
+  }
+}
 
 // MARK: - Theme (consistent with rest of app)
 
@@ -263,6 +328,13 @@ private struct DocumentViewer: View {
     vm.inboxThreadsByDocId[item.id]
   }
 
+  private func sendReply() {
+    let text = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !text.isEmpty else { return }
+    vm.postInboxThreadMessage(docId: item.id, author: "rafe", text: text)
+    replyText = ""
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       // Document header
@@ -361,7 +433,7 @@ private struct DocumentViewer: View {
                 .padding(.bottom, 8)
 
                 ForEach(thread.messages) { msg in
-                  ThreadMessageBubble(message: msg)
+                  ThreadMessageBubble(message: msg, docId: item.id, vm: vm)
                     .padding(.horizontal, 24)
                     .padding(.vertical, 3)
                 }
@@ -379,18 +451,17 @@ private struct DocumentViewer: View {
 
       Divider()
 
-      // Reply box at bottom
+      // Reply box at bottom (Enter sends, Shift+Enter for newline)
       HStack(spacing: 10) {
         ZStack(alignment: .topLeading) {
-          TextEditor(text: $replyText)
-            .font(.system(.body))
+          EnterToSendTextView(text: $replyText, onSend: sendReply)
             .frame(minHeight: 32, maxHeight: 80)
             .padding(6)
             .background(ITheme.cardBg)
             .clipShape(RoundedRectangle(cornerRadius: 10))
 
           if replyText.isEmpty {
-            Text("Reply to this document…")
+            Text("Reply… (Enter to send, ⇧Enter for newline)")
               .foregroundStyle(.tertiary)
               .padding(.horizontal, 14)
               .padding(.vertical, 14)
@@ -398,12 +469,7 @@ private struct DocumentViewer: View {
           }
         }
 
-        Button {
-          let text = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
-          guard !text.isEmpty else { return }
-          vm.postInboxThreadMessage(docId: item.id, author: "rafe", text: text)
-          replyText = ""
-        } label: {
+        Button(action: sendReply) {
           Image(systemName: "arrow.up.circle.fill")
             .font(.title2)
             .foregroundStyle(
@@ -413,7 +479,7 @@ private struct DocumentViewer: View {
         }
         .buttonStyle(.plain)
         .disabled(replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        .help("Send reply")
+        .help("Send reply (Enter)")
       }
       .padding(.horizontal, 20)
       .padding(.vertical, 12)
@@ -427,7 +493,13 @@ private struct DocumentViewer: View {
 
 private struct ThreadMessageBubble: View {
   let message: InboxThreadMessage
+  let docId: String
+  @ObservedObject var vm: AppViewModel
 
+  @State private var isEditing = false
+  @State private var editText = ""
+
+  private var isRafe: Bool { message.author.lowercased() == "rafe" }
   private var isLobs: Bool { message.author.lowercased() == "lobs" }
 
   private var authorColor: Color {
@@ -455,18 +527,60 @@ private struct ThreadMessageBubble: View {
           Text(message.createdAt.formatted(date: .abbreviated, time: .shortened))
             .font(.system(size: 11))
             .foregroundStyle(.tertiary)
-        }
 
-        Group {
-          if let md = try? AttributedString(markdown: message.text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
-            Text(md)
-          } else {
-            Text(message.text)
+          if isRafe && !isEditing {
+            Button {
+              editText = message.text
+              isEditing = true
+            } label: {
+              Image(systemName: "pencil")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.plain)
+            .help("Edit message")
           }
         }
-          .font(.system(size: 13))
-          .textSelection(.enabled)
-          .lineSpacing(3)
+
+        if isEditing {
+          VStack(alignment: .leading, spacing: 6) {
+            TextEditor(text: $editText)
+              .font(.system(size: 13))
+              .frame(minHeight: 32, maxHeight: 120)
+              .padding(4)
+              .background(ITheme.cardBg)
+              .clipShape(RoundedRectangle(cornerRadius: 6))
+
+            HStack(spacing: 8) {
+              Button("Save") {
+                let trimmed = editText.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return }
+                vm.editInboxThreadMessage(docId: docId, messageId: message.id, newText: trimmed)
+                isEditing = false
+              }
+              .buttonStyle(.borderedProminent)
+              .controlSize(.small)
+              .disabled(editText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+              Button("Cancel") {
+                isEditing = false
+              }
+              .buttonStyle(.bordered)
+              .controlSize(.small)
+            }
+          }
+        } else {
+          Group {
+            if let md = try? AttributedString(markdown: message.text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+              Text(md)
+            } else {
+              Text(message.text)
+            }
+          }
+            .font(.system(size: 13))
+            .textSelection(.enabled)
+            .lineSpacing(3)
+        }
       }
 
       Spacer()

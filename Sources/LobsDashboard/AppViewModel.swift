@@ -949,6 +949,43 @@ final class AppViewModel: ObservableObject {
     }
   }
 
+  func editInboxThreadMessage(docId: String, messageId: String, newText: String) {
+    guard let repoURL else { return }
+    guard var thread = inboxThreadsByDocId[docId],
+          let idx = thread.messages.firstIndex(where: { $0.id == messageId }) else { return }
+
+    thread.messages[idx] = InboxThreadMessage(
+      id: messageId,
+      author: thread.messages[idx].author,
+      text: newText,
+      createdAt: thread.messages[idx].createdAt
+    )
+    thread.updatedAt = Date()
+    inboxThreadsByDocId[docId] = thread
+
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.saveInboxThread(thread)
+    } catch {
+      flashError("Failed to save thread: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: edit thread message on \(docId)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
+    }
+  }
+
   func selectTask(_ task: DashboardTask) {
     selectedTaskId = task.id
     popoverTaskId = task.id
