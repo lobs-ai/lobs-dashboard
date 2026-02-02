@@ -15,7 +15,22 @@ private struct TaskDropDelegate: DropDelegate {
 
   func performDrop(info: DropInfo) -> Bool {
     guard let id = vm.draggingTaskId else { return false }
-    vm.moveTask(taskId: id, to: status)
+    vm.reorderTask(taskId: id, to: status, beforeTaskId: nil)
+    return true
+  }
+}
+
+/// Drop delegate for inserting before a specific task (reorder within column)
+private struct TaskInsertDropDelegate: DropDelegate {
+  let beforeTaskId: String
+  let status: TaskStatus
+  let vm: AppViewModel
+
+  func validateDrop(info: DropInfo) -> Bool { true }
+
+  func performDrop(info: DropInfo) -> Bool {
+    guard let id = vm.draggingTaskId, id != beforeTaskId else { return false }
+    vm.reorderTask(taskId: id, to: status, beforeTaskId: beforeTaskId)
     return true
   }
 }
@@ -1041,6 +1056,11 @@ private struct BoardColumn: View {
                 vm.draggingTaskId = t.id
                 return NSItemProvider(object: t.id as NSString)
               }
+              .onDrop(of: [.text], delegate: TaskInsertDropDelegate(
+                beforeTaskId: t.id,
+                status: dropStatus,
+                vm: vm
+              ))
           }
 
           if (isDone || isRejected) && !showAll && tasks.count > vm.completedShowRecent {

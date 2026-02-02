@@ -156,9 +156,12 @@ final class AppViewModel: ObservableObject {
 
   private func sortTasksForUX(_ tasks: inout [DashboardTask]) {
     // Stable ordering for UX.
-    // Key change: prefer creation time over edit time so editing a task doesn't reshuffle the board.
+    // Respect manual sortOrder first, then fall back to creation time.
     tasks.sort { (a, b) in
       if a.status.rawValue != b.status.rawValue { return a.status.rawValue < b.status.rawValue }
+      let oa = a.sortOrder ?? Int.max
+      let ob = b.sortOrder ?? Int.max
+      if oa != ob { return oa < ob }
       if a.createdAt != b.createdAt { return a.createdAt > b.createdAt }
       return a.updatedAt > b.updatedAt
     }
@@ -1273,6 +1276,72 @@ final class AppViewModel: ObservableObject {
     var i = 2
     while projects.contains(where: { $0.id == "\(base)-\(i)" }) { i += 1 }
     return "\(base)-\(i)"
+  }
+
+  func reorderTask(taskId: String, to status: TaskStatus, beforeTaskId: String?) {
+    guard let repoURL else { return }
+
+    // Get tasks in this column sorted by current order
+    var columnTasks = filteredTasks.filter { t in
+      // Match the column logic from `columns`
+      switch status {
+      case .active:
+        if t.status == .active { return true }
+        if case .other = t.status { return true }
+        return false
+      case .waitingOn: return t.status == .waitingOn
+      case .completed: return t.status == .completed
+      case .rejected: return t.status == .rejected
+      default: return t.status == status
+      }
+    }
+
+    // Remove the dragged task from column if already there
+    columnTasks.removeAll { $0.id == taskId }
+
+    // Insert at position
+    if let beforeId = beforeTaskId,
+       let idx = columnTasks.firstIndex(where: { $0.id == beforeId }) {
+      columnTasks.insert(DashboardTask(id: taskId, title: "", status: status, owner: .lobs, createdAt: Date(), updatedAt: Date()), at: idx)
+    } else {
+      columnTasks.append(DashboardTask(id: taskId, title: "", status: status, owner: .lobs, createdAt: Date(), updatedAt: Date()))
+    }
+
+    // Assign sortOrder
+    for (i, t) in columnTasks.enumerated() {
+      if let idx = tasks.firstIndex(where: { $0.id == t.id }) {
+        tasks[idx].sortOrder = i
+        tasks[idx].status = status
+      }
+    }
+
+    // Persist all affected tasks
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      for t in columnTasks {
+        if let task = tasks.first(where: { $0.id == t.id }) {
+          try store.setStatus(taskId: task.id, status: task.status)
+          try store.setSortOrder(taskId: task.id, sortOrder: task.sortOrder)
+        }
+      }
+    } catch {
+      flashError("Failed to save reorder: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: reorder \(taskId) in \(status.rawValue)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
+    }
   }
 
   func moveTask(taskId: String, to status: TaskStatus) {

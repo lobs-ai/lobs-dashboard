@@ -166,6 +166,9 @@ struct DashboardTask: Codable, Identifiable, Hashable {
   /// Lightweight time tracking
   var startedAt: Date?
   var finishedAt: Date?
+
+  /// Manual sort order within a column (lower = higher priority)
+  var sortOrder: Int?
 }
 
 enum ProjectType: String, Codable, CaseIterable, Hashable {

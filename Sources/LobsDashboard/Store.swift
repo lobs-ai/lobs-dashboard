@@ -140,9 +140,12 @@ final class LobsControlStore {
       }
 
       // Stable ordering (nice UX)
-      // Prefer creation time over edit time so edits don't reshuffle the list.
+      // Respect manual sortOrder first, then fall back to creation time.
       tasks.sort { (a, b) in
         if a.status.rawValue != b.status.rawValue { return a.status.rawValue < b.status.rawValue }
+        let oa = a.sortOrder ?? Int.max
+        let ob = b.sortOrder ?? Int.max
+        if oa != ob { return oa < ob }
         if a.createdAt != b.createdAt { return a.createdAt > b.createdAt }
         return a.updatedAt > b.updatedAt
       }
@@ -257,6 +260,20 @@ final class LobsControlStore {
     file.tasks[idx].reviewState = reviewState
     file.tasks[idx].updatedAt = Date()
     try saveTasks(file)
+  }
+
+  func setSortOrder(taskId: String, sortOrder: Int?) throws {
+    if FileManager.default.fileExists(atPath: tasksDirURL.path) {
+      let url = taskFileURL(taskId: taskId)
+      guard FileManager.default.fileExists(atPath: url.path) else { return }
+      let data = try Data(contentsOf: url)
+      var task = try decoder().decode(DashboardTask.self, from: data)
+      task.sortOrder = sortOrder
+      task.updatedAt = Date()
+      let out = try encoder().encode(task)
+      try out.write(to: url, options: [.atomic])
+      return
+    }
   }
 
   func setTitleAndNotes(taskId: String, title: String, notes: String?) throws {
