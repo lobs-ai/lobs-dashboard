@@ -408,20 +408,30 @@ struct ResearchDocView: View {
           }
       } else {
         // Preview (rendered markdown with collapsible sections)
-        ScrollView {
-          SectionedMarkdownPreview(
-            content: editContent,
-            sources: vm.researchSources,
-            isCondensed: isCondensed,
-            collapsedSections: $collapsedSections,
-            searchText: docSearchText,
-            onAskFollowUp: { sectionHeading in
-              followUpSection = sectionHeading
-              showAddRequest = true
+        ScrollViewReader { proxy in
+          ScrollView {
+            SectionedMarkdownPreview(
+              content: editContent,
+              sources: vm.researchSources,
+              isCondensed: isCondensed,
+              collapsedSections: $collapsedSections,
+              searchText: docSearchText,
+              onAskFollowUp: { sectionHeading in
+                followUpSection = sectionHeading
+                showAddRequest = true
+              }
+            )
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+          }
+          .onChange(of: scrollToHeadingId) { target in
+            if let target {
+              withAnimation {
+                proxy.scrollTo("section-\(target)", anchor: .top)
+              }
+              scrollToHeadingId = nil
             }
-          )
-          .padding(20)
-          .frame(maxWidth: .infinity, alignment: .leading)
+          }
         }
       }
     }
@@ -439,10 +449,17 @@ struct ResearchDocView: View {
     }
   }
 
+  @State private var scrollToHeadingId: String? = nil
+
   private func scrollToHeading(_ heading: String) {
-    // For now, switch to edit mode and find the heading
-    isEditing = true
-    // Could enhance with NSTextView scrolling later
+    if isEditing {
+      // In edit mode, we can't easily scroll the NSTextView yet
+      // but we preserve the mode
+    } else {
+      // In preview mode, scroll to the section and uncollapse it
+      collapsedSections.remove(heading)
+      scrollToHeadingId = heading
+    }
   }
 
   private func insertCitation(source: ResearchSource) {
@@ -820,6 +837,7 @@ private struct SectionCardView: View {
           lineWidth: 1
         )
     )
+    .id("section-\(section.heading)")
     .onHover { hovering in isHovering = hovering }
     .padding(.top, section.level == 1 ? 16 : (section.level == 2 ? 10 : 6))
   }
