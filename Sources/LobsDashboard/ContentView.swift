@@ -461,50 +461,54 @@ private struct ToolbarArea: View {
       }
       .menuStyle(.borderlessButton)
 
-      // Search
-      HStack(spacing: 6) {
-        Image(systemName: "magnifyingglass")
-          .foregroundStyle(.secondary)
-          .font(.footnote)
-        TextField("Search tasks… (⌘F)", text: $vm.searchText)
-          .textFieldStyle(.plain)
-          .frame(width: 180)
-      }
-      .padding(.horizontal, 10)
-      .padding(.vertical, 6)
-      .background(Theme.subtle)
-      .clipShape(RoundedRectangle(cornerRadius: 8))
-
-      // Filter
-      Menu {
-        Button { vm.ownerFilter = "all" } label: {
-          Label("All tasks", systemImage: vm.ownerFilter == "all" ? "checkmark" : "")
+      // Search (hidden on home/overview — no task list to filter)
+      if !vm.showOverview {
+        HStack(spacing: 6) {
+          Image(systemName: "magnifyingglass")
+            .foregroundStyle(.secondary)
+            .font(.footnote)
+          TextField("Search tasks… (⌘F)", text: $vm.searchText)
+            .textFieldStyle(.plain)
+            .frame(width: 180)
         }
-        Button { vm.ownerFilter = "lobs" } label: {
-          Label("Lobs only", systemImage: vm.ownerFilter == "lobs" ? "checkmark" : "")
-        }
-        Button { vm.ownerFilter = "rafe" } label: {
-          Label("Rafe only", systemImage: vm.ownerFilter == "rafe" ? "checkmark" : "")
-        }
-        Divider()
-        Button { vm.ownerFilter = "other" } label: {
-          Label("Other", systemImage: vm.ownerFilter == "other" ? "checkmark" : "")
-        }
-      } label: {
-        HStack(spacing: 4) {
-          Image(systemName: "line.3.horizontal.decrease.circle")
-          if vm.ownerFilter != "all" {
-            Text(vm.ownerFilter.capitalized)
-              .font(.footnote)
-          }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(vm.ownerFilter != "all" ? Color.accentColor.opacity(0.12) : Theme.subtle)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Theme.subtle)
         .clipShape(RoundedRectangle(cornerRadius: 8))
       }
-      .menuStyle(.borderlessButton)
-      .fixedSize()
+
+      // Filter (hidden on home/overview — no task list to filter)
+      if !vm.showOverview {
+        Menu {
+          Button { vm.ownerFilter = "all" } label: {
+            Label("All tasks", systemImage: vm.ownerFilter == "all" ? "checkmark" : "")
+          }
+          Button { vm.ownerFilter = "lobs" } label: {
+            Label("Lobs only", systemImage: vm.ownerFilter == "lobs" ? "checkmark" : "")
+          }
+          Button { vm.ownerFilter = "rafe" } label: {
+            Label("Rafe only", systemImage: vm.ownerFilter == "rafe" ? "checkmark" : "")
+          }
+          Divider()
+          Button { vm.ownerFilter = "other" } label: {
+            Label("Other", systemImage: vm.ownerFilter == "other" ? "checkmark" : "")
+          }
+        } label: {
+          HStack(spacing: 4) {
+            Image(systemName: "line.3.horizontal.decrease.circle")
+            if vm.ownerFilter != "all" {
+              Text(vm.ownerFilter.capitalized)
+                .font(.footnote)
+            }
+          }
+          .padding(.horizontal, 8)
+          .padding(.vertical, 5)
+          .background(vm.ownerFilter != "all" ? Color.accentColor.opacity(0.12) : Theme.subtle)
+          .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+      }
 
       // Inbox button
       Button {
