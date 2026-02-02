@@ -65,16 +65,21 @@ struct OverviewView: View {
     return allTasks.filter { $0.status == .completed && $0.updatedAt >= weekAgo }.count
   }
 
-  private var openResearchRequests: Int {
-    var count = 0
-    guard let repoURL = vm.repoURL else { return 0 }
+  /// Open research request counts per project.
+  private var researchRequestCountsByProject: [String: Int] {
+    guard let repoURL = vm.repoURL else { return [:] }
     let store = LobsControlStore(repoRoot: repoURL)
+    var counts: [String: Int] = [:]
     for project in activeProjects where project.resolvedType == .research {
       if let requests = try? store.loadRequests(projectId: project.id) {
-        count += requests.filter { $0.status == .open || $0.status == .inProgress }.count
+        counts[project.id] = requests.filter { $0.status == .open || $0.status == .inProgress }.count
       }
     }
-    return count
+    return counts
+  }
+
+  private var openResearchRequests: Int {
+    researchRequestCountsByProject.values.reduce(0, +)
   }
 
   private var blockedTasks: Int {
@@ -169,6 +174,7 @@ struct OverviewView: View {
               ProjectCard(
                 project: project,
                 tasks: allTasks.filter { ($0.projectId ?? "default") == project.id },
+                researchRequestCount: researchRequestCountsByProject[project.id] ?? 0,
                 onTap: { onSelectProject(project.id) }
               )
               .onDrag {
@@ -348,6 +354,7 @@ private struct StatCard: View {
 private struct ProjectCard: View {
   let project: Project
   let tasks: [DashboardTask]
+  var researchRequestCount: Int = 0
   let onTap: () -> Void
 
   @State private var isHovering = false
@@ -429,6 +436,9 @@ private struct ProjectCard: View {
         HStack(spacing: 12) {
           CountBadge(label: "Active", count: activeCount, color: .orange)
           CountBadge(label: "Done", count: completedCount, color: .green)
+          if researchRequestCount > 0 {
+            CountBadge(label: "Research", count: researchRequestCount, color: .purple)
+          }
           if inboxCount > 0 {
             CountBadge(label: "Inbox", count: inboxCount, color: .blue)
           }

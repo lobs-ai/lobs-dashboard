@@ -92,7 +92,7 @@ struct ResearchDocView: View {
           Image(systemName: "questionmark.bubble")
             .font(.body)
             .padding(4)
-            .background(Color.orange.opacity(0.12))
+            .background(Color.purple.opacity(0.12))
             .clipShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
@@ -289,8 +289,8 @@ struct ResearchDocView: View {
       HStack {
         Image(systemName: "questionmark.bubble")
           .font(.footnote)
-          .foregroundStyle(.orange)
-        Text("Open Requests")
+          .foregroundStyle(.purple)
+        Text("Open Requests (\(openRequests.count))")
           .font(.footnote)
           .fontWeight(.semibold)
           .foregroundStyle(.secondary)
@@ -299,7 +299,7 @@ struct ResearchDocView: View {
       ForEach(openRequests) { req in
         HStack(spacing: 6) {
           Circle()
-            .fill(req.status == .inProgress ? Color.blue : Color.orange)
+            .fill(req.status == .inProgress ? Color.blue : Color.purple)
             .frame(width: 6, height: 6)
           Text(req.prompt)
             .font(.footnote)
@@ -309,7 +309,7 @@ struct ResearchDocView: View {
       }
     }
     .padding(10)
-    .background(Color.orange.opacity(0.06))
+    .background(Color.purple.opacity(0.06))
     .clipShape(RoundedRectangle(cornerRadius: 8))
   }
 
