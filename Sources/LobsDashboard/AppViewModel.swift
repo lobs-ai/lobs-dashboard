@@ -94,10 +94,10 @@ final class AppViewModel: ObservableObject {
   @Published var completedShowRecent: Int = 30 {
     didSet { settings.set(completedShowRecent, forKey: completedShowRecentKey) }
   }
-  @Published var autoArchiveCompleted: Bool = false {
+  @Published var autoArchiveCompleted: Bool = true {
     didSet { settings.set(autoArchiveCompleted, forKey: autoArchiveCompletedKey) }
   }
-  @Published var archiveCompletedAfterDays: Int = 30 {
+  @Published var archiveCompletedAfterDays: Int = 7 {
     didSet { settings.set(archiveCompletedAfterDays, forKey: archiveCompletedAfterDaysKey) }
   }
 
@@ -126,10 +126,10 @@ final class AppViewModel: ObservableObject {
     let csr = settings.integer(forKey: completedShowRecentKey)
     completedShowRecent = (csr == 0) ? 30 : csr
 
-    autoArchiveCompleted = settings.bool(forKey: autoArchiveCompletedKey)
+    autoArchiveCompleted = settings.object(forKey: autoArchiveCompletedKey) as? Bool ?? true
 
     let days = settings.integer(forKey: archiveCompletedAfterDaysKey)
-    archiveCompletedAfterDays = (days == 0) ? 30 : days
+    archiveCompletedAfterDays = (days == 0) ? 7 : days
 
     // Default true if unset
     autoRefreshEnabled = settings.object(forKey: autoRefreshEnabledKey) as? Bool ?? true
