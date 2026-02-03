@@ -764,6 +764,7 @@ private struct ToolbarArea: View {
       // Project
       Menu {
         ForEach(vm.sortedActiveProjects) { p in
+          let activeCount = vm.tasks.filter { $0.projectId == p.id && $0.status == .active }.count
           Button {
             vm.selectedProjectId = p.id
             vm.showOverview = false
@@ -774,6 +775,10 @@ private struct ToolbarArea: View {
               }
               Image(systemName: projectTypeIcon(p.resolvedType))
               Text(p.title)
+              if activeCount > 0 {
+                Text("(\(activeCount))")
+                  .foregroundStyle(.secondary)
+              }
             }
           }
         }
