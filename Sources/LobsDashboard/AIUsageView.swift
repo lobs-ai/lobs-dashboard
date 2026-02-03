@@ -198,11 +198,16 @@ struct AIUsageView: View {
 
         // Summary cards
         HStack(spacing: 16) {
-          UsageSummaryCard(title: "Total Cost", value: String(format: "$%.2f", totalCost), icon: "dollarsign.circle.fill", color: .green)
-          UsageSummaryCard(title: "Total Tokens", value: formatTokens(totalTokens), icon: "cpu", color: .purple)
-          UsageSummaryCard(title: "Worker Cost", value: String(format: "$%.2f", workerTotalCost), icon: "bolt.fill", color: .orange)
-          UsageSummaryCard(title: "Main Session", value: String(format: "$%.2f", mainSessionCost), icon: "bubble.left.fill", color: .blue)
-          UsageSummaryCard(title: "Worker Runs", value: "\(filteredWorkerRuns.count)", icon: "arrow.triangle.2.circlepath", color: .indigo)
+          UsageSummaryCard(title: "Total Cost", value: String(format: "$%.2f", totalCost), icon: "dollarsign.circle.fill", color: .green,
+            tooltip: "Estimated total cost based on model pricing.\nOpus: $15/$75 per 1M in/out\nSonnet: $3/$15 per 1M in/out")
+          UsageSummaryCard(title: "Total Tokens", value: formatTokens(totalTokens), icon: "cpu", color: .purple,
+            tooltip: "Combined input + output tokens across all sessions")
+          UsageSummaryCard(title: "Worker Cost", value: String(format: "$%.2f", workerTotalCost), icon: "bolt.fill", color: .orange,
+            tooltip: "Cost from task-runner sub-agents — code implementation, research, file operations")
+          UsageSummaryCard(title: "Main Session", value: String(format: "$%.2f", mainSessionCost), icon: "bubble.left.fill", color: .blue,
+            tooltip: "Cost from Lobs main session — heartbeat checks, conversations, task spawning and coordination")
+          UsageSummaryCard(title: "Worker Runs", value: "\(filteredWorkerRuns.count)", icon: "arrow.triangle.2.circlepath", color: .indigo,
+            tooltip: "Number of task-runner sub-agent sessions in this period")
         }
 
         // Daily usage chart
@@ -254,6 +259,7 @@ private struct UsageSummaryCard: View {
   let value: String
   let icon: String
   let color: Color
+  var tooltip: String? = nil
 
   var body: some View {
     VStack(spacing: 10) {
@@ -264,6 +270,11 @@ private struct UsageSummaryCard: View {
         Text(title)
           .font(.system(size: 12, weight: .medium))
           .foregroundStyle(.secondary)
+        if tooltip != nil {
+          Image(systemName: "info.circle")
+            .font(.system(size: 10))
+            .foregroundStyle(.tertiary)
+        }
       }
       Text(value)
         .font(.title2)
@@ -273,6 +284,7 @@ private struct UsageSummaryCard: View {
     .frame(minWidth: 130, maxWidth: .infinity)
     .padding(.horizontal, 18)
     .padding(.vertical, 16)
+    .help(tooltip ?? "")
     .background(ATheme.cardBg)
     .clipShape(RoundedRectangle(cornerRadius: ATheme.cardRadius))
     .overlay(
@@ -294,9 +306,10 @@ private struct DailyUsageChart: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
-      Text("Daily Spend")
-        .font(.headline)
-        .fontWeight(.bold)
+      SectionHeaderWithInfo(
+        title: "Daily Spend",
+        tooltip: "Daily cost breakdown showing Main Session (blue) and Worker (orange) spending. Stacked bars show relative proportions."
+      )
 
       // Stacked bar chart
       HStack(alignment: .bottom, spacing: max(3, 10 - CGFloat(data.count) / 4)) {
@@ -386,9 +399,10 @@ private struct UsageSplitView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
-      Text("Usage Breakdown")
-        .font(.headline)
-        .fontWeight(.bold)
+      SectionHeaderWithInfo(
+        title: "Usage Breakdown",
+        tooltip: "Main Session: Lobs heartbeat checks, conversations, task spawning and coordination.\nWorkers: Task-runner sub-agents that handle code implementation, research, and file operations."
+      )
 
       if total > 0 {
         // Proportional cost bar
@@ -518,9 +532,10 @@ private struct ModelBreakdownView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
-      Text("By Model")
-        .font(.headline)
-        .fontWeight(.bold)
+      SectionHeaderWithInfo(
+        title: "By Model",
+        tooltip: "Token usage and estimated cost broken down by AI model.\nOpus: $15/$75 per 1M input/output tokens\nSonnet: $3/$15 per 1M input/output tokens"
+      )
 
       if models.isEmpty {
         Text("No model data yet")
@@ -575,6 +590,40 @@ private struct ModelBreakdownView: View {
     if model.contains("haiku") { return .green }
     if model.contains("gpt") { return .orange }
     return .gray
+  }
+}
+
+// MARK: - Section Header With Info Tooltip
+
+private struct SectionHeaderWithInfo: View {
+  let title: String
+  let tooltip: String
+
+  @State private var showingPopover = false
+
+  var body: some View {
+    HStack(spacing: 6) {
+      Text(title)
+        .font(.headline)
+        .fontWeight(.bold)
+
+      Button {
+        showingPopover.toggle()
+      } label: {
+        Image(systemName: "info.circle")
+          .font(.system(size: 12))
+          .foregroundStyle(.tertiary)
+      }
+      .buttonStyle(.plain)
+      .help(tooltip)
+      .popover(isPresented: $showingPopover, arrowEdge: .bottom) {
+        Text(tooltip)
+          .font(.system(size: 12))
+          .foregroundStyle(.secondary)
+          .padding(12)
+          .frame(maxWidth: 300)
+      }
+    }
   }
 }
 
