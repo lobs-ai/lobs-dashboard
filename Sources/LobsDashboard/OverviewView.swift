@@ -413,7 +413,7 @@ private struct StatsRow: View {
   var body: some View {
     HStack(spacing: 16) {
       StatCard(label: "Active Tasks", value: "\(activeTasks)", icon: "flame.fill", color: .orange)
-      StatCard(label: "Completed This Week", value: "\(completedThisWeek)", icon: "checkmark.circle.fill", color: .green)
+      StatCard(label: "Done This Week", value: "\(completedThisWeek)", icon: "checkmark.circle.fill", color: .green)
       StatCard(label: "Research Requests", value: "\(openResearchRequests)", icon: "magnifyingglass", color: .purple)
       if blockedTasks > 0 {
         StatCard(label: "Blocked", value: "\(blockedTasks)", icon: "exclamationmark.octagon.fill", color: .red)
@@ -449,6 +449,7 @@ private struct StatCard: View {
         Text(label)
           .font(.footnote)
           .foregroundStyle(.secondary)
+          .lineLimit(1)
       }
       Text(value)
         .font(.title)
