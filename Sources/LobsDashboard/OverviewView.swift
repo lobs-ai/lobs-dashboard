@@ -1626,7 +1626,7 @@ private struct WorkerStatusCard: View {
 
     // Per-project usage breakdown
     if let history = history, !history.runs.isEmpty {
-      WorkerProjectBreakdown(history: history)
+      // Project breakdown removed (simplified token tracking)
     }
 
     // Recent runs history
@@ -1700,245 +1700,7 @@ private struct WorkerStatusCard: View {
 }
 
 // MARK: - Worker Project Usage Breakdown
-
-private struct ProjectUsageStat: Identifiable {
-  let project: String
-  let taskCount: Int
-  let estimatedCost: Double
-  let totalTokens: Int
-  var id: String { project }
-}
-
-private struct WorkerProjectBreakdown: View {
-  let history: WorkerHistory
-  @State private var showBreakdown = false
-  @State private var selectedPeriod: UsagePeriod = .allTime
-
-  enum UsagePeriod: String, CaseIterable {
-    case today = "Today"
-    case thisWeek = "This Week"
-    case thisMonth = "This Month"
-    case allTime = "All Time"
-  }
-
-  private func filteredRuns() -> [WorkerHistoryRun] {
-    let calendar = Calendar.current
-    let now = Date()
-    return history.runs.filter { run in
-      guard let ended = run.endedAt else { return false }
-      switch selectedPeriod {
-      case .today:
-        return calendar.isDateInToday(ended)
-      case .thisWeek:
-        let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: now)?.start ?? now
-        return ended >= startOfWeek
-      case .thisMonth:
-        let startOfMonth = calendar.dateInterval(of: .month, for: now)?.start ?? now
-        return ended >= startOfMonth
-      case .allTime:
-        return true
-      }
-    }
-  }
-
-  private func projectStats() -> [ProjectUsageStat] {
-    let runs = filteredRuns()
-    var projectTasks: [String: Int] = [:]
-    var projectCosts: [String: Double] = [:]
-    var projectTokens: [String: Int] = [:]
-
-    for run in runs {
-      let costPerTask: Double
-      let totalTasks = run.tasksCompleted ?? 0
-      if totalTasks > 0, let cost = run.estimatedCostUSD {
-        costPerTask = cost / Double(totalTasks)
-      } else {
-        costPerTask = 0
-      }
-
-      if let log = run.taskLog, !log.isEmpty {
-        // Use task log for accurate per-project attribution
-        for entry in log {
-          let proj = entry.project ?? "unknown"
-          projectTasks[proj, default: 0] += 1
-          // Prefer actual per-task cost/tokens when available
-          projectCosts[proj, default: 0] += entry.costUSD ?? costPerTask
-          if let tokens = entry.tokens {
-            projectTokens[proj, default: 0] += tokens
-          }
-        }
-        // Account for tasks without log entries (session overhead)
-        let unlogged = totalTasks - log.count
-        if unlogged > 0 {
-          projectTasks["unknown", default: 0] += unlogged
-          projectCosts["unknown", default: 0] += costPerTask * Double(unlogged)
-        }
-      } else {
-        // No task log — attribute all to "unknown"
-        projectTasks["unknown", default: 0] += totalTasks
-        if let cost = run.estimatedCostUSD {
-          projectCosts["unknown", default: 0] += cost
-        }
-      }
-    }
-
-    return projectTasks.keys.sorted().map { proj in
-      ProjectUsageStat(
-        project: proj,
-        taskCount: projectTasks[proj] ?? 0,
-        estimatedCost: projectCosts[proj] ?? 0,
-        totalTokens: projectTokens[proj] ?? 0
-      )
-    }.sorted { $0.estimatedCost > $1.estimatedCost }
-  }
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      Button {
-        withAnimation(.easeInOut(duration: 0.2)) { showBreakdown.toggle() }
-      } label: {
-        HStack(spacing: 6) {
-          Image(systemName: showBreakdown ? "chevron.down" : "chevron.right")
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(.secondary)
-          Image(systemName: "chart.bar.fill")
-            .font(.system(size: 11))
-            .foregroundStyle(.mint)
-          Text("Usage by Project")
-            .font(.footnote)
-            .fontWeight(.medium)
-            .foregroundStyle(.secondary)
-          Spacer()
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-      }
-      .buttonStyle(.plain)
-
-      if showBreakdown {
-        Divider().padding(.horizontal, 14)
-
-        // Period picker
-        HStack(spacing: 4) {
-          ForEach(UsagePeriod.allCases, id: \.rawValue) { period in
-            Button {
-              selectedPeriod = period
-            } label: {
-              Text(period.rawValue)
-                .font(.system(size: 10, weight: selectedPeriod == period ? .semibold : .regular))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(selectedPeriod == period ? Color.accentColor.opacity(0.15) : Color.clear)
-                .foregroundStyle(selectedPeriod == period ? .primary : .secondary)
-                .clipShape(Capsule())
-            }
-            .buttonStyle(.plain)
-          }
-          Spacer()
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 6)
-
-        let stats = projectStats()
-        let totalCost = stats.reduce(0.0) { $0 + $1.estimatedCost }
-        let totalTasks = stats.reduce(0) { $0 + $1.taskCount }
-        let totalTokens = stats.reduce(0) { $0 + $1.totalTokens }
-
-        if stats.isEmpty {
-          Text("No usage data for this period")
-            .font(.footnote)
-            .foregroundStyle(.tertiary)
-            .padding(.horizontal, 14)
-            .padding(.bottom, 10)
-        } else {
-          // Summary row
-          HStack(spacing: 16) {
-            HStack(spacing: 4) {
-              Image(systemName: "number")
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-              Text("\(totalTasks) tasks")
-                .font(.footnote.monospacedDigit())
-                .foregroundStyle(.secondary)
-            }
-            if totalTokens > 0 {
-              HStack(spacing: 4) {
-                Image(systemName: "cpu")
-                  .font(.system(size: 10))
-                  .foregroundStyle(.purple)
-                Text(formatTokenCount(totalTokens))
-                  .font(.footnote.monospacedDigit())
-                  .foregroundStyle(.secondary)
-              }
-            }
-            HStack(spacing: 4) {
-              Image(systemName: "dollarsign.circle")
-                .font(.system(size: 10))
-                .foregroundStyle(.mint)
-              Text("~$\(totalCost, specifier: "%.2f")")
-                .font(.footnote.monospacedDigit().bold())
-                .foregroundStyle(.primary)
-            }
-            Spacer()
-          }
-          .padding(.horizontal, 14)
-          .padding(.bottom, 6)
-
-          // Per-project rows
-          VStack(alignment: .leading, spacing: 4) {
-            ForEach(stats) { stat in
-              HStack(spacing: 8) {
-                // Bar
-                let fraction = totalCost > 0 ? stat.estimatedCost / totalCost : 0
-                GeometryReader { geo in
-                  RoundedRectangle(cornerRadius: 2)
-                    .fill(stat.project == "unknown" ? Color.gray.opacity(0.3) : Color.mint.opacity(0.5))
-                    .frame(width: max(4, geo.size.width * fraction))
-                }
-                .frame(width: 60, height: 10)
-
-                Text(stat.project == "unknown" ? "Untracked" : stat.project)
-                  .font(.footnote)
-                  .foregroundStyle(stat.project == "unknown" ? .tertiary : .secondary)
-                  .frame(width: 100, alignment: .leading)
-                  .lineLimit(1)
-
-                Text("\(stat.taskCount)")
-                  .font(.footnote.monospacedDigit())
-                  .foregroundStyle(.secondary)
-                  .frame(width: 30, alignment: .trailing)
-
-                if stat.totalTokens > 0 {
-                  Text(formatTokenCount(stat.totalTokens))
-                    .font(.footnote.monospacedDigit())
-                    .foregroundStyle(.purple.opacity(0.7))
-                    .frame(width: 55, alignment: .trailing)
-                }
-
-                Text("~$\(stat.estimatedCost, specifier: "%.2f")")
-                  .font(.footnote.monospacedDigit())
-                  .foregroundStyle(.secondary)
-                  .frame(width: 55, alignment: .trailing)
-
-                Spacer()
-              }
-            }
-          }
-          .padding(.horizontal, 14)
-          .padding(.bottom, 10)
-        }
-      }
-    }
-    .background(
-      RoundedRectangle(cornerRadius: OTheme.cardRadius)
-        .fill(OTheme.cardBg)
-    )
-    .overlay(
-      RoundedRectangle(cornerRadius: OTheme.cardRadius)
-        .stroke(OTheme.border, lineWidth: 0.5)
-    )
-  }
-}
+// Removed: simplified AI usage tracking to per-run totals only.
 
 private struct WorkerHistoryRow: View {
   let run: WorkerHistoryRun
@@ -2002,34 +1764,27 @@ private struct WorkerHistoryRow: View {
               .foregroundStyle(.tertiary)
           }
 
-          // Total tokens for the run
-          if let log = run.taskLog {
-            let runTokens = log.compactMap { $0.tokens }.reduce(0, +)
-            if runTokens > 0 {
-              HStack(spacing: 2) {
-                Image(systemName: "cpu")
-                  .font(.system(size: 9))
-                  .foregroundStyle(.purple.opacity(0.7))
-                Text(formatTokenCount(runTokens))
-                  .font(.footnote.monospacedDigit())
-                  .foregroundStyle(.purple.opacity(0.7))
-              }
-              .frame(width: 55, alignment: .leading)
+          // Total tokens for the run (per-run totals)
+          if let tokens = run.totalTokens, tokens > 0 {
+            HStack(spacing: 2) {
+              Image(systemName: "cpu")
+                .font(.system(size: 9))
+                .foregroundStyle(.purple.opacity(0.7))
+              Text(formatTokenCount(tokens))
+                .font(.footnote.monospacedDigit())
+                .foregroundStyle(.purple.opacity(0.7))
             }
+            .frame(width: 70, alignment: .leading)
           }
 
-          // Cost
-          if let cost = run.estimatedCostUSD, cost > 0 {
-            // Check if we have actual per-task costs
-            let actualCost = run.taskLog?.compactMap { $0.costUSD }.reduce(0, +) ?? 0
-            let displayCost = actualCost > 0 ? actualCost : cost
-            let prefix = actualCost > 0 ? "$" : "~$"
+          // Cost (optional per-run total)
+          if let cost = run.totalCostUSD, cost > 0 {
             HStack(spacing: 2) {
-              Text("\(prefix)\(displayCost, specifier: "%.2f")")
+              Text("$\(cost, specifier: "%.2f")")
                 .font(.footnote.monospacedDigit())
                 .foregroundStyle(.secondary)
             }
-            .frame(width: 55, alignment: .leading)
+            .frame(width: 60, alignment: .leading)
           }
 
           // Project tags from task log
@@ -2094,17 +1849,8 @@ private struct WorkerHistoryRow: View {
                   .clipShape(Capsule())
               }
 
-              if let tokens = entry.tokens {
-                Text(formatTokenCount(tokens))
-                  .font(.system(size: 10).monospacedDigit())
-                  .foregroundStyle(.purple.opacity(0.6))
-              }
+              // (Per-task token/cost fields removed; per-run totals only)
 
-              if let cost = entry.costUSD {
-                Text("$\(cost, specifier: "%.2f")")
-                  .font(.system(size: 10).monospacedDigit())
-                  .foregroundStyle(.secondary)
-              }
             }
             .padding(.vertical, 2)
           }
