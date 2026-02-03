@@ -301,6 +301,16 @@ struct ResearchSourcesFile: Codable {
   var sources: [ResearchSource]
 }
 
+/// A research deliverable document from the `docs/` directory.
+struct ResearchDeliverable: Identifiable, Hashable {
+  var id: String           // filename
+  var filename: String
+  var title: String
+  var requestIdPrefix: String?  // first 8 chars of request UUID if present
+  var modifiedAt: Date
+  var content: String
+}
+
 // MARK: - Inbox Item (Design Docs)
 
 struct InboxItem: Identifiable, Hashable {

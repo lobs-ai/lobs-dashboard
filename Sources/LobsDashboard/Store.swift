@@ -708,6 +708,45 @@ final class LobsControlStore {
     researchDirURL.appendingPathComponent(projectId).appendingPathComponent("sources.json")
   }
 
+  /// Scan the `docs/` directory for research deliverable files.
+  func loadResearchDeliverables(projectId: String) throws -> [ResearchDeliverable] {
+    let docsDir = researchDirURL.appendingPathComponent(projectId).appendingPathComponent("docs")
+    guard FileManager.default.fileExists(atPath: docsDir.path) else { return [] }
+
+    let fm = FileManager.default
+    let files = try fm.contentsOfDirectory(at: docsDir, includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey])
+      .filter { $0.pathExtension == "md" }
+      .sorted { a, b in
+        let da = (try? a.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date.distantPast
+        let db = (try? b.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date.distantPast
+        return da > db // newest first
+      }
+
+    return files.compactMap { url in
+      let filename = url.lastPathComponent
+      let content = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+      let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date()
+      // Extract request ID from filename (format: <UUID-prefix>-<title>.md)
+      let requestId = filename.contains("-") ? String(filename.prefix(8)) : nil
+      // First line as title if it starts with #
+      let title: String
+      if let firstLine = content.split(separator: "\n", maxSplits: 1).first,
+         firstLine.hasPrefix("# ") {
+        title = String(firstLine.dropFirst(2))
+      } else {
+        title = filename.replacingOccurrences(of: ".md", with: "").replacingOccurrences(of: "-", with: " ")
+      }
+      return ResearchDeliverable(
+        id: filename,
+        filename: filename,
+        title: title,
+        requestIdPrefix: requestId,
+        modifiedAt: modified,
+        content: content
+      )
+    }
+  }
+
   func loadResearchDoc(projectId: String) throws -> String {
     let url = researchDocURL(projectId: projectId)
     guard FileManager.default.fileExists(atPath: url.path) else { return "" }

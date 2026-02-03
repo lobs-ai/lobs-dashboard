@@ -127,6 +127,11 @@ struct ResearchDocView: View {
           if !completedRequests.isEmpty {
             completedRequestsSection
           }
+
+          // Research Deliverables
+          if !vm.researchDeliverables.isEmpty {
+            deliverablesSection
+          }
         }
         .padding(12)
       }
@@ -365,6 +370,58 @@ struct ResearchDocView: View {
     .padding(10)
     .background(DocTheme.subtle)
     .clipShape(RoundedRectangle(cornerRadius: 8))
+  }
+
+  @State private var selectedDeliverable: ResearchDeliverable? = nil
+
+  private var deliverablesSection: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      HStack {
+        Image(systemName: "doc.richtext")
+          .font(.footnote)
+          .foregroundStyle(.blue)
+        Text("Research Results (\(vm.researchDeliverables.count))")
+          .font(.footnote)
+          .fontWeight(.semibold)
+          .foregroundStyle(.secondary)
+      }
+
+      ForEach(vm.researchDeliverables) { doc in
+        Button {
+          selectedDeliverable = doc
+        } label: {
+          HStack(spacing: 6) {
+            Image(systemName: "doc.text")
+              .font(.system(size: 11))
+              .foregroundStyle(.blue)
+            VStack(alignment: .leading, spacing: 1) {
+              Text(doc.title)
+                .font(.footnote)
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+              Text(doc.modifiedAt.formatted(date: .abbreviated, time: .shortened))
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+            }
+            Spacer()
+          }
+          .padding(6)
+          .background(
+            selectedDeliverable?.id == doc.id
+              ? Color.blue.opacity(0.1)
+              : Color.clear
+          )
+          .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+      }
+    }
+    .padding(10)
+    .background(Color.blue.opacity(0.06))
+    .clipShape(RoundedRectangle(cornerRadius: 8))
+    .sheet(item: $selectedDeliverable) { doc in
+      DeliverableViewer(deliverable: doc)
+    }
   }
 
   // MARK: - Document Editor
@@ -1070,6 +1127,63 @@ private struct AskLobsResearchSheet: View {
 }
 
 // MARK: - Edit Request Sheet (Doc View)
+
+// MARK: - Deliverable Viewer
+
+private struct DeliverableViewer: View {
+  let deliverable: ResearchDeliverable
+  @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      // Header
+      HStack {
+        VStack(alignment: .leading, spacing: 4) {
+          Text(deliverable.title)
+            .font(.title3)
+            .fontWeight(.bold)
+          HStack(spacing: 8) {
+            Text(deliverable.filename)
+              .font(.system(size: 12, design: .monospaced))
+              .foregroundStyle(.secondary)
+            Text("·")
+              .foregroundStyle(.quaternary)
+            Text(deliverable.modifiedAt.formatted(date: .abbreviated, time: .shortened))
+              .font(.system(size: 12))
+              .foregroundStyle(.tertiary)
+          }
+        }
+        Spacer()
+        Button {
+          NSPasteboard.general.clearContents()
+          NSPasteboard.general.setString(deliverable.content, forType: .string)
+        } label: {
+          Image(systemName: "doc.on.doc")
+            .padding(6)
+            .background(Theme.subtle)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .help("Copy to clipboard")
+
+        Button("Done") { dismiss() }
+          .keyboardShortcut(.cancelAction)
+      }
+      .padding(.horizontal, 20)
+      .padding(.vertical, 14)
+
+      Divider()
+
+      // Content
+      ScrollView {
+        MarkdownWebView(markdown: deliverable.content)
+          .frame(maxWidth: .infinity, minHeight: 400)
+          .padding(20)
+      }
+    }
+    .frame(width: 700, height: 600)
+  }
+}
 
 private struct EditRequestSheetDoc: View {
   @ObservedObject var vm: AppViewModel

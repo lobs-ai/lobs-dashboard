@@ -31,6 +31,7 @@ final class AppViewModel: ObservableObject {
   // Research Document (doc-based)
   @Published var researchDocContent: String = ""
   @Published var researchSources: [ResearchSource] = []
+  @Published var researchDeliverables: [ResearchDeliverable] = []
 
   // Tracker
   @Published var trackerItems: [TrackerItem] = []
@@ -515,6 +516,7 @@ final class AppViewModel: ObservableObject {
       researchRequests = []
       researchDocContent = ""
       researchSources = []
+      researchDeliverables = []
       return
     }
     do {
@@ -524,6 +526,7 @@ final class AppViewModel: ObservableObject {
       // Load doc-based content
       researchDocContent = try s.loadResearchDoc(projectId: selectedProjectId)
       researchSources = try s.loadResearchSources(projectId: selectedProjectId)
+      researchDeliverables = try s.loadResearchDeliverables(projectId: selectedProjectId)
 
       // Still load legacy tiles (for backwards compat during transition)
       researchTiles = try s.loadTiles(projectId: selectedProjectId)
