@@ -384,6 +384,12 @@ struct ResearchDocView: View {
   }
 
   @State private var selectedDeliverable: ResearchDeliverable? = nil
+  @State private var showCombinedDocs: Bool = false
+
+  /// All deliverable docs combined into one markdown string, separated by horizontal rules.
+  private var combinedDocsContent: String {
+    vm.researchDeliverables.map { $0.content }.joined(separator: "\n\n---\n\n")
+  }
 
   private var docIsEmpty: Bool {
     editContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -409,9 +415,34 @@ struct ResearchDocView: View {
           .foregroundStyle(.secondary)
       }
 
+      // "View All Combined" button
+      if vm.researchDeliverables.count > 1 {
+        Button {
+          showCombinedDocs = true
+          selectedDeliverable = nil
+          isEditing = false
+        } label: {
+          HStack(spacing: 6) {
+            Image(systemName: "doc.on.doc")
+              .font(.system(size: 11))
+              .foregroundStyle(.indigo)
+            Text("View All Combined")
+              .font(.footnote)
+              .fontWeight(.medium)
+              .foregroundStyle(.indigo)
+            Spacer()
+          }
+          .padding(6)
+          .background(showCombinedDocs ? Color.indigo.opacity(0.12) : Color.clear)
+          .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+      }
+
       ForEach(vm.researchDeliverables) { doc in
         Button {
           selectedDeliverable = doc
+          showCombinedDocs = false
           isEditing = false
         } label: {
           HStack(spacing: 6) {
@@ -431,7 +462,7 @@ struct ResearchDocView: View {
           }
           .padding(6)
           .background(
-            selectedDeliverable?.id == doc.id
+            !showCombinedDocs && selectedDeliverable?.id == doc.id
               ? Color.blue.opacity(0.1)
               : Color.clear
           )
@@ -506,6 +537,43 @@ struct ResearchDocView: View {
           .onChange(of: editContent) { _ in
             scheduleSave()
           }
+      } else if showCombinedDocs && vm.researchDeliverables.count > 1 {
+        // Combined view: all deliverable docs in one scrollable markdown view
+        ScrollView {
+          VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+              Image(systemName: "doc.on.doc")
+                .foregroundStyle(.indigo)
+              Text("Combined Research Results — \(vm.researchDeliverables.count) documents")
+                .font(.footnote)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+              Spacer()
+              Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(combinedDocsContent, forType: .string)
+              } label: {
+                HStack(spacing: 4) {
+                  Image(systemName: "doc.on.doc")
+                  Text("Copy All")
+                    .font(.footnote)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(DocTheme.subtle)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+              }
+              .buttonStyle(.plain)
+              .help("Copy combined document to clipboard")
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 16)
+            .padding(.bottom, 8)
+
+            MarkdownWebView(markdown: combinedDocsContent)
+              .padding(.horizontal, 8)
+          }
+        }
       } else if docIsEmpty, let deliverable = selectedDeliverable {
         // If doc.md is empty/missing but we have deliverables, show those directly.
         DeliverableInlineViewer(deliverable: deliverable)
