@@ -64,6 +64,9 @@ final class AppViewModel: ObservableObject {
   @Published var workerStatus: WorkerStatus? = nil
   @Published var workerHistory: WorkerHistory? = nil
 
+  // Main Session Usage
+  @Published var mainSessionUsage: MainSessionUsage? = nil
+
   // Text Dumps
   @Published var textDumps: [TextDump] = []
   /// IDs of completed dumps the user has already reviewed.
@@ -967,6 +970,11 @@ final class AppViewModel: ObservableObject {
       workerHistory = try s.loadWorkerHistory()
     } catch {
       workerHistory = nil
+    }
+    do {
+      mainSessionUsage = try s.loadMainSessionUsage()
+    } catch {
+      mainSessionUsage = nil
     }
 
     // Detect worker state changes and send macOS notifications

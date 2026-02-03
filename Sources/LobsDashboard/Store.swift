@@ -1101,6 +1101,17 @@ final class LobsControlStore {
     return try decoder().decode(WorkerHistory.self, from: data)
   }
 
+  // MARK: - Main Session Usage
+
+  func loadMainSessionUsage() throws -> MainSessionUsage? {
+    let url = repoRoot
+      .appendingPathComponent("state")
+      .appendingPathComponent("main-session-usage.json")
+    guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+    let data = try Data(contentsOf: url)
+    return try decoder().decode(MainSessionUsage.self, from: data)
+  }
+
   // MARK: - Text Dumps
 
   private var textDumpsDir: URL {

@@ -60,6 +60,7 @@ struct ContentView: View {
   @State private var showTextDump = false
   @State private var showTextDumpResults = false
   @State private var showUpdatePopover = false
+  @State private var showAIUsage = false
 
   var body: some View {
     ZStack(alignment: .top) {
@@ -96,6 +97,8 @@ struct ContentView: View {
             }, onOpenInbox: { itemId in
               inboxInitialItemId = itemId
               withAnimation(.easeInOut(duration: 0.25)) { showInbox = true }
+            }, onOpenAIUsage: {
+              showAIUsage = true
             })
           } else if vm.isResearchProject {
             ResearchDocView(vm: vm)
@@ -264,6 +267,10 @@ struct ContentView: View {
     }
     .sheet(isPresented: $showTextDumpResults) {
       TextDumpResultsSheet(vm: vm)
+    }
+    .sheet(isPresented: $showAIUsage) {
+      AIUsageView(vm: vm)
+        .frame(minWidth: 800, minHeight: 600)
     }
     .onAppear { vm.reloadIfPossible() }
     .onChange(of: vm.textDumps) { _ in

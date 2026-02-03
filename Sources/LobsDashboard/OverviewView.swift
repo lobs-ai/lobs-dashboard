@@ -36,6 +36,7 @@ struct OverviewView: View {
   @ObservedObject var vm: AppViewModel
   var onSelectProject: (String) -> Void
   var onOpenInbox: ((String?) -> Void)? = nil
+  var onOpenAIUsage: (() -> Void)? = nil
 
   @State private var detailTask: DashboardTask? = nil
   @State private var showDetailedStats: Bool = false
@@ -160,6 +161,22 @@ struct OverviewView: View {
             workerHistory: vm.workerHistory
           )
           Spacer()
+          Button {
+            onOpenAIUsage?()
+          } label: {
+            HStack(spacing: 4) {
+              Image(systemName: "chart.line.uptrend.xyaxis")
+                .font(.footnote)
+              Text("AI Usage")
+                .font(.footnote)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(OTheme.subtle)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+          }
+          .buttonStyle(.plain)
+
           Button {
             withAnimation(.easeInOut(duration: 0.2)) {
               showDetailedStats.toggle()

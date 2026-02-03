@@ -531,6 +531,34 @@ struct WorkerHistory: Codable {
   var runs: [WorkerHistoryRun]
 }
 
+// MARK: - Main Session Usage
+
+struct MainSessionSnapshot: Codable, Identifiable {
+  var timestamp: Date?
+  var inputTokens: Int?
+  var outputTokens: Int?
+  var totalTokens: Int?
+  var model: String?
+  var costUSD: Double?
+  var deltaInputTokens: Int?
+  var deltaOutputTokens: Int?
+  var deltaCostUSD: Double?
+
+  var id: String { "\(timestamp?.timeIntervalSince1970 ?? 0)" }
+}
+
+struct MainSessionDailySummary: Codable {
+  var inputTokens: Int
+  var outputTokens: Int
+  var costUSD: Double
+  var snapshotCount: Int
+}
+
+struct MainSessionUsage: Codable {
+  var snapshots: [MainSessionSnapshot]
+  var dailySummaries: [String: MainSessionDailySummary]
+}
+
 struct ProjectsFile: Codable {
   var schemaVersion: Int
   var generatedAt: Date
