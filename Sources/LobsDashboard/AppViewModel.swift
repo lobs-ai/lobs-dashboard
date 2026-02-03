@@ -181,6 +181,15 @@ final class AppViewModel: ObservableObject {
   // Popover state for task detail
   @Published var popoverTaskId: String? = nil
 
+  // Appearance
+  /// 0 = System, 1 = Light, 2 = Dark
+  @Published var appearanceMode: Int = 0 {
+    didSet {
+      settings.set(appearanceMode, forKey: "appearanceMode")
+      applyAppearance()
+    }
+  }
+
   // Auto-refresh
   @Published var autoRefreshEnabled: Bool = true {
     didSet { settings.set(autoRefreshEnabled, forKey: autoRefreshEnabledKey) }
@@ -224,6 +233,10 @@ final class AppViewModel: ObservableObject {
     // Text dump reviewed state
     reviewedDumpIds = Set(settings.stringArray(forKey: "reviewedTextDumpIds") ?? [])
 
+    // Appearance mode
+    appearanceMode = settings.integer(forKey: "appearanceMode")
+    applyAppearance()
+
     startAutoRefreshIfNeeded()
 
     // Check for dashboard source updates on launch
@@ -263,6 +276,17 @@ final class AppViewModel: ObservableObject {
         guard let self else { return }
         self.silentReload()
       }
+    }
+  }
+
+  func applyAppearance() {
+    switch appearanceMode {
+    case 1:
+      NSApp.appearance = NSAppearance(named: .aqua)
+    case 2:
+      NSApp.appearance = NSAppearance(named: .darkAqua)
+    default:
+      NSApp.appearance = nil  // follow system
     }
   }
 

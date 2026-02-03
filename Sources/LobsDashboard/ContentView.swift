@@ -1158,6 +1158,19 @@ private struct SettingsPopover: View {
             .fontWeight(.semibold)
 
           HStack {
+            Text("Appearance")
+              .font(.footnote)
+            Spacer()
+            Picker("", selection: $vm.appearanceMode) {
+              Text("System").tag(0)
+              Text("Light").tag(1)
+              Text("Dark").tag(2)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 180)
+          }
+
+          HStack {
             Text("WIP limit (Active)")
               .font(.footnote)
             Stepper(value: $vm.wipLimitActive, in: 1...20) {
