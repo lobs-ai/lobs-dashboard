@@ -447,20 +447,24 @@ private struct ToolbarArea: View {
           vm.checkForDashboardUpdate() // Re-check on tap
         } label: {
           HStack(spacing: 4) {
-            Image(systemName: "arrow.down.circle.fill")
-              .foregroundStyle(.orange)
+            Image(systemName: vm.dashboardNeedsRebuild ? "hammer.circle.fill" : "arrow.down.circle.fill")
+              .foregroundStyle(vm.dashboardNeedsRebuild ? .blue : .orange)
               .font(.footnote)
-            Text("\(vm.dashboardCommitsBehind) update\(vm.dashboardCommitsBehind == 1 ? "" : "s")")
+            Text(vm.dashboardNeedsRebuild
+              ? "\(vm.dashboardCommitsBehind) to rebuild"
+              : "\(vm.dashboardCommitsBehind) update\(vm.dashboardCommitsBehind == 1 ? "" : "s")")
               .font(.system(size: 11, weight: .medium))
-              .foregroundStyle(.orange)
+              .foregroundStyle(vm.dashboardNeedsRebuild ? .blue : .orange)
           }
           .padding(.horizontal, 8)
           .padding(.vertical, 4)
-          .background(Color.orange.opacity(0.12))
+          .background((vm.dashboardNeedsRebuild ? Color.blue : Color.orange).opacity(0.12))
           .clipShape(Capsule())
         }
         .buttonStyle(.plain)
-        .help("lobs-dashboard has \(vm.dashboardCommitsBehind) new commit\(vm.dashboardCommitsBehind == 1 ? "" : "s") on origin/main. Pull & rebuild to update.\nLocal: \(vm.dashboardLocalCommit) → Remote: \(vm.dashboardRemoteCommit)")
+        .help(vm.dashboardNeedsRebuild
+          ? "You've pulled \(vm.dashboardCommitsBehind) new commit\(vm.dashboardCommitsBehind == 1 ? "" : "s") but haven't recompiled. Run `swift build && swift run` to update.\nBuilt: \(BuildInfo.builtCommit.prefix(7)) → HEAD: \(vm.dashboardLocalCommit)"
+          : "lobs-dashboard has \(vm.dashboardCommitsBehind) new commit\(vm.dashboardCommitsBehind == 1 ? "" : "s") on origin/main. Pull & rebuild to update.\nLocal: \(vm.dashboardLocalCommit) → Remote: \(vm.dashboardRemoteCommit)")
       }
 
       Spacer()
