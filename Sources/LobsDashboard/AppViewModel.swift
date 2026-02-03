@@ -2590,6 +2590,7 @@ final class AppViewModel: ObservableObject {
     }
   }
 
+  /// Persist a research request update to ~/lobs-control and push.
   func updateRequest(_ request: ResearchRequest) {
     guard let repoURL else { return }
     var updated = request
@@ -2620,6 +2621,23 @@ final class AppViewModel: ObservableObject {
       }
       isGitBusy = false
     }
+  }
+
+  // MARK: - Research Request Triage Helpers
+
+  func updateResearchRequestPriority(requestId: String, priority: ResearchPriority?) {
+    guard let req = researchRequests.first(where: { $0.id == requestId }) else { return }
+    var updated = req
+    updated.priority = priority
+    updateRequest(updated)
+  }
+
+  func updateResearchRequestStatus(requestId: String, status: ResearchRequestStatus) {
+    guard let req = researchRequests.first(where: { $0.id == requestId }) else { return }
+    var updated = req
+    updated.status = status
+    updateRequest(updated)
+  }
   }
 
   // MARK: - Async Git Helpers

@@ -275,6 +275,14 @@ enum ResearchRequestStatus: String, Codable, Hashable {
   case blocked
 }
 
+/// Priority level for research requests.
+enum ResearchPriority: String, Codable, Hashable, CaseIterable {
+  case low
+  case normal
+  case high
+  case urgent
+}
+
 struct ResearchRequest: Codable, Identifiable, Hashable {
   var id: String
   var projectId: String
@@ -283,11 +291,15 @@ struct ResearchRequest: Codable, Identifiable, Hashable {
   var status: ResearchRequestStatus
   var response: String?
   var author: String?       // who created the request
+  var priority: ResearchPriority?  // nil defaults to .normal
   var createdAt: Date
   var updatedAt: Date
 
+  /// Resolved priority (defaults to .normal if nil)
+  var resolvedPriority: ResearchPriority { priority ?? .normal }
+
   enum CodingKeys: String, CodingKey {
-    case id, projectId, tileId, prompt, status, response, author, createdAt, updatedAt
+    case id, projectId, tileId, prompt, status, response, author, priority, createdAt, updatedAt
   }
 
   init(from decoder: Decoder) throws {
@@ -299,11 +311,12 @@ struct ResearchRequest: Codable, Identifiable, Hashable {
     status = try c.decode(ResearchRequestStatus.self, forKey: .status)
     response = try c.decodeIfPresent(String.self, forKey: .response)
     author = try c.decodeIfPresent(String.self, forKey: .author)
+    priority = try c.decodeIfPresent(ResearchPriority.self, forKey: .priority)
     createdAt = try c.decode(Date.self, forKey: .createdAt)
     updatedAt = try c.decode(Date.self, forKey: .updatedAt)
   }
 
-  init(id: String, projectId: String, tileId: String? = nil, prompt: String, status: ResearchRequestStatus, response: String? = nil, author: String? = nil, createdAt: Date, updatedAt: Date) {
+  init(id: String, projectId: String, tileId: String? = nil, prompt: String, status: ResearchRequestStatus, response: String? = nil, author: String? = nil, priority: ResearchPriority? = nil, createdAt: Date, updatedAt: Date) {
     self.id = id
     self.projectId = projectId
     self.tileId = tileId
@@ -311,6 +324,7 @@ struct ResearchRequest: Codable, Identifiable, Hashable {
     self.status = status
     self.response = response
     self.author = author
+    self.priority = priority
     self.createdAt = createdAt
     self.updatedAt = updatedAt
   }

@@ -103,7 +103,7 @@ struct ResearchBoardView: View {
             if !openRequests.isEmpty {
               SidebarSection(title: "Open Requests", icon: "questionmark.bubble", color: .orange) {
                 ForEach(openRequests) { req in
-                  SidebarRequestRow(request: req)
+                  SidebarRequestRow(request: req, vm: vm)
                 }
               }
             }
@@ -142,7 +142,7 @@ struct ResearchBoardView: View {
             if !completedRequests.isEmpty {
               DisclosureGroup {
                 ForEach(completedRequests) { req in
-                  SidebarRequestRow(request: req)
+                  SidebarRequestRow(request: req, vm: vm)
                 }
               } label: {
                 HStack(spacing: 6) {
@@ -350,6 +350,7 @@ private struct SidebarSourceRow: View {
 
 private struct SidebarRequestRow: View {
   let request: ResearchRequest
+  @ObservedObject var vm: AppViewModel
 
   var body: some View {
     VStack(alignment: .leading, spacing: 2) {
@@ -357,6 +358,12 @@ private struct SidebarRequestRow: View {
         Circle()
           .fill(requestStatusColor(request.status))
           .frame(width: 6, height: 6)
+        // Priority indicator
+        if request.resolvedPriority == .high || request.resolvedPriority == .urgent {
+          Image(systemName: request.resolvedPriority == .urgent ? "exclamationmark.2" : "exclamationmark")
+            .font(.system(size: 9, weight: .bold))
+            .foregroundStyle(request.resolvedPriority == .urgent ? .red : .orange)
+        }
         Text(request.prompt)
           .font(.footnote)
           .lineLimit(2)
@@ -367,6 +374,40 @@ private struct SidebarRequestRow: View {
     }
     .padding(.vertical, 4)
     .padding(.horizontal, 6)
+    .contextMenu {
+      // Priority actions
+      Menu("Priority") {
+        ForEach(ResearchPriority.allCases, id: \.self) { p in
+          Button {
+            vm.updateResearchRequestPriority(requestId: request.id, priority: p)
+          } label: {
+            Label(
+              p.rawValue.capitalized,
+              systemImage: request.resolvedPriority == p ? "checkmark" : ""
+            )
+          }
+        }
+      }
+
+      Divider()
+
+      // Status actions
+      if request.status != .completed && request.status != .done {
+        Button {
+          vm.updateResearchRequestStatus(requestId: request.id, status: .completed)
+        } label: {
+          Label("Mark Completed", systemImage: "checkmark.circle")
+        }
+      }
+
+      if request.status == .completed || request.status == .done {
+        Button {
+          vm.updateResearchRequestStatus(requestId: request.id, status: .open)
+        } label: {
+          Label("Reopen", systemImage: "arrow.uturn.backward")
+        }
+      }
+    }
   }
 }
 
