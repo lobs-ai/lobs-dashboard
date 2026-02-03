@@ -480,7 +480,7 @@ private struct StatsRow: View {
         StatCard(label: "Inbox", value: "\(inboxNeedsAttentionCount)", icon: "envelope.badge", color: .red)
       }
       if weeklyTokens > 0 {
-        StatCard(label: "Tokens (Week)", value: formatTokenCount(weeklyTokens), icon: "cpu", color: .purple)
+        StatCard(label: "Tokens (Week)", value: formatTokenCount(weeklyTokens), icon: "cpu", color: .indigo)
       }
       if weeklySpend > 0 {
         StatCard(label: "AI Spend (Week)", value: "~$\(String(format: "%.2f", weeklySpend))", icon: "dollarsign.circle.fill", color: .mint)
