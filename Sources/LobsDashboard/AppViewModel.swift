@@ -590,13 +590,27 @@ final class AppViewModel: ObservableObject {
   /// Using `nohup` + redirected stdio makes the relaunch resilient even if the
   /// parent process exits quickly.
   private func relaunchApp(dashURL: URL) {
-    // `swift build` puts the executable here.
+    // Prefer launching the newly built SwiftPM binary.
     let binaryPath = dashURL.appendingPathComponent(".build/debug/LobsDashboard").path
+    let fm = FileManager.default
 
-    // Launch in a detached way so it survives our termination.
-    let script = """
-    (sleep 0.5; nohup "\(binaryPath)" >/dev/null 2>&1 &) </dev/null >/dev/null 2>&1
-    """
+    // Fallbacks:
+    // - If running from an .app bundle, relaunch the bundle
+    // - Otherwise, run `swift run --skip-build` from the repo
+    let appBundlePath: String? = {
+      let bundleURL = Bundle.main.bundleURL
+      return bundleURL.pathExtension == "app" ? bundleURL.path : nil
+    }()
+
+    let script: String
+    if fm.isExecutableFile(atPath: binaryPath) {
+      script = "(sleep 0.5; nohup \"\(binaryPath)\" >/dev/null 2>&1 &) </dev/null >/dev/null 2>&1"
+    } else if let appBundlePath {
+      script = "(sleep 0.5; nohup /usr/bin/open -n \"\(appBundlePath)\" >/dev/null 2>&1 &) </dev/null >/dev/null 2>&1"
+    } else {
+      // Last resort: re-run via SwiftPM.
+      script = "(cd \"\(dashURL.path)\" && sleep 0.5; nohup swift run --skip-build LobsDashboard >/dev/null 2>&1 &) </dev/null >/dev/null 2>&1"
+    }
 
     let proc = Process()
     proc.executableURL = URL(fileURLWithPath: "/bin/bash")
@@ -606,7 +620,14 @@ final class AppViewModel: ObservableObject {
     proc.standardOutput = FileHandle.nullDevice
     proc.standardError = FileHandle.nullDevice
 
-    try? proc.run()
+    do {
+      try proc.run()
+    } catch {
+      // If we fail to relaunch, keep the app running and show an error.
+      updateError = "Relaunch failed: \(error.localizedDescription)"
+      isUpdating = false
+      return
+    }
 
     DispatchQueue.main.async {
       NSApplication.shared.terminate(nil)
