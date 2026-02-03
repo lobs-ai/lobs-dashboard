@@ -1,55 +1,26 @@
-#!/usr/bin/env bash
+#!/bin/bash
+# Build script for lobs-dashboard.
+# Embeds the current commit hash, builds, and saves the built-from hash
+# to a known file on disk so the running app can detect when a rebuild is needed.
 set -euo pipefail
 
-APP_NAME="LobsDashboard"
-BUNDLE_ID="com.lobs.dashboard"
-CONFIG="${1:-release}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+HASH_FILE="$HOME/.lobs/dashboard-build-commit"
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD_DIR="${ROOT_DIR}/.build"
-APP_DIR="${BUILD_DIR}/${APP_NAME}.app"
+cd "$REPO_DIR"
 
-XDG_CACHE_HOME="${BUILD_DIR}/.cache"
-export XDG_CACHE_HOME
-export CLANG_MODULE_CACHE_PATH="${XDG_CACHE_HOME}/clang/ModuleCache"
-export SWIFTPM_DISABLE_SANDBOX=1
+# 1. Generate build info (embeds commit in source for compile-time fallback)
+bash "$SCRIPT_DIR/generate-build-info"
 
-mkdir -p "${CLANG_MODULE_CACHE_PATH}"
+# 2. Build
+echo "[build] Building lobs-dashboard…"
+swift build
 
-swift build --disable-sandbox -c "${CONFIG}" --product lobs-dashboard
+# 3. Save the built-from commit hash to disk for runtime detection
+COMMIT=$(git rev-parse HEAD)
+mkdir -p "$(dirname "$HASH_FILE")"
+echo "$COMMIT" >"$HASH_FILE"
+echo "[build] Saved build hash to $HASH_FILE: $(echo "$COMMIT" | head -c 7)"
 
-mkdir -p "${APP_DIR}/Contents/MacOS"
-mkdir -p "${APP_DIR}/Contents/Resources"
-
-cat > "${APP_DIR}/Contents/Info.plist" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleDevelopmentRegion</key>
-  <string>en</string>
-  <key>CFBundleExecutable</key>
-  <string>lobs-dashboard</string>
-  <key>CFBundleIdentifier</key>
-  <string>${BUNDLE_ID}</string>
-  <key>CFBundleInfoDictionaryVersion</key>
-  <string>6.0</string>
-  <key>CFBundleName</key>
-  <string>${APP_NAME}</string>
-  <key>CFBundlePackageType</key>
-  <string>APPL</string>
-  <key>CFBundleShortVersionString</key>
-  <string>0.1</string>
-  <key>CFBundleVersion</key>
-  <string>1</string>
-  <key>LSMinimumSystemVersion</key>
-  <string>13.0</string>
-  <key>NSHighResolutionCapable</key>
-  <true/>
-</dict>
-</plist>
-EOF
-
-cp "${BUILD_DIR}/${CONFIG}/lobs-dashboard" "${APP_DIR}/Contents/MacOS/"
-
-echo "Built ${APP_DIR}"
+echo "[build] Done. Run with: swift run"
