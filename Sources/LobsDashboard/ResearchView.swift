@@ -701,6 +701,7 @@ private struct RequestCard: View {
   @ObservedObject var vm: AppViewModel
 
   @State private var isHovering = false
+  @State private var showEditSheet = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -713,6 +714,15 @@ private struct RequestCard: View {
           .fontWeight(.medium)
           .lineLimit(2)
         Spacer()
+        if isHovering && request.status != .done && request.status != .completed {
+          Button(action: { showEditSheet = true }) {
+            Image(systemName: "pencil")
+              .font(.system(size: 11))
+              .foregroundStyle(.secondary)
+          }
+          .buttonStyle(.plain)
+          .help("Edit request")
+        }
         Text(request.status.rawValue.replacingOccurrences(of: "_", with: " "))
           .font(.system(size: 11, weight: .medium))
           .padding(.horizontal, 7)
@@ -759,6 +769,9 @@ private struct RequestCard: View {
         .stroke(requestStatusColor(request.status).opacity(0.2), lineWidth: 1)
     )
     .onHover { h in isHovering = h }
+    .sheet(isPresented: $showEditSheet) {
+      EditRequestSheet(vm: vm, request: request)
+    }
   }
 }
 
@@ -1245,6 +1258,82 @@ private struct AddRequestSheet: View {
     .onAppear {
       prompt = initialPrompt
       selectedTileId = initialTileId
+    }
+  }
+}
+
+// MARK: - Edit Request Sheet
+
+private struct EditRequestSheet: View {
+  @ObservedObject var vm: AppViewModel
+  let request: ResearchRequest
+
+  @Environment(\.dismiss) private var dismiss
+
+  @State private var prompt: String = ""
+  @State private var selectedTileId: String? = nil
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      HStack {
+        Image(systemName: "pencil.circle.fill")
+          .font(.title2)
+          .foregroundStyle(.linearGradient(
+            colors: [.blue, .cyan],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+          ))
+        Text("Edit Research Request")
+          .font(.title3)
+          .fontWeight(.bold)
+        Spacer()
+      }
+
+      VStack(alignment: .leading, spacing: 6) {
+        Text("What should Lobs investigate?")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+        TextField("Describe what you want researched…", text: $prompt, axis: .vertical)
+          .textFieldStyle(.roundedBorder)
+          .lineLimit(6, reservesSpace: true)
+      }
+
+      // Optionally attach to a tile
+      if !vm.researchTiles.isEmpty {
+        VStack(alignment: .leading, spacing: 6) {
+          Text("Related tile (optional)")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+          Picker("Tile", selection: $selectedTileId) {
+            Text("None").tag(nil as String?)
+            ForEach(vm.researchTiles.filter { $0.resolvedStatus == .active }) { tile in
+              Text(tile.title).tag(tile.id as String?)
+            }
+          }
+        }
+      }
+
+      HStack {
+        Button("Cancel") { dismiss() }
+          .keyboardShortcut(.cancelAction)
+        Spacer()
+        Button("Save Changes") {
+          var updated = request
+          updated.prompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+          updated.tileId = selectedTileId
+          vm.updateRequest(updated)
+          dismiss()
+        }
+        .keyboardShortcut(.defaultAction)
+        .buttonStyle(.borderedProminent)
+        .disabled(prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+      }
+    }
+    .padding(20)
+    .frame(width: 480)
+    .onAppear {
+      prompt = request.prompt
+      selectedTileId = request.tileId
     }
   }
 }

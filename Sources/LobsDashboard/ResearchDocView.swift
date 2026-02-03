@@ -26,6 +26,7 @@ struct ResearchDocView: View {
   @State private var saveTimer: Timer? = nil
   @State private var docSearchText: String = ""
   @State private var collapsedSections: Set<String> = []
+  @State private var editingRequest: ResearchRequest? = nil
 
   /// Table of contents derived from headings in the doc
   private var tableOfContents: [(Int, String)] { // (level, heading text)
@@ -73,6 +74,9 @@ struct ResearchDocView: View {
     }
     .sheet(item: $followUpSheetContext) { context in
       AskLobsResearchSheet(vm: vm, sectionContext: context.sectionHeading)
+    }
+    .sheet(item: $editingRequest) { req in
+      EditRequestSheetDoc(vm: vm, request: req)
     }
   }
 
@@ -318,6 +322,11 @@ struct ResearchDocView: View {
             .font(.footnote)
             .lineLimit(2)
             .foregroundStyle(.secondary)
+        }
+        .contextMenu {
+          Button("Edit Request…") {
+            editingRequest = req
+          }
         }
       }
     }
@@ -1057,5 +1066,63 @@ private struct AskLobsResearchSheet: View {
     }
     .padding(20)
     .frame(width: 480)
+  }
+}
+
+// MARK: - Edit Request Sheet (Doc View)
+
+private struct EditRequestSheetDoc: View {
+  @ObservedObject var vm: AppViewModel
+  let request: ResearchRequest
+
+  @Environment(\.dismiss) private var dismiss
+
+  @State private var prompt: String = ""
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      HStack {
+        Image(systemName: "pencil.circle.fill")
+          .font(.title2)
+          .foregroundStyle(.linearGradient(
+            colors: [.blue, .cyan],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+          ))
+        Text("Edit Research Request")
+          .font(.title3)
+          .fontWeight(.bold)
+        Spacer()
+      }
+
+      VStack(alignment: .leading, spacing: 6) {
+        Text("What should Lobs investigate?")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+        TextField("Describe what you want researched…", text: $prompt, axis: .vertical)
+          .textFieldStyle(.roundedBorder)
+          .lineLimit(6, reservesSpace: true)
+      }
+
+      HStack {
+        Button("Cancel") { dismiss() }
+          .keyboardShortcut(.cancelAction)
+        Spacer()
+        Button("Save Changes") {
+          var updated = request
+          updated.prompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+          vm.updateRequest(updated)
+          dismiss()
+        }
+        .keyboardShortcut(.defaultAction)
+        .buttonStyle(.borderedProminent)
+        .disabled(prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+      }
+    }
+    .padding(20)
+    .frame(width: 480)
+    .onAppear {
+      prompt = request.prompt
+    }
   }
 }
