@@ -116,6 +116,14 @@ struct OverviewView: View {
     allTasks.filter { $0.status == .inbox }.count
   }
 
+  /// Stale tasks: active/inbox tasks with no updates in >7 days.
+  private var staleTasks: Int {
+    let cutoff = Date().addingTimeInterval(-7 * 86400)
+    return allTasks.filter { t in
+      (t.status == .active || t.status == .inbox) && t.updatedAt < cutoff
+    }.count
+  }
+
   /// Inbox items needing attention (unread docs or unread follow-ups).
   private var inboxNeedsAttentionCount: Int {
     vm.unreadInboxCount
@@ -538,6 +546,9 @@ private struct StatsRow: View {
       }
       if inboxNeedsAttentionCount > 0 {
         StatCard(label: "Inbox", value: "\(inboxNeedsAttentionCount)", icon: "envelope.badge", color: .red)
+      }
+      if staleTasks > 0 {
+        StatCard(label: "Stale", value: "\(staleTasks)", icon: "exclamationmark.triangle.fill", color: .orange)
       }
       if weeklyWorkerTokens > 0 {
         StatCard(label: "Worker Tokens", value: formatTokenCount(weeklyWorkerTokens), icon: "cpu", color: .indigo)
