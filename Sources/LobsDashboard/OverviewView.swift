@@ -1552,7 +1552,9 @@ private struct WorkerStatusCard: View {
               .font(.footnote)
               .fontWeight(.medium)
               .foregroundStyle(.secondary)
-            Text("(\(history.runs.count))")
+            let totalRuns = history.runs.count
+            let shownRuns = min(totalRuns, 10)
+            Text(totalRuns > shownRuns ? "(last \\(shownRuns) of \\(totalRuns))" : "(\\(totalRuns))")
               .font(.footnote)
               .foregroundStyle(.tertiary)
             Spacer()
