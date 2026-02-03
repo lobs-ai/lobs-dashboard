@@ -219,6 +219,7 @@ struct OverviewView: View {
             openResearchRequests: openResearchRequests,
             blockedTasks: blockedTasks,
             inboxTasks: inboxTasks,
+            staleTasks: staleTasks,
             inboxNeedsAttentionCount: inboxNeedsAttentionCount,
             workerHistory: vm.workerHistory,
             mainSessionUsage: vm.mainSessionUsage
@@ -478,6 +479,7 @@ private struct StatsRow: View {
   let openResearchRequests: Int
   let blockedTasks: Int
   let inboxTasks: Int
+  let staleTasks: Int
   let inboxNeedsAttentionCount: Int
   var workerHistory: WorkerHistory? = nil
   var mainSessionUsage: MainSessionUsage? = nil
