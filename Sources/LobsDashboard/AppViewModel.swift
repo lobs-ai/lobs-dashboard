@@ -1024,10 +1024,12 @@ final class AppViewModel: ObservableObject {
 
   /// Request notification permissions on first use.
   func requestNotificationPermissions() {
+    guard Bundle.main.bundleIdentifier != nil else { return }
     UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
   }
 
   private func sendSystemNotification(title: String, body: String) {
+    guard Bundle.main.bundleIdentifier != nil else { return }
     let content = UNMutableNotificationContent()
     content.title = title
     content.body = body
