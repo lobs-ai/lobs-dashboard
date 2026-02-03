@@ -2168,6 +2168,20 @@ private struct TimelineSheetView: View {
           .foregroundStyle(.secondary)
       }
 
+      // Explanation and legend
+      VStack(alignment: .leading, spacing: 6) {
+        Text("Each bar shows a task's lifespan — from creation to completion (or now if still open). Longer bars mean longer-lived tasks.")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+
+        HStack(spacing: 16) {
+          TimelineLegendItem(color: .green.opacity(0.8), label: "Completed")
+          TimelineLegendItem(color: .orange.opacity(0.8), label: "Active")
+          TimelineLegendItem(color: .red.opacity(0.8), label: "Blocked")
+          TimelineLegendItem(color: .gray.opacity(0.6), label: "Other")
+        }
+      }
+
       TimelineChart(tasks: filteredTasks)
     }
     .padding(20)
@@ -2260,6 +2274,22 @@ private struct TimelineRow: View {
           .offset(x: startX)
       }
       .frame(width: barWidth, height: 12)
+    }
+  }
+}
+
+private struct TimelineLegendItem: View {
+  let color: Color
+  let label: String
+
+  var body: some View {
+    HStack(spacing: 5) {
+      RoundedRectangle(cornerRadius: 3)
+        .fill(color)
+        .frame(width: 14, height: 8)
+      Text(label)
+        .font(.system(size: 11))
+        .foregroundStyle(.secondary)
     }
   }
 }
