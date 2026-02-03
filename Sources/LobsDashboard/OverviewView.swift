@@ -388,7 +388,8 @@ private struct StatsRow: View {
 
   private var weeklyTokens: Int {
     weeklyRuns.reduce(0) { total, run in
-      total + (run.totalTokens ?? 0)
+      let totalForRun = run.totalTokens ?? ((run.inputTokens ?? 0) + (run.outputTokens ?? 0))
+      return total + totalForRun
     }
   }
 
@@ -1659,7 +1660,10 @@ struct WorkerStatusCard: View {
         guard let ended = run.endedAt else { return false }
         return selectedUsagePeriod.includes(ended)
       }
-      let periodTokens = filteredRuns.reduce(0) { $0 + ($1.totalTokens ?? 0) }
+      let periodTokens = filteredRuns.reduce(0) { total, run in
+        let totalForRun = run.totalTokens ?? ((run.inputTokens ?? 0) + (run.outputTokens ?? 0))
+        return total + totalForRun
+      }
       let periodSpend = filteredRuns.reduce(0.0) { $0 + ($1.totalCostUSD ?? 0) }
       let avgTokens = filteredRuns.isEmpty ? 0 : Int(Double(periodTokens) / Double(filteredRuns.count))
       let avgSpend = filteredRuns.isEmpty ? 0.0 : (periodSpend / Double(filteredRuns.count))
