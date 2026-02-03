@@ -936,14 +936,15 @@ private struct DetailedStatsView: View {
     ].filter { $0.1 > 0 }
   }
 
-  // Tasks per project (name, total, active, completed, research requests)
-  private var tasksPerProject: [(String, Int, Int, Int, Int)] {
+  // Tasks per project (name, total, active, completed, research requests, isResearch)
+  private var tasksPerProject: [(String, Int, Int, Int, Int, Bool)] {
     projects.map { project in
       let projectTasks = tasks.filter { ($0.projectId ?? "default") == project.id }
       let active = projectTasks.filter { $0.status == .active }.count
       let completed = projectTasks.filter { $0.status == .completed }.count
       let research = researchRequestCountsByProject[project.id] ?? 0
-      return (project.title, projectTasks.count, active, completed, research)
+      let isResearch = project.resolvedType == .research
+      return (project.title, projectTasks.count, active, completed, research, isResearch)
     }
     .sorted { $0.1 > $1.1 }
   }
@@ -1187,7 +1188,7 @@ private struct DetailedStatsView: View {
             .font(.callout)
             .fontWeight(.semibold)
 
-          ForEach(tasksPerProject, id: \.0) { name, total, active, completed, research in
+          ForEach(tasksPerProject, id: \.0) { name, total, active, completed, research, isResearch in
             VStack(alignment: .leading, spacing: 4) {
               HStack {
                 Text(name)
@@ -1200,15 +1201,17 @@ private struct DetailedStatsView: View {
                   .monospacedDigit()
               }
               HStack(spacing: 4) {
-                if completed > 0 {
-                  Text("\(completed) done")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.green)
-                }
-                if active > 0 {
-                  Text("\(active) active")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.orange)
+                if !isResearch {
+                  if completed > 0 {
+                    Text("\(completed) done")
+                      .font(.system(size: 11))
+                      .foregroundStyle(.green)
+                  }
+                  if active > 0 {
+                    Text("\(active) active")
+                      .font(.system(size: 11))
+                      .foregroundStyle(.orange)
+                  }
                 }
                 if research > 0 {
                   Text("\(research) research")
