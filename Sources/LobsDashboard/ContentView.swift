@@ -98,7 +98,7 @@ struct ContentView: View {
               inboxInitialItemId = itemId
               withAnimation(.easeInOut(duration: 0.25)) { showInbox = true }
             }, onOpenAIUsage: {
-              showAIUsage = true
+              withAnimation(.easeInOut(duration: 0.25)) { showAIUsage = true }
             })
           } else if vm.isResearchProject {
             ResearchDocView(vm: vm)
@@ -179,7 +179,7 @@ struct ContentView: View {
         HStack {
           Spacer()
           Button {
-            showHelp = true
+            withAnimation(.easeInOut(duration: 0.25)) { showHelp = true }
           } label: {
             HStack(spacing: 3) {
               Text("⌘")
@@ -207,7 +207,7 @@ struct ContentView: View {
         .padding(.bottom, 12)
       }
       .zIndex(50)
-      .allowsHitTesting(!showInbox && !showHelp)
+      .allowsHitTesting(!showInbox && !showHelp && !showAIUsage)
 
       // Inbox overlay — clicking outside dismisses (Task #479271CB)
       if showInbox {
@@ -224,6 +224,42 @@ struct ContentView: View {
           .padding(40)
           .onExitCommand { withAnimation(.easeInOut(duration: 0.25)) { showInbox = false } }
           .onDisappear { inboxInitialItemId = nil }
+          .transition(.opacity.combined(with: .scale(scale: 0.95)))
+          .zIndex(201)
+      }
+
+      // AI Usage overlay — clicking outside dismisses (Task #2EB50767)
+      if showAIUsage {
+        Color.black.opacity(0.3)
+          .ignoresSafeArea()
+          .onTapGesture { withAnimation(.easeInOut(duration: 0.25)) { showAIUsage = false } }
+          .transition(.opacity)
+          .zIndex(200)
+
+        AIUsageView(vm: vm, isPresented: $showAIUsage)
+          .frame(minWidth: 960, idealWidth: 1040, minHeight: 700, idealHeight: 800)
+          .clipShape(RoundedRectangle(cornerRadius: 16))
+          .shadow(color: .black.opacity(0.3), radius: 30, y: 10)
+          .padding(40)
+          .onExitCommand { withAnimation(.easeInOut(duration: 0.25)) { showAIUsage = false } }
+          .transition(.opacity.combined(with: .scale(scale: 0.95)))
+          .zIndex(201)
+      }
+
+      // Help overlay — clicking outside dismisses (Task #2EB50767)
+      if showHelp {
+        Color.black.opacity(0.3)
+          .ignoresSafeArea()
+          .onTapGesture { withAnimation(.easeInOut(duration: 0.25)) { showHelp = false } }
+          .transition(.opacity)
+          .zIndex(200)
+
+        HelpPanelSheet(isPresented: $showHelp)
+          .frame(minWidth: 500, idealWidth: 600, minHeight: 500, idealHeight: 600)
+          .clipShape(RoundedRectangle(cornerRadius: 16))
+          .shadow(color: .black.opacity(0.3), radius: 30, y: 10)
+          .padding(40)
+          .onExitCommand { withAnimation(.easeInOut(duration: 0.25)) { showHelp = false } }
           .transition(.opacity.combined(with: .scale(scale: 0.95)))
           .zIndex(201)
       }
@@ -259,18 +295,11 @@ struct ContentView: View {
     .sheet(isPresented: $showTemplates) {
       TemplateManagerSheet(vm: vm)
     }
-    .sheet(isPresented: $showHelp) {
-      HelpPanelSheet()
-    }
     .sheet(isPresented: $showTextDump) {
       TextDumpSheet(vm: vm, projectId: vm.showOverview ? nil : vm.selectedProjectId)
     }
     .sheet(isPresented: $showTextDumpResults) {
       TextDumpResultsSheet(vm: vm)
-    }
-    .sheet(isPresented: $showAIUsage) {
-      AIUsageView(vm: vm)
-        .frame(minWidth: 960, idealWidth: 1040, minHeight: 700, idealHeight: 800)
     }
     .onAppear { vm.reloadIfPossible() }
     .onChange(of: vm.textDumps) { _ in
@@ -289,7 +318,7 @@ struct ContentView: View {
         onNextColumn: { vm.selectNextColumn() },
         onPrevColumn: { vm.selectPreviousColumn() },
         onSearch: { /* Focus is handled by ⌘F via toolbar */ },
-        onHelp: { showHelp = true },
+        onHelp: { withAnimation(.easeInOut(duration: 0.25)) { showHelp = true } },
         onEscape: {
           if showInbox { withAnimation(.easeInOut(duration: 0.25)) { showInbox = false }; return true }
           if showSettings { showSettings = false; return true }
@@ -863,7 +892,7 @@ private struct ToolbarArea: View {
 
       // Help button (⌘/)
       Button {
-        showHelp = true
+        withAnimation(.easeInOut(duration: 0.25)) { showHelp = true }
       } label: {
         Image(systemName: "questionmark.circle")
           .font(.body)
@@ -3082,6 +3111,7 @@ private struct EditTemplateSheet: View {
 // MARK: - Help Panel
 
 private struct HelpPanelSheet: View {
+  @Binding var isPresented: Bool
   @Environment(\.dismiss) private var dismiss
 
   private struct ShortcutRow: View {
@@ -3115,7 +3145,7 @@ private struct HelpPanelSheet: View {
           .font(.title2)
           .fontWeight(.bold)
         Spacer()
-        Button { dismiss() } label: {
+        Button { withAnimation(.easeInOut(duration: 0.25)) { isPresented = false } } label: {
           Image(systemName: "xmark.circle.fill")
             .font(.title3)
             .foregroundStyle(.secondary)
@@ -3243,6 +3273,7 @@ private struct HelpPanelSheet: View {
       }
     }
     .frame(width: 500, height: 600)
+    .background(Theme.boardBg)
   }
 }
 

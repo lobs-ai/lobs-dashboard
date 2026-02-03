@@ -5,6 +5,7 @@ private typealias ATheme = Theme
 /// Cumulative/daily AI usage view combining worker runs and main session usage.
 struct AIUsageView: View {
   @ObservedObject var vm: AppViewModel
+  @Binding var isPresented: Bool
   @Environment(\.dismiss) private var dismiss
 
   @State private var selectedRange: DateRange = .week
