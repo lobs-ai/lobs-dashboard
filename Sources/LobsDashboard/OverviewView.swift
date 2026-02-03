@@ -196,6 +196,9 @@ struct OverviewView: View {
           .buttonStyle(.plain)
         }
 
+        // Productivity velocity chart
+        VelocityChartView(tasks: allTasks)
+
         if showDetailedStats {
           DetailedStatsView(tasks: allTasks, projects: activeProjects, researchRequestCountsByProject: researchRequestCountsByProject)
             .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .top)))
