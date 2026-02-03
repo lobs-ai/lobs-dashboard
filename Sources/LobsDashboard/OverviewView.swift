@@ -1952,6 +1952,8 @@ struct WorkerStatusCard: View {
             .clipShape(Capsule())
           }
           .buttonStyle(.plain)
+          .keyboardShortcut("w", modifiers: [.command])
+          .help("Request a worker (⌘W)")
         }
       }
     }
