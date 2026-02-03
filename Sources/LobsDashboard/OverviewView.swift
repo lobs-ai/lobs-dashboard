@@ -1702,7 +1702,7 @@ struct WorkerStatusCard: View {
                   .foregroundStyle(.secondary)
               }
               if periodSpend > 0 {
-                Text("$\(periodSpend, specifier: \"%.2f\")")
+                Text("$\(periodSpend, specifier: "%.2f")")
                   .font(.system(size: 11, weight: .medium).monospacedDigit())
                   .foregroundStyle(.secondary)
               }
@@ -1716,7 +1716,7 @@ struct WorkerStatusCard: View {
         .padding(.vertical, 8)
 
         if periodTokens > 0, filteredRuns.count > 0 {
-          Text("Avg/run: \(formatTokenCount(avgTokens)) tok, $\(avgSpend, specifier: \"%.2f\")")
+          Text("Avg/run: \(formatTokenCount(avgTokens)) tok, $\(avgSpend, specifier: "%.2f")")
             .font(.system(size: 10).monospacedDigit())
             .foregroundStyle(.tertiary)
             .padding(.horizontal, 14)

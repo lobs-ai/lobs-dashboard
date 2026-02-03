@@ -55,9 +55,9 @@ struct WorkerUsageDetailSheet: View {
 
       HStack(spacing: 14) {
         UsageStatCard(label: "Total Tokens", value: formatTokenCount(totalTokens), icon: "cpu", color: .purple)
-        UsageStatCard(label: "Total Spend", value: totalSpend > 0 ? "$\(totalSpend, specifier: "%.2f")" : "—", icon: "dollarsign.circle.fill", color: .mint)
+        UsageStatCard(label: "Total Spend", value: totalSpend > 0 ? "$\(String(format: "%.2f", totalSpend))" : "—", icon: "dollarsign.circle.fill", color: .mint)
         UsageStatCard(label: "Avg Tokens/Run", value: formatTokenCount(avgTokens), icon: "gauge", color: .orange)
-        UsageStatCard(label: "Avg Spend/Run", value: totalSpend > 0 ? "$\(avgSpend, specifier: "%.2f")" : "—", icon: "chart.bar", color: .blue)
+        UsageStatCard(label: "Avg Spend/Run", value: totalSpend > 0 ? "$\(String(format: "%.2f", avgSpend))" : "—", icon: "chart.bar", color: .blue)
       }
 
       Divider()
