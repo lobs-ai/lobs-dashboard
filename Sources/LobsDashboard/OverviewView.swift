@@ -425,27 +425,37 @@ struct OverviewView: View {
                 .foregroundStyle(.secondary)
                 .padding(.vertical, 20)
                 .frame(maxWidth: .infinity)
+                .frame(maxHeight: 400)
+                .background(OTheme.cardBg)
+                .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
+                .overlay(
+                  RoundedRectangle(cornerRadius: OTheme.cardRadius)
+                    .stroke(OTheme.border, lineWidth: 0.5)
+                )
             } else {
-              VStack(spacing: 0) {
-                // Sort: items needing attention first, then by modified date
-                let sortedItems = vm.inboxItems.sorted { a, b in
-                  let aNeeds = !a.isRead || vm.unreadFollowupCount(docId: a.id) > 0
-                  let bNeeds = !b.isRead || vm.unreadFollowupCount(docId: b.id) > 0
-                  if aNeeds != bNeeds { return aNeeds }
-                  return a.modifiedAt > b.modifiedAt
-                }
-                ForEach(Array(sortedItems.prefix(8).enumerated()), id: \.element.id) { idx, item in
-                  InboxRow(item: item, unreadFollowups: vm.unreadFollowupCount(docId: item.id), onTap: {
-                    vm.markInboxItemRead(item)
-                    if let onOpenInbox {
-                      onOpenInbox(item.id)
+              ScrollView {
+                VStack(spacing: 0) {
+                  // Sort: items needing attention first, then by modified date
+                  let sortedItems = vm.inboxItems.sorted { a, b in
+                    let aNeeds = !a.isRead || vm.unreadFollowupCount(docId: a.id) > 0
+                    let bNeeds = !b.isRead || vm.unreadFollowupCount(docId: b.id) > 0
+                    if aNeeds != bNeeds { return aNeeds }
+                    return a.modifiedAt > b.modifiedAt
+                  }
+                  ForEach(Array(sortedItems.prefix(8).enumerated()), id: \.element.id) { idx, item in
+                    InboxRow(item: item, unreadFollowups: vm.unreadFollowupCount(docId: item.id), onTap: {
+                      vm.markInboxItemRead(item)
+                      if let onOpenInbox {
+                        onOpenInbox(item.id)
+                      }
+                    })
+                    if idx < min(sortedItems.count, 8) - 1 {
+                      Divider().padding(.leading, 36)
                     }
-                  })
-                  if idx < min(sortedItems.count, 8) - 1 {
-                    Divider().padding(.leading, 36)
                   }
                 }
               }
+              .frame(maxHeight: 400)
               .background(OTheme.cardBg)
               .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
               .overlay(
