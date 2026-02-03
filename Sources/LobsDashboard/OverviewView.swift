@@ -1705,6 +1705,7 @@ struct WorkerStatusCard: View {
   var workerRequested: Bool = false
   var onRequestWorker: (() -> Void)? = nil
   @State private var showHistory = false
+  @State private var showLiveDetails = false
   @State private var showUsageDetail = false
   @State private var selectedUsagePeriod: UsagePeriod = .allTime
 
@@ -1772,43 +1773,97 @@ struct WorkerStatusCard: View {
         }
 
         if isActive {
-          HStack(spacing: 12) {
-            if let task = status.currentTask {
-              let isResearch = task.lowercased().hasPrefix("research:")
-              HStack(spacing: 4) {
-                Image(systemName: isResearch ? "magnifyingglass" : "hammer.fill")
-                  .font(.system(size: 10))
-                  .foregroundStyle(isResearch ? .purple : .secondary)
-                Text(task)
+          VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 12) {
+              if let task = status.currentTask {
+                let isResearch = task.lowercased().hasPrefix("research:")
+                HStack(spacing: 4) {
+                  Image(systemName: isResearch ? "magnifyingglass" : "hammer.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(isResearch ? .purple : .secondary)
+                  Text(task)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                }
+              }
+
+              if let completed = status.tasksCompleted, completed > 0 {
+                HStack(spacing: 4) {
+                  Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.green)
+                  Text("\(completed) done")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                }
+              }
+
+              if let duration = runningDuration {
+                HStack(spacing: 4) {
+                  Image(systemName: "clock")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                  Text(duration)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                }
+              }
+
+              if let heartbeat = status.lastHeartbeat {
+                Text("· \(relativeTime(heartbeat))")
                   .font(.footnote)
-                  .foregroundStyle(.secondary)
-                  .lineLimit(1)
+                  .foregroundStyle(.tertiary)
               }
             }
 
-            if let completed = status.tasksCompleted, completed > 0 {
-              HStack(spacing: 4) {
-                Image(systemName: "checkmark.circle.fill")
-                  .font(.system(size: 10))
-                  .foregroundStyle(.green)
-                Text("\(completed) done")
-                  .font(.footnote)
-                  .foregroundStyle(.secondary)
+            // Expandable live details
+            if (status.currentProject != nil) || (status.taskLog?.isEmpty == false) || (status.inputTokens != nil) || (status.outputTokens != nil) {
+              Button {
+                withAnimation(.easeInOut(duration: 0.2)) { showLiveDetails.toggle() }
+              } label: {
+                HStack(spacing: 6) {
+                  Image(systemName: showLiveDetails ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                  Text("Live details")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                }
               }
-            }
+              .buttonStyle(.plain)
 
-            if let duration = runningDuration {
-              HStack(spacing: 4) {
-                Image(systemName: "clock")
-                  .font(.system(size: 10))
-                  .foregroundStyle(.secondary)
-                Text(duration)
-                  .font(.footnote)
-                  .foregroundStyle(.secondary)
+              if showLiveDetails {
+                VStack(alignment: .leading, spacing: 6) {
+                  if let p = status.currentProject, !p.isEmpty {
+                    Text("Project: \(p)")
+                      .font(.system(size: 11))
+                      .foregroundStyle(.tertiary)
+                  }
+                  if let inTok = status.inputTokens, let outTok = status.outputTokens {
+                    Text("Tokens: \(formatTokenCount(inTok + outTok))")
+                      .font(.system(size: 11).monospacedDigit())
+                      .foregroundStyle(.tertiary)
+                  }
+                  if let log = status.taskLog, !log.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                      Text("This run:")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                      ForEach(Array(log.suffix(5).enumerated()), id: \.offset) { _, e in
+                        Text("• \(e.task ?? "(task)")")
+                          .font(.system(size: 11))
+                          .foregroundStyle(.tertiary)
+                          .lineLimit(1)
+                      }
+                    }
+                  }
+                }
+                .padding(.top, 2)
               }
             }
           }
-        } else {
+        } else {"}
           // Idle state: show completion summary if available
           HStack(spacing: 12) {
             if let completed = status.tasksCompleted, completed > 0 {

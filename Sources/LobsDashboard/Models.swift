@@ -493,6 +493,14 @@ struct WorkerStatus: Codable {
   var tasksCompleted: Int?
   var lastHeartbeat: Date?
   var endedAt: Date?
+
+  // Live run details (optional; written by worker-register)
+  var currentProject: String?
+  var taskLog: [WorkerTaskLogEntry]?
+
+  // Optional live token counters (if workers start recording them)
+  var inputTokens: Int?
+  var outputTokens: Int?
 }
 
 // MARK: - Worker History
