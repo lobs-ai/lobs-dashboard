@@ -404,6 +404,8 @@ struct WorkerHistoryRun: Codable, Identifiable {
   var endedAt: Date?
   var tasksCompleted: Int?
   var timeoutReason: String?
+  var model: String?
+  var estimatedCostUSD: Double?
 
   var id: String { "\(workerId ?? "unknown")-\(startedAt?.timeIntervalSince1970 ?? 0)" }
 }

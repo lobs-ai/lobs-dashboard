@@ -130,7 +130,8 @@ struct OverviewView: View {
             openResearchRequests: openResearchRequests,
             blockedTasks: blockedTasks,
             inboxTasks: inboxTasks,
-            inboxNeedsAttentionCount: inboxNeedsAttentionCount
+            inboxNeedsAttentionCount: inboxNeedsAttentionCount,
+            workerHistory: vm.workerHistory
           )
           Spacer()
           Button {
@@ -339,6 +340,19 @@ private struct StatsRow: View {
   let blockedTasks: Int
   let inboxTasks: Int
   let inboxNeedsAttentionCount: Int
+  var workerHistory: WorkerHistory? = nil
+
+  private var weeklySpend: Double {
+    guard let history = workerHistory else { return 0 }
+    let calendar = Calendar.current
+    let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: Date())?.start ?? Date()
+    return history.runs
+      .filter { run in
+        guard let ended = run.endedAt else { return false }
+        return ended >= startOfWeek
+      }
+      .reduce(0.0) { $0 + ($1.estimatedCostUSD ?? 0) }
+  }
 
   var body: some View {
     HStack(spacing: 16) {
@@ -353,6 +367,9 @@ private struct StatsRow: View {
       }
       if inboxNeedsAttentionCount > 0 {
         StatCard(label: "Inbox", value: "\(inboxNeedsAttentionCount)", icon: "envelope.badge", color: .red)
+      }
+      if weeklySpend > 0 {
+        StatCard(label: "Worker Spend (Week)", value: "~$\(String(format: "%.2f", weeklySpend))", icon: "dollarsign.circle.fill", color: .mint)
       }
     }
   }
@@ -1563,7 +1580,28 @@ private struct WorkerStatusCard: View {
             Text(totalRuns > shownRuns ? "(last \\(shownRuns) of \\(totalRuns))" : "(\\(totalRuns))")
               .font(.footnote)
               .foregroundStyle(.tertiary)
+
             Spacer()
+
+            // Cumulative cost summary
+            let totalCost = history.runs.reduce(0.0) { $0 + ($1.estimatedCostUSD ?? 0) }
+            let todayRuns = history.runs.filter { run in
+              guard let ended = run.endedAt else { return false }
+              return Calendar.current.isDateInToday(ended)
+            }
+            let todayCost = todayRuns.reduce(0.0) { $0 + ($1.estimatedCostUSD ?? 0) }
+            if totalCost > 0 {
+              HStack(spacing: 8) {
+                if todayCost > 0 {
+                  Text("Today: ~$\(todayCost, specifier: "%.2f")")
+                    .font(.system(size: 11, weight: .medium).monospacedDigit())
+                    .foregroundStyle(.orange)
+                }
+                Text("Total: ~$\(totalCost, specifier: "%.2f")")
+                  .font(.system(size: 11, weight: .medium).monospacedDigit())
+                  .foregroundStyle(.secondary)
+              }
+            }
           }
           .padding(.horizontal, 14)
           .padding(.vertical, 8)
@@ -1630,6 +1668,16 @@ private struct WorkerHistoryRow: View {
         Text(relativeTime(ended))
           .font(.footnote)
           .foregroundStyle(.tertiary)
+      }
+
+      // Cost
+      if let cost = run.estimatedCostUSD, cost > 0 {
+        HStack(spacing: 2) {
+          Text("~$\(cost, specifier: "%.2f")")
+            .font(.footnote.monospacedDigit())
+            .foregroundStyle(.secondary)
+        }
+        .frame(width: 55, alignment: .leading)
       }
 
       if run.timeoutReason != nil {
