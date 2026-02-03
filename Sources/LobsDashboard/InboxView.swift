@@ -533,10 +533,30 @@ private struct DocumentViewer: View {
                     Text("Original message")
                       .font(.system(size: 12, weight: .semibold))
                       .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    Button {
+                      showOriginalMessage.toggle()
+                    } label: {
+                      Text(showOriginalMessage ? "Hide" : "Show")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(ITheme.subtle)
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
                   }
-                  MarkdownWebView(markdown: item.content)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 4)
+
+                  if showOriginalMessage {
+                    // WKWebView has no intrinsic height in SwiftUI — give it a
+                    // minimum height so the original message is actually visible.
+                    MarkdownWebView(markdown: item.content)
+                      .frame(maxWidth: .infinity, minHeight: 240)
+                      .padding(.top, 4)
+                  }
                 }
                 .padding(.horizontal, 24)
 
