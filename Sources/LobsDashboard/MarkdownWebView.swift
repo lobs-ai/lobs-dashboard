@@ -111,7 +111,12 @@ struct MarkdownWebView: NSViewRepresentable {
     setTimeout(reportHeight, 500);
     """ : ""
 
-    let overflowStyle = measureHeight ? "overflow: hidden;" : ""
+    let overflowStyle = measureHeight ? "overflow: hidden; touch-action: none;" : ""
+    // Block wheel events at the DOM level so they can't be handled by WKWebView's internal scroll
+    let scrollBlockScript = measureHeight ? """
+    document.addEventListener('wheel', function(e) { e.preventDefault(); }, { passive: false });
+    document.addEventListener('touchmove', function(e) { e.preventDefault(); }, { passive: false });
+    """ : ""
 
     return """
     <!DOCTYPE html>
@@ -375,6 +380,7 @@ struct MarkdownWebView: NSViewRepresentable {
     var raw = `\(markdownLiteral)`;
     document.getElementById('content').innerHTML = md(raw);
     \(heightScript)
+    \(scrollBlockScript)
     </script>
     </body>
     </html>
@@ -438,17 +444,45 @@ private func disableInternalScrolling(_ view: NSView) {
 
 // MARK: - Scroll-Through WKWebView
 
-/// A WKWebView subclass that forwards scroll wheel events to its parent,
-/// preventing the internal web view scroll from eating scroll gestures
-/// that should reach the enclosing SwiftUI ScrollView.
+/// A WKWebView subclass that forwards ALL scroll wheel events to the parent
+/// SwiftUI ScrollView, preventing the internal web view from eating them.
 class ScrollThroughWebView: WKWebView {
+  private var hasSwizzledInternalScrollView = false
+
   override func scrollWheel(with event: NSEvent) {
-    // Find the parent NSScrollView that is NOT WKWebView's own internal one,
-    // and forward the scroll event directly to it.
+    // Forward directly to the parent scroll view, never handle internally
     if let parentScroll = findParentScrollView() {
       parentScroll.scrollWheel(with: event)
     } else {
       super.scrollWheel(with: event)
+    }
+  }
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    // After being added to the window, disable the internal scroll view
+    DispatchQueue.main.async { [weak self] in
+      self?.disableInternalScrollViews()
+    }
+  }
+
+  /// Recursively find and neuter all internal NSScrollViews so they don't
+  /// capture scroll wheel events.
+  private func disableInternalScrollViews() {
+    disableScrollViewsIn(self)
+  }
+
+  private func disableScrollViewsIn(_ view: NSView) {
+    for subview in view.subviews {
+      if let sv = subview as? NSScrollView {
+        sv.hasVerticalScroller = false
+        sv.hasHorizontalScroller = false
+        sv.verticalScrollElasticity = .none
+        sv.horizontalScrollElasticity = .none
+        // Replace the internal scroll view's scroll handling
+        sv.contentView.postsBoundsChangedNotifications = false
+      }
+      disableScrollViewsIn(subview)
     }
   }
 
@@ -464,5 +498,23 @@ class ScrollThroughWebView: WKWebView {
       current = view.superview
     }
     return nil
+  }
+}
+
+/// Wrapper NSView that intercepts all scroll wheel events from its subtree
+/// and forwards them to the nearest parent NSScrollView outside of it.
+/// Place this around a WKWebView to guarantee scroll passthrough.
+class ScrollInterceptorView: NSView {
+  override func scrollWheel(with event: NSEvent) {
+    // Find the nearest NSScrollView ancestor that is NOT inside this view
+    var current: NSView? = self.superview
+    while let view = current {
+      if let scrollView = view as? NSScrollView {
+        scrollView.scrollWheel(with: event)
+        return
+      }
+      current = view.superview
+    }
+    super.scrollWheel(with: event)
   }
 }
