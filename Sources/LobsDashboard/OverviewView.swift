@@ -2263,7 +2263,7 @@ private struct TimelineSheetView: View {
   @Environment(\.dismiss) private var dismiss
 
   @State private var selectedProjectId: String = "all"
-  @State private var daysBack: Int = 90
+  @State private var daysBack: Int = 14
 
   private var filteredTasks: [DashboardTask] {
     let now = Date()
@@ -2304,12 +2304,12 @@ private struct TimelineSheetView: View {
         .pickerStyle(.menu)
 
         Picker("Range", selection: $daysBack) {
+          Text("7d").tag(7)
+          Text("14d").tag(14)
           Text("30d").tag(30)
-          Text("90d").tag(90)
-          Text("365d").tag(365)
         }
         .pickerStyle(.segmented)
-        .frame(maxWidth: 240)
+        .frame(maxWidth: 200)
 
         Spacer()
 
