@@ -542,26 +542,30 @@ final class AppViewModel: ObservableObject {
     }
   }
 
-  /// Relaunch the app by exec-ing the new binary built by `swift build`.
+  /// Relaunch the app by launching the newly built binary from `swift build`.
+  ///
+  /// We intentionally spawn a new process and then terminate the current app.
+  /// Using `nohup` + redirected stdio makes the relaunch resilient even if the
+  /// parent process exits quickly.
   private func relaunchApp(dashURL: URL) {
-    // Find the built binary. `swift build` puts it in .build/debug/LobsDashboard
+    // `swift build` puts the executable here.
     let binaryPath = dashURL.appendingPathComponent(".build/debug/LobsDashboard").path
 
-    // Use a shell script to wait a moment then launch the new binary
+    // Launch in a detached way so it survives our termination.
     let script = """
-    sleep 0.5
-    exec "\(binaryPath)"
+    (sleep 0.5; nohup "\(binaryPath)" >/dev/null 2>&1 &) </dev/null >/dev/null 2>&1
     """
 
     let proc = Process()
     proc.executableURL = URL(fileURLWithPath: "/bin/bash")
     proc.arguments = ["-c", script]
     proc.environment = ProcessInfo.processInfo.environment
-    // Detach from parent process group so it survives our exit
-    proc.qualityOfService = .userInitiated
+    proc.standardInput = FileHandle.nullDevice
+    proc.standardOutput = FileHandle.nullDevice
+    proc.standardError = FileHandle.nullDevice
+
     try? proc.run()
 
-    // Exit the current app
     DispatchQueue.main.async {
       NSApplication.shared.terminate(nil)
     }
