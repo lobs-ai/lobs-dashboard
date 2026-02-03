@@ -71,6 +71,12 @@ struct ResearchDocView: View {
     .onChange(of: vm.researchDeliverables.count) { _ in
       ensureDeliverableSelectedIfNeeded()
     }
+    .onChange(of: vm.selectedProjectId) { _ in
+      // Reset deliverable selection when switching projects
+      selectedDeliverable = nil
+      editContent = vm.researchDocContent
+      ensureDeliverableSelectedIfNeeded()
+    }
     .sheet(isPresented: $showAddSource) {
       AddSourceSheet(vm: vm)
     }
@@ -503,6 +509,39 @@ struct ResearchDocView: View {
       } else if docIsEmpty, let deliverable = selectedDeliverable {
         // If doc.md is empty/missing but we have deliverables, show those directly.
         DeliverableInlineViewer(deliverable: deliverable)
+      } else if docIsEmpty && !vm.researchDeliverables.isEmpty {
+        // Doc is empty but deliverables exist — prompt to select one
+        VStack(spacing: 16) {
+          Spacer()
+          Image(systemName: "doc.richtext")
+            .font(.system(size: 40))
+            .foregroundStyle(.tertiary)
+          Text("Select a research result from the sidebar")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+          Text("\(vm.researchDeliverables.count) result\(vm.researchDeliverables.count == 1 ? "" : "s") available")
+            .font(.footnote)
+            .foregroundStyle(.tertiary)
+          Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+      } else if docIsEmpty && vm.researchDeliverables.isEmpty && !vm.researchRequests.isEmpty {
+        // No doc, no deliverables, but has requests
+        VStack(spacing: 16) {
+          Spacer()
+          Image(systemName: "magnifyingglass")
+            .font(.system(size: 40))
+            .foregroundStyle(.tertiary)
+          Text("Research in Progress")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+          Text("\(vm.researchRequests.count) request\(vm.researchRequests.count == 1 ? "" : "s") — results will appear here when completed")
+            .font(.footnote)
+            .foregroundStyle(.tertiary)
+            .multilineTextAlignment(.center)
+          Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
       } else {
         // Preview (rendered markdown with collapsible sections)
         ScrollViewReader { proxy in
