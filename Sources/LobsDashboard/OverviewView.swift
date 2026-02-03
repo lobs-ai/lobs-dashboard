@@ -1462,9 +1462,9 @@ struct WorkerStatusCard: View {
 
   enum UsagePeriod: String, CaseIterable {
     case today = "Today"
-    case thisWeek = "This Week"
-    case thisMonth = "This Month"
-    case allTime = "All Time"
+    case thisWeek = "Week"
+    case thisMonth = "Month"
+    case allTime = "All"
 
     func includes(_ date: Date) -> Bool {
       let cal = Calendar.current
