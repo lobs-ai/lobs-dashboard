@@ -1702,13 +1702,22 @@ struct WorkerStatusCard: View {
           }
           .buttonStyle(.plain)
 
-          Picker("Period", selection: $selectedUsagePeriod) {
+          HStack(spacing: 4) {
             ForEach(UsagePeriod.allCases, id: \.self) { p in
-              Text(p.rawValue).tag(p)
+              Button {
+                withAnimation(.easeInOut(duration: 0.15)) { selectedUsagePeriod = p }
+              } label: {
+                Text(p.rawValue)
+                  .font(.system(size: 11, weight: selectedUsagePeriod == p ? .semibold : .regular))
+                  .foregroundStyle(selectedUsagePeriod == p ? .primary : .secondary)
+                  .padding(.horizontal, 10)
+                  .padding(.vertical, 4)
+                  .background(selectedUsagePeriod == p ? Color.primary.opacity(0.1) : Color.clear)
+                  .clipShape(Capsule())
+              }
+              .buttonStyle(.plain)
             }
           }
-          .pickerStyle(.segmented)
-          .frame(maxWidth: 260)
 
           Spacer()
 
