@@ -2555,7 +2555,9 @@ private struct AddTaskSheet: View {
         }
         .keyboardShortcut(.defaultAction)
         .buttonStyle(.borderedProminent)
-        .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (shouldShowProjectPicker && selectedProjectId.isEmpty))
+        // Keep the visual "disabled" affordance, but allow clicks so we can
+        // shake/highlight missing fields instead of silently ignoring the tap.
+        .opacity((title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (shouldShowProjectPicker && selectedProjectId.isEmpty)) ? 0.55 : 1.0)
       }
     }
     .padding(24)
