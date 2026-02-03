@@ -431,6 +431,8 @@ struct WorkerTaskLogEntry: Codable {
   var task: String?
   var project: String?
   var completedAt: Date?
+  var tokens: Int?
+  var costUSD: Double?
 }
 
 struct WorkerHistoryRun: Codable, Identifiable {

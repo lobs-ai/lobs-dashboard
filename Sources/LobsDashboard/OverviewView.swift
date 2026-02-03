@@ -370,16 +370,28 @@ private struct StatsRow: View {
   let inboxNeedsAttentionCount: Int
   var workerHistory: WorkerHistory? = nil
 
-  private var weeklySpend: Double {
-    guard let history = workerHistory else { return 0 }
+  private var weeklyRuns: [WorkerHistoryRun] {
+    guard let history = workerHistory else { return [] }
     let calendar = Calendar.current
     let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: Date())?.start ?? Date()
-    return history.runs
-      .filter { run in
-        guard let ended = run.endedAt else { return false }
-        return ended >= startOfWeek
-      }
-      .reduce(0.0) { $0 + ($1.estimatedCostUSD ?? 0) }
+    return history.runs.filter { run in
+      guard let ended = run.endedAt else { return false }
+      return ended >= startOfWeek
+    }
+  }
+
+  private var weeklySpend: Double {
+    weeklyRuns.reduce(0.0) { total, run in
+      // Prefer actual per-task costs when available
+      let actualCost = run.taskLog?.compactMap { $0.costUSD }.reduce(0, +) ?? 0
+      return total + (actualCost > 0 ? actualCost : (run.estimatedCostUSD ?? 0))
+    }
+  }
+
+  private var weeklyTokens: Int {
+    weeklyRuns.reduce(0) { total, run in
+      total + (run.taskLog?.compactMap { $0.tokens }.reduce(0, +) ?? 0)
+    }
   }
 
   var body: some View {
@@ -396,8 +408,11 @@ private struct StatsRow: View {
       if inboxNeedsAttentionCount > 0 {
         StatCard(label: "Inbox", value: "\(inboxNeedsAttentionCount)", icon: "envelope.badge", color: .red)
       }
+      if weeklyTokens > 0 {
+        StatCard(label: "Tokens (Week)", value: formatTokenCount(weeklyTokens), icon: "cpu", color: .purple)
+      }
       if weeklySpend > 0 {
-        StatCard(label: "Worker Spend (Week)", value: "~$\(String(format: "%.2f", weeklySpend))", icon: "dollarsign.circle.fill", color: .mint)
+        StatCard(label: "AI Spend (Week)", value: "~$\(String(format: "%.2f", weeklySpend))", icon: "dollarsign.circle.fill", color: .mint)
       }
     }
   }
@@ -1690,6 +1705,7 @@ private struct ProjectUsageStat: Identifiable {
   let project: String
   let taskCount: Int
   let estimatedCost: Double
+  let totalTokens: Int
   var id: String { project }
 }
 
@@ -1729,6 +1745,7 @@ private struct WorkerProjectBreakdown: View {
     let runs = filteredRuns()
     var projectTasks: [String: Int] = [:]
     var projectCosts: [String: Double] = [:]
+    var projectTokens: [String: Int] = [:]
 
     for run in runs {
       let costPerTask: Double
@@ -1744,7 +1761,11 @@ private struct WorkerProjectBreakdown: View {
         for entry in log {
           let proj = entry.project ?? "unknown"
           projectTasks[proj, default: 0] += 1
-          projectCosts[proj, default: 0] += costPerTask
+          // Prefer actual per-task cost/tokens when available
+          projectCosts[proj, default: 0] += entry.costUSD ?? costPerTask
+          if let tokens = entry.tokens {
+            projectTokens[proj, default: 0] += tokens
+          }
         }
         // Account for tasks without log entries (session overhead)
         let unlogged = totalTasks - log.count
@@ -1765,7 +1786,8 @@ private struct WorkerProjectBreakdown: View {
       ProjectUsageStat(
         project: proj,
         taskCount: projectTasks[proj] ?? 0,
-        estimatedCost: projectCosts[proj] ?? 0
+        estimatedCost: projectCosts[proj] ?? 0,
+        totalTokens: projectTokens[proj] ?? 0
       )
     }.sorted { $0.estimatedCost > $1.estimatedCost }
   }
@@ -1820,6 +1842,7 @@ private struct WorkerProjectBreakdown: View {
         let stats = projectStats()
         let totalCost = stats.reduce(0.0) { $0 + $1.estimatedCost }
         let totalTasks = stats.reduce(0) { $0 + $1.taskCount }
+        let totalTokens = stats.reduce(0) { $0 + $1.totalTokens }
 
         if stats.isEmpty {
           Text("No usage data for this period")
@@ -1837,6 +1860,16 @@ private struct WorkerProjectBreakdown: View {
               Text("\(totalTasks) tasks")
                 .font(.footnote.monospacedDigit())
                 .foregroundStyle(.secondary)
+            }
+            if totalTokens > 0 {
+              HStack(spacing: 4) {
+                Image(systemName: "cpu")
+                  .font(.system(size: 10))
+                  .foregroundStyle(.purple)
+                Text(formatTokenCount(totalTokens))
+                  .font(.footnote.monospacedDigit())
+                  .foregroundStyle(.secondary)
+              }
             }
             HStack(spacing: 4) {
               Image(systemName: "dollarsign.circle")
@@ -1875,6 +1908,13 @@ private struct WorkerProjectBreakdown: View {
                   .foregroundStyle(.secondary)
                   .frame(width: 30, alignment: .trailing)
 
+                if stat.totalTokens > 0 {
+                  Text(formatTokenCount(stat.totalTokens))
+                    .font(.footnote.monospacedDigit())
+                    .foregroundStyle(.purple.opacity(0.7))
+                    .frame(width: 55, alignment: .trailing)
+                }
+
                 Text("~$\(stat.estimatedCost, specifier: "%.2f")")
                   .font(.footnote.monospacedDigit())
                   .foregroundStyle(.secondary)
@@ -1902,86 +1942,189 @@ private struct WorkerProjectBreakdown: View {
 
 private struct WorkerHistoryRow: View {
   let run: WorkerHistoryRun
+  @State private var expanded = false
+
+  private var hasTaskDetails: Bool {
+    guard let log = run.taskLog else { return false }
+    return !log.isEmpty
+  }
 
   var body: some View {
-    HStack(spacing: 10) {
-      // Tasks count
-      HStack(spacing: 4) {
-        Image(systemName: "checkmark.circle.fill")
-          .font(.system(size: 10))
-          .foregroundStyle(run.tasksCompleted ?? 0 > 0 ? .green : .secondary)
-        Text("\(run.tasksCompleted ?? 0)")
-          .font(.footnote.monospacedDigit())
-          .foregroundStyle(.secondary)
-      }
-      .frame(width: 36, alignment: .leading)
-
-      // Duration
-      if let started = run.startedAt, let ended = run.endedAt {
-        let minutes = Int(ended.timeIntervalSince(started) / 60)
-        HStack(spacing: 4) {
-          Image(systemName: "clock")
-            .font(.system(size: 10))
-            .foregroundStyle(.secondary)
-          Text(minutes < 60
-            ? "\(max(1, minutes))m"
-            : "\(minutes / 60)h \(minutes % 60)m")
-            .font(.footnote.monospacedDigit())
-            .foregroundStyle(.secondary)
+    VStack(alignment: .leading, spacing: 0) {
+      // Main row (clickable if has task details)
+      Button {
+        if hasTaskDetails {
+          withAnimation(.easeInOut(duration: 0.15)) { expanded.toggle() }
         }
-        .frame(width: 50, alignment: .leading)
-      }
+      } label: {
+        HStack(spacing: 10) {
+          // Expand indicator
+          if hasTaskDetails {
+            Image(systemName: expanded ? "chevron.down" : "chevron.right")
+              .font(.system(size: 8, weight: .semibold))
+              .foregroundStyle(.tertiary)
+              .frame(width: 10)
+          } else {
+            Spacer().frame(width: 10)
+          }
 
-      // Timestamp
-      if let ended = run.endedAt {
-        Text(relativeTime(ended))
-          .font(.footnote)
-          .foregroundStyle(.tertiary)
-      }
+          // Tasks count
+          HStack(spacing: 4) {
+            Image(systemName: "checkmark.circle.fill")
+              .font(.system(size: 10))
+              .foregroundStyle(run.tasksCompleted ?? 0 > 0 ? .green : .secondary)
+            Text("\(run.tasksCompleted ?? 0)")
+              .font(.footnote.monospacedDigit())
+              .foregroundStyle(.secondary)
+          }
+          .frame(width: 36, alignment: .leading)
 
-      // Cost
-      if let cost = run.estimatedCostUSD, cost > 0 {
-        HStack(spacing: 2) {
-          Text("~$\(cost, specifier: "%.2f")")
-            .font(.footnote.monospacedDigit())
-            .foregroundStyle(.secondary)
-        }
-        .frame(width: 55, alignment: .leading)
-      }
-
-      // Project tags from task log
-      if let log = run.taskLog, !log.isEmpty {
-        let projects = Array(Set(log.compactMap { $0.project })).sorted()
-        if !projects.isEmpty {
-          HStack(spacing: 3) {
-            ForEach(projects.prefix(3), id: \.self) { proj in
-              Text(proj)
-                .font(.system(size: 9, weight: .medium))
-                .padding(.horizontal, 5)
-                .padding(.vertical, 1)
-                .background(Color.accentColor.opacity(0.1))
+          // Duration
+          if let started = run.startedAt, let ended = run.endedAt {
+            let minutes = Int(ended.timeIntervalSince(started) / 60)
+            HStack(spacing: 4) {
+              Image(systemName: "clock")
+                .font(.system(size: 10))
                 .foregroundStyle(.secondary)
-                .clipShape(Capsule())
+              Text(minutes < 60
+                ? "\(max(1, minutes))m"
+                : "\(minutes / 60)h \(minutes % 60)m")
+                .font(.footnote.monospacedDigit())
+                .foregroundStyle(.secondary)
             }
-            if projects.count > 3 {
-              Text("+\(projects.count - 3)")
-                .font(.system(size: 9))
-                .foregroundStyle(.tertiary)
+            .frame(width: 50, alignment: .leading)
+          }
+
+          // Timestamp
+          if let ended = run.endedAt {
+            Text(relativeTime(ended))
+              .font(.footnote)
+              .foregroundStyle(.tertiary)
+          }
+
+          // Total tokens for the run
+          if let log = run.taskLog {
+            let runTokens = log.compactMap { $0.tokens }.reduce(0, +)
+            if runTokens > 0 {
+              HStack(spacing: 2) {
+                Image(systemName: "cpu")
+                  .font(.system(size: 9))
+                  .foregroundStyle(.purple.opacity(0.7))
+                Text(formatTokenCount(runTokens))
+                  .font(.footnote.monospacedDigit())
+                  .foregroundStyle(.purple.opacity(0.7))
+              }
+              .frame(width: 55, alignment: .leading)
             }
           }
+
+          // Cost
+          if let cost = run.estimatedCostUSD, cost > 0 {
+            // Check if we have actual per-task costs
+            let actualCost = run.taskLog?.compactMap { $0.costUSD }.reduce(0, +) ?? 0
+            let displayCost = actualCost > 0 ? actualCost : cost
+            let prefix = actualCost > 0 ? "$" : "~$"
+            HStack(spacing: 2) {
+              Text("\(prefix)\(displayCost, specifier: "%.2f")")
+                .font(.footnote.monospacedDigit())
+                .foregroundStyle(.secondary)
+            }
+            .frame(width: 55, alignment: .leading)
+          }
+
+          // Project tags from task log
+          if let log = run.taskLog, !log.isEmpty {
+            let projects = Array(Set(log.compactMap { $0.project })).sorted()
+            if !projects.isEmpty {
+              HStack(spacing: 3) {
+                ForEach(projects.prefix(3), id: \.self) { proj in
+                  Text(proj)
+                    .font(.system(size: 9, weight: .medium))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Color.accentColor.opacity(0.1))
+                    .foregroundStyle(.secondary)
+                    .clipShape(Capsule())
+                }
+                if projects.count > 3 {
+                  Text("+\(projects.count - 3)")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+                }
+              }
+            }
+          }
+
+          if run.timeoutReason != nil {
+            Image(systemName: "exclamationmark.triangle.fill")
+              .font(.system(size: 10))
+              .foregroundStyle(.orange)
+              .help("Session timed out")
+          }
+
+          Spacer()
         }
       }
+      .buttonStyle(.plain)
 
-      if run.timeoutReason != nil {
-        Image(systemName: "exclamationmark.triangle.fill")
-          .font(.system(size: 10))
-          .foregroundStyle(.orange)
-          .help("Session timed out")
+      // Expanded task detail rows
+      if expanded, let log = run.taskLog, !log.isEmpty {
+        VStack(alignment: .leading, spacing: 2) {
+          ForEach(Array(log.enumerated()), id: \.offset) { _, entry in
+            HStack(spacing: 8) {
+              Spacer().frame(width: 20)
+              Image(systemName: "arrow.turn.down.right")
+                .font(.system(size: 9))
+                .foregroundStyle(.tertiary)
+
+              Text(entry.task ?? "Unknown task")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+
+              Spacer()
+
+              if let proj = entry.project {
+                Text(proj)
+                  .font(.system(size: 9, weight: .medium))
+                  .padding(.horizontal, 4)
+                  .padding(.vertical, 1)
+                  .background(Color.accentColor.opacity(0.08))
+                  .foregroundStyle(.tertiary)
+                  .clipShape(Capsule())
+              }
+
+              if let tokens = entry.tokens {
+                Text(formatTokenCount(tokens))
+                  .font(.system(size: 10).monospacedDigit())
+                  .foregroundStyle(.purple.opacity(0.6))
+              }
+
+              if let cost = entry.costUSD {
+                Text("$\(cost, specifier: "%.2f")")
+                  .font(.system(size: 10).monospacedDigit())
+                  .foregroundStyle(.secondary)
+              }
+            }
+            .padding(.vertical, 2)
+          }
+        }
+        .padding(.top, 4)
+        .padding(.bottom, 2)
       }
-
-      Spacer()
     }
   }
+}
+
+// MARK: - Token Count Formatter
+
+private func formatTokenCount(_ tokens: Int) -> String {
+  if tokens >= 1_000_000 {
+    return String(format: "%.1fM", Double(tokens) / 1_000_000)
+  } else if tokens >= 1_000 {
+    return String(format: "%.0fK", Double(tokens) / 1_000)
+  }
+  return "\(tokens)"
 }
 
 // MARK: - Relative Time Helper
