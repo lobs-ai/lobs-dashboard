@@ -557,27 +557,39 @@ private struct ToolbarArea: View {
         .menuStyle(.borderlessButton)
         .fixedSize()
 
-        // Shape filter chips
-        HStack(spacing: 4) {
+        // Shape filter dropdown
+        Menu {
+          Button {
+            vm.shapeFilter = nil
+          } label: {
+            Label("All shapes", systemImage: vm.shapeFilter == nil ? "checkmark" : "")
+          }
+          Divider()
           ForEach(TaskShape.allCases, id: \.self) { shape in
             Button {
               vm.shapeFilter = vm.shapeFilter == shape ? nil : shape
             } label: {
-              HStack(spacing: 3) {
-                Text(shapeIcon(shape))
-                  .font(.system(size: 11))
-                Text(shapeLabel(shape))
-                  .font(.system(size: 11, weight: .medium))
-              }
-              .padding(.horizontal, 8)
-              .padding(.vertical, 4)
-              .background(vm.shapeFilter == shape ? shapeColor(shape).opacity(0.18) : Theme.subtle)
-              .foregroundStyle(vm.shapeFilter == shape ? shapeColor(shape) : .secondary)
-              .clipShape(Capsule())
+              Label(
+                "\(shapeIcon(shape)) \(shapeLabel(shape))",
+                systemImage: vm.shapeFilter == shape ? "checkmark" : ""
+              )
             }
-            .buttonStyle(.plain)
           }
+        } label: {
+          HStack(spacing: 4) {
+            Image(systemName: "tag")
+            if let shape = vm.shapeFilter {
+              Text("\(shapeIcon(shape)) \(shapeLabel(shape))")
+                .font(.footnote)
+            }
+          }
+          .padding(.horizontal, 8)
+          .padding(.vertical, 5)
+          .background(vm.shapeFilter != nil ? Color.accentColor.opacity(0.12) : Theme.subtle)
+          .clipShape(RoundedRectangle(cornerRadius: 8))
         }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
       }
 
       // Home button
