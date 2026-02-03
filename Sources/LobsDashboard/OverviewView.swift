@@ -539,8 +539,11 @@ private struct StatsRow: View {
       if inboxNeedsAttentionCount > 0 {
         StatCard(label: "Inbox", value: "\(inboxNeedsAttentionCount)", icon: "envelope.badge", color: .red)
       }
-      if weeklyTokens > 0 {
-        StatCard(label: "Tokens (Week)", value: formatTokenCount(weeklyTokens), icon: "cpu", color: .indigo)
+      if weeklyWorkerTokens > 0 {
+        StatCard(label: "Worker Tokens", value: formatTokenCount(weeklyWorkerTokens), icon: "cpu", color: .indigo)
+      }
+      if weeklyMainTokens > 0 {
+        StatCard(label: "Main Tokens", value: formatTokenCount(weeklyMainTokens), icon: "bubble.left.fill", color: .blue)
       }
       if weeklySpend > 0 {
         StatCard(label: "AI Spend (Week)", value: "~$\(String(format: "%.2f", weeklySpend))", icon: "dollarsign.circle.fill", color: .mint)

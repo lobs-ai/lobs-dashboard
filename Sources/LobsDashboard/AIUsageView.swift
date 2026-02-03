@@ -199,15 +199,15 @@ struct AIUsageView: View {
 
         // Summary cards
         HStack(spacing: 16) {
-          UsageSummaryCard(title: "Total Cost", value: String(format: "$%.2f", totalCost), icon: "dollarsign.circle.fill", color: .green,
-            tooltip: "Estimated total cost based on model pricing.\nOpus: $15/$75 per 1M in/out\nSonnet: $3/$15 per 1M in/out")
-          UsageSummaryCard(title: "Total Tokens", value: formatTokens(totalTokens), icon: "cpu", color: .purple,
+          UsageSummaryCard(title: "Total Cost", value: String(format: "$%.2f", totalCost), icon: "dollarsign.circle.fill", color: .mint,
+            tooltip: "Estimated total cost based on model pricing.\nOpus: $5/$25 per 1M in/out\nSonnet: $3/$15 per 1M in/out")
+          UsageSummaryCard(title: "Total Tokens", value: formatTokens(totalTokens), icon: "cpu", color: .indigo,
             tooltip: "Combined input + output tokens across all sessions")
           UsageSummaryCard(title: "Worker Cost", value: String(format: "$%.2f", workerTotalCost), icon: "bolt.fill", color: .orange,
             tooltip: "Cost from task-runner sub-agents — code implementation, research, file operations")
-          UsageSummaryCard(title: "Main Session", value: String(format: "$%.2f", mainSessionCost), icon: "bubble.left.fill", color: .blue,
+          UsageSummaryCard(title: "Main Session", value: String(format: "$%.2f", mainSessionCost), icon: "bubble.left.fill", color: .cyan,
             tooltip: "Cost from Lobs main session — heartbeat checks, conversations, task spawning and coordination")
-          UsageSummaryCard(title: "Worker Runs", value: "\(filteredWorkerRuns.count)", icon: "arrow.triangle.2.circlepath", color: .indigo,
+          UsageSummaryCard(title: "Worker Runs", value: "\(filteredWorkerRuns.count)", icon: "arrow.triangle.2.circlepath", color: .purple,
             tooltip: "Number of task-runner sub-agent sessions in this period")
         }
 
@@ -309,7 +309,7 @@ private struct DailyUsageChart: View {
     VStack(alignment: .leading, spacing: 14) {
       SectionHeaderWithInfo(
         title: "Daily Spend",
-        tooltip: "Daily cost breakdown showing Main Session (blue) and Worker (orange) spending. Stacked bars show relative proportions."
+        tooltip: "Daily cost breakdown showing Main Session (cyan) and Worker (orange) spending. Stacked bars show relative proportions."
       )
 
       // Stacked bar chart
@@ -328,7 +328,7 @@ private struct DailyUsageChart: View {
               // Main session (top, blue)
               if point.mainCost > 0 {
                 RoundedRectangle(cornerRadius: 3)
-                  .fill(Color.blue.opacity(0.7))
+                  .fill(Color.cyan.opacity(0.7))
                   .frame(height: max(3, CGFloat(point.mainCost / maxCost) * 180))
               }
               // Worker (bottom, orange)
@@ -363,7 +363,7 @@ private struct DailyUsageChart: View {
         }
         HStack(spacing: 6) {
           RoundedRectangle(cornerRadius: 3)
-            .fill(Color.blue.opacity(0.7))
+            .fill(Color.cyan.opacity(0.7))
             .frame(width: 14, height: 14)
           Text("Main Session")
             .font(.footnote)
@@ -410,7 +410,7 @@ private struct UsageSplitView: View {
         GeometryReader { geo in
           HStack(spacing: 1) {
             RoundedRectangle(cornerRadius: 4)
-              .fill(Color.blue.opacity(0.7))
+              .fill(Color.cyan.opacity(0.7))
               .frame(width: max(4, geo.size.width * mainPct))
             RoundedRectangle(cornerRadius: 4)
               .fill(Color.orange.opacity(0.7))
@@ -427,7 +427,7 @@ private struct UsageSplitView: View {
             HStack(spacing: 6) {
               Image(systemName: "bubble.left.fill")
                 .font(.system(size: 12))
-                .foregroundStyle(.blue)
+                .foregroundStyle(.cyan)
               Text("Main Session")
                 .font(.system(size: 13, weight: .semibold))
             }
@@ -442,7 +442,7 @@ private struct UsageSplitView: View {
               Text(String(format: "$%.2f", mainCost))
                 .font(.title3.monospacedDigit())
                 .fontWeight(.bold)
-                .foregroundStyle(.blue)
+                .foregroundStyle(.cyan)
               Text(String(format: "%.0f%% of total", mainPct * 100))
                 .font(.system(size: 11).monospacedDigit())
                 .foregroundStyle(.secondary)
@@ -456,11 +456,11 @@ private struct UsageSplitView: View {
           }
           .padding(14)
           .frame(maxWidth: .infinity, alignment: .leading)
-          .background(Color.blue.opacity(0.04))
+          .background(Color.cyan.opacity(0.04))
           .clipShape(RoundedRectangle(cornerRadius: 10))
           .overlay(
             RoundedRectangle(cornerRadius: 10)
-              .stroke(Color.blue.opacity(0.15), lineWidth: 1)
+              .stroke(Color.cyan.opacity(0.15), lineWidth: 1)
           )
 
           // Worker card
