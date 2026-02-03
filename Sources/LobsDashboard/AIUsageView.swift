@@ -171,18 +171,18 @@ struct AIUsageView: View {
 
   var body: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: 20) {
+      VStack(alignment: .leading, spacing: 28) {
         // Header
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
           Image(systemName: "chart.line.uptrend.xyaxis")
-            .font(.title2)
+            .font(.title)
             .foregroundStyle(.linearGradient(
               colors: [.purple, .pink],
               startPoint: .topLeading,
               endPoint: .bottomTrailing
             ))
           Text("AI Usage")
-            .font(.title2)
+            .font(.title)
             .fontWeight(.bold)
 
           Spacer()
@@ -193,15 +193,15 @@ struct AIUsageView: View {
             }
           }
           .pickerStyle(.segmented)
-          .frame(maxWidth: 300)
+          .frame(maxWidth: 320)
         }
 
         // Summary cards
-        HStack(spacing: 14) {
+        HStack(spacing: 16) {
           UsageSummaryCard(title: "Total Cost", value: String(format: "$%.2f", totalCost), icon: "dollarsign.circle.fill", color: .green)
           UsageSummaryCard(title: "Total Tokens", value: formatTokens(totalTokens), icon: "cpu", color: .purple)
           UsageSummaryCard(title: "Worker Cost", value: String(format: "$%.2f", workerTotalCost), icon: "bolt.fill", color: .orange)
-          UsageSummaryCard(title: "Main Session Cost", value: String(format: "$%.2f", mainSessionCost), icon: "bubble.left.fill", color: .blue)
+          UsageSummaryCard(title: "Main Session", value: String(format: "$%.2f", mainSessionCost), icon: "bubble.left.fill", color: .blue)
           UsageSummaryCard(title: "Worker Runs", value: "\(filteredWorkerRuns.count)", icon: "arrow.triangle.2.circlepath", color: .indigo)
         }
 
@@ -210,7 +210,7 @@ struct AIUsageView: View {
           DailyUsageChart(data: dailyCosts, shortDay: shortDay)
         }
 
-        HStack(alignment: .top, spacing: 20) {
+        HStack(alignment: .top, spacing: 24) {
           // Main vs Worker split
           UsageSplitView(
             workerCost: workerTotalCost,
@@ -227,7 +227,7 @@ struct AIUsageView: View {
           ModelBreakdownView(models: modelBreakdown)
         }
       }
-      .padding(24)
+      .padding(32)
     }
     .background(ATheme.boardBg)
   }
@@ -256,13 +256,13 @@ private struct UsageSummaryCard: View {
   let color: Color
 
   var body: some View {
-    VStack(spacing: 8) {
-      HStack(spacing: 5) {
+    VStack(spacing: 10) {
+      HStack(spacing: 6) {
         Image(systemName: icon)
-          .font(.footnote)
+          .font(.system(size: 12))
           .foregroundStyle(color)
         Text(title)
-          .font(.footnote)
+          .font(.system(size: 12, weight: .medium))
           .foregroundStyle(.secondary)
       }
       Text(value)
@@ -270,9 +270,9 @@ private struct UsageSummaryCard: View {
         .fontWeight(.bold)
         .foregroundStyle(color)
     }
-    .frame(minWidth: 120)
-    .padding(.horizontal, 16)
-    .padding(.vertical, 14)
+    .frame(minWidth: 130, maxWidth: .infinity)
+    .padding(.horizontal, 18)
+    .padding(.vertical, 16)
     .background(ATheme.cardBg)
     .clipShape(RoundedRectangle(cornerRadius: ATheme.cardRadius))
     .overlay(
@@ -293,19 +293,19 @@ private struct DailyUsageChart: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
+    VStack(alignment: .leading, spacing: 14) {
       Text("Daily Spend")
         .font(.headline)
         .fontWeight(.bold)
 
       // Stacked bar chart
-      HStack(alignment: .bottom, spacing: max(2, 8 - CGFloat(data.count) / 4)) {
+      HStack(alignment: .bottom, spacing: max(3, 10 - CGFloat(data.count) / 4)) {
         ForEach(data) { point in
-          VStack(spacing: 4) {
+          VStack(spacing: 5) {
             // Cost label
             if point.totalCost > 0 {
               Text(String(format: "$%.2f", point.totalCost))
-                .font(.system(size: 9, weight: .medium).monospacedDigit())
+                .font(.system(size: 10, weight: .medium).monospacedDigit())
                 .foregroundStyle(.secondary)
             }
 
@@ -313,52 +313,52 @@ private struct DailyUsageChart: View {
             VStack(spacing: 0) {
               // Main session (top, blue)
               if point.mainCost > 0 {
-                RoundedRectangle(cornerRadius: 2)
+                RoundedRectangle(cornerRadius: 3)
                   .fill(Color.blue.opacity(0.7))
-                  .frame(height: max(2, CGFloat(point.mainCost / maxCost) * 120))
+                  .frame(height: max(3, CGFloat(point.mainCost / maxCost) * 180))
               }
               // Worker (bottom, orange)
               if point.workerCost > 0 {
-                RoundedRectangle(cornerRadius: 2)
+                RoundedRectangle(cornerRadius: 3)
                   .fill(Color.orange.opacity(0.7))
-                  .frame(height: max(2, CGFloat(point.workerCost / maxCost) * 120))
+                  .frame(height: max(3, CGFloat(point.workerCost / maxCost) * 180))
               }
             }
-            .frame(maxWidth: 40)
+            .frame(maxWidth: 48)
 
             // Day label
             Text(shortDay(point.day))
               .font(.system(size: 10))
               .foregroundStyle(.tertiary)
           }
-          .frame(minWidth: 30, maxWidth: .infinity)
+          .frame(minWidth: 36, maxWidth: .infinity)
         }
       }
-      .frame(minHeight: 160)
-      .padding(.horizontal, 8)
+      .frame(minHeight: 220)
+      .padding(.horizontal, 10)
 
       // Legend
-      HStack(spacing: 16) {
-        HStack(spacing: 4) {
-          RoundedRectangle(cornerRadius: 2)
+      HStack(spacing: 20) {
+        HStack(spacing: 6) {
+          RoundedRectangle(cornerRadius: 3)
             .fill(Color.orange.opacity(0.7))
-            .frame(width: 12, height: 12)
+            .frame(width: 14, height: 14)
           Text("Worker")
             .font(.footnote)
             .foregroundStyle(.secondary)
         }
-        HStack(spacing: 4) {
-          RoundedRectangle(cornerRadius: 2)
+        HStack(spacing: 6) {
+          RoundedRectangle(cornerRadius: 3)
             .fill(Color.blue.opacity(0.7))
-            .frame(width: 12, height: 12)
+            .frame(width: 14, height: 14)
           Text("Main Session")
             .font(.footnote)
             .foregroundStyle(.secondary)
         }
       }
-      .padding(.leading, 8)
+      .padding(.leading, 10)
     }
-    .padding(16)
+    .padding(20)
     .background(ATheme.cardBg)
     .clipShape(RoundedRectangle(cornerRadius: ATheme.cardRadius))
     .overlay(
@@ -450,7 +450,7 @@ private struct UsageSplitView: View {
       }
     }
     .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-    .padding(16)
+    .padding(20)
     .background(ATheme.cardBg)
     .clipShape(RoundedRectangle(cornerRadius: ATheme.cardRadius))
     .overlay(
@@ -470,7 +470,7 @@ private struct ModelBreakdownView: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 14) {
+    VStack(alignment: .leading, spacing: 16) {
       Text("By Model")
         .font(.headline)
         .fontWeight(.bold)
@@ -513,7 +513,7 @@ private struct ModelBreakdownView: View {
       }
     }
     .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-    .padding(16)
+    .padding(20)
     .background(ATheme.cardBg)
     .clipShape(RoundedRectangle(cornerRadius: ATheme.cardRadius))
     .overlay(

@@ -270,7 +270,7 @@ struct ContentView: View {
     }
     .sheet(isPresented: $showAIUsage) {
       AIUsageView(vm: vm)
-        .frame(minWidth: 800, minHeight: 600)
+        .frame(minWidth: 960, idealWidth: 1040, minHeight: 700, idealHeight: 800)
     }
     .onAppear { vm.reloadIfPossible() }
     .onChange(of: vm.textDumps) { _ in
