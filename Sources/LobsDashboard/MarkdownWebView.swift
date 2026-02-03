@@ -443,7 +443,26 @@ private func disableInternalScrolling(_ view: NSView) {
 /// that should reach the enclosing SwiftUI ScrollView.
 class ScrollThroughWebView: WKWebView {
   override func scrollWheel(with event: NSEvent) {
-    // Forward to next responder (parent scroll view) instead of handling internally
-    nextResponder?.scrollWheel(with: event)
+    // Find the parent NSScrollView that is NOT WKWebView's own internal one,
+    // and forward the scroll event directly to it.
+    if let parentScroll = findParentScrollView() {
+      parentScroll.scrollWheel(with: event)
+    } else {
+      super.scrollWheel(with: event)
+    }
+  }
+
+  /// Walk up the view hierarchy past WKWebView's own enclosingScrollView
+  /// to find the SwiftUI ScrollView's backing NSScrollView.
+  private func findParentScrollView() -> NSScrollView? {
+    let ownScrollView = self.enclosingScrollView
+    var current: NSView? = ownScrollView?.superview ?? self.superview
+    while let view = current {
+      if let scrollView = view as? NSScrollView, scrollView !== ownScrollView {
+        return scrollView
+      }
+      current = view.superview
+    }
+    return nil
   }
 }
