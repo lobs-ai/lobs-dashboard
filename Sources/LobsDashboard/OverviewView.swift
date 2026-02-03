@@ -158,7 +158,8 @@ struct OverviewView: View {
             blockedTasks: blockedTasks,
             inboxTasks: inboxTasks,
             inboxNeedsAttentionCount: inboxNeedsAttentionCount,
-            workerHistory: vm.workerHistory
+            workerHistory: vm.workerHistory,
+            mainSessionUsage: vm.mainSessionUsage
           )
           Spacer()
           Button {
@@ -389,6 +390,7 @@ private struct StatsRow: View {
   let inboxTasks: Int
   let inboxNeedsAttentionCount: Int
   var workerHistory: WorkerHistory? = nil
+  var mainSessionUsage: MainSessionUsage? = nil
 
   private var weeklyRuns: [WorkerHistoryRun] {
     guard let history = workerHistory else { return [] }
@@ -400,18 +402,46 @@ private struct StatsRow: View {
     }
   }
 
-  private var weeklySpend: Double {
+  private var weeklyWorkerSpend: Double {
     weeklyRuns.reduce(0.0) { total, run in
       total + (run.totalCostUSD ?? 0)
     }
   }
 
-  private var weeklyTokens: Int {
+  private var weeklyWorkerTokens: Int {
     weeklyRuns.reduce(0) { total, run in
       let totalForRun = run.totalTokens ?? ((run.inputTokens ?? 0) + (run.outputTokens ?? 0))
       return total + totalForRun
     }
   }
+
+  /// Main session usage for the current week from daily summaries.
+  private var weeklyMainSpend: Double {
+    guard let usage = mainSessionUsage else { return 0 }
+    let calendar = Calendar.current
+    let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: Date())?.start ?? Date()
+    let df = DateFormatter()
+    df.dateFormat = "yyyy-MM-dd"
+    return usage.dailySummaries.filter { key, _ in
+      guard let date = df.date(from: key) else { return false }
+      return date >= startOfWeek
+    }.values.reduce(0.0) { $0 + $1.costUSD }
+  }
+
+  private var weeklyMainTokens: Int {
+    guard let usage = mainSessionUsage else { return 0 }
+    let calendar = Calendar.current
+    let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: Date())?.start ?? Date()
+    let df = DateFormatter()
+    df.dateFormat = "yyyy-MM-dd"
+    return usage.dailySummaries.filter { key, _ in
+      guard let date = df.date(from: key) else { return false }
+      return date >= startOfWeek
+    }.values.reduce(0) { $0 + $1.inputTokens + $1.outputTokens }
+  }
+
+  private var weeklySpend: Double { weeklyWorkerSpend + weeklyMainSpend }
+  private var weeklyTokens: Int { weeklyWorkerTokens + weeklyMainTokens }
 
   var body: some View {
     HStack(spacing: 16) {
