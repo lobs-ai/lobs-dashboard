@@ -562,7 +562,7 @@ private struct ToolbarArea: View {
           Button {
             vm.shapeFilter = nil
           } label: {
-            Label("All shapes", systemImage: vm.shapeFilter == nil ? "checkmark" : "")
+            Label("Any type", systemImage: vm.shapeFilter == nil ? "checkmark" : "")
           }
           Divider()
           ForEach(TaskShape.allCases, id: \.self) { shape in
