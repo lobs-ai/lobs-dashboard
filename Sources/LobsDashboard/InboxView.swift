@@ -676,8 +676,7 @@ private struct ThreadMessageBubble: View {
             }
           }
         } else {
-          MarkdownWebView(markdown: message.text)
-            .frame(minHeight: isLobs ? 200 : 60)
+          SelfSizingMarkdownView(markdown: message.text, minHeight: isLobs ? 60 : 20)
         }
       }
 

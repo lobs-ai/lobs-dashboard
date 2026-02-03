@@ -1,34 +1,84 @@
 import SwiftUI
 import WebKit
 
+// MARK: - Self-Sizing Markdown View
+
+/// A SwiftUI wrapper that renders markdown and automatically expands to fit its content.
+/// Uses MarkdownWebView internally but manages height measurement so the web view
+/// expands inline within the parent ScrollView instead of creating a separate scroll area.
+struct SelfSizingMarkdownView: View {
+  let markdown: String
+  var minHeight: CGFloat = 20
+
+  @State private var contentHeight: CGFloat = 20
+
+  var body: some View {
+    MarkdownWebView(markdown: markdown) { height in
+      // Only update if meaningfully different to avoid layout loops
+      if abs(height - contentHeight) > 1 {
+        contentHeight = height
+      }
+    }
+    .frame(height: max(minHeight, contentHeight))
+  }
+}
+
 // MARK: - Markdown Web View
 
 /// Renders markdown content using WKWebView for full-fidelity block-level markdown
 /// (headers, lists, code blocks, tables, horizontal rules, blockquotes, etc.)
 struct MarkdownWebView: NSViewRepresentable {
   let markdown: String
+  var onContentHeightChanged: ((CGFloat) -> Void)?
+
+  init(markdown: String, onContentHeightChanged: ((CGFloat) -> Void)? = nil) {
+    self.markdown = markdown
+    self.onContentHeightChanged = onContentHeightChanged
+  }
 
   func makeNSView(context: Context) -> WKWebView {
     let config = WKWebViewConfiguration()
+
+    // Register message handler for height reporting if callback is provided
+    if onContentHeightChanged != nil {
+      config.userContentController.add(context.coordinator, name: "heightChanged")
+    }
+
     let webView = WKWebView(frame: .zero, configuration: config)
     webView.setValue(false, forKey: "drawsBackground")
     webView.navigationDelegate = context.coordinator
-    loadContent(in: webView)
+
+    // Disable internal scrolling when we're self-sizing
+    if onContentHeightChanged != nil {
+      webView.enclosingScrollView?.hasVerticalScroller = false
+      // For WKWebView, disable scrolling at the scroll view level after it's added
+      DispatchQueue.main.async {
+        if let scrollView = webView.enclosingScrollView {
+          scrollView.hasVerticalScroller = false
+          scrollView.hasHorizontalScroller = false
+        }
+      }
+    }
+
+    loadContent(in: webView, measureHeight: onContentHeightChanged != nil)
     return webView
   }
 
   func updateNSView(_ webView: WKWebView, context: Context) {
-    loadContent(in: webView)
+    context.coordinator.onContentHeightChanged = onContentHeightChanged
+    loadContent(in: webView, measureHeight: onContentHeightChanged != nil)
   }
 
-  func makeCoordinator() -> Coordinator { Coordinator() }
+  func makeCoordinator() -> Coordinator {
+    Coordinator(onContentHeightChanged: onContentHeightChanged)
+  }
 
-  private func loadContent(in webView: WKWebView) {
+  private func loadContent(in webView: WKWebView, measureHeight: Bool) {
     let escaped = markdown
       .replacingOccurrences(of: "\\", with: "\\\\")
       .replacingOccurrences(of: "`", with: "\\`")
       .replacingOccurrences(of: "$", with: "\\$")
-    let html = Self.htmlTemplate(markdownLiteral: escaped)
+    let html = Self.htmlTemplate(markdownLiteral: escaped, measureHeight: measureHeight)
     webView.loadHTMLString(html, baseURL: nil)
   }
 
@@ -36,8 +86,31 @@ struct MarkdownWebView: NSViewRepresentable {
 
   /// Generates a self-contained HTML page that parses markdown client-side
   /// using a tiny built-in parser (no external CDN dependency).
-  private static func htmlTemplate(markdownLiteral: String) -> String {
-    """
+  private static func htmlTemplate(markdownLiteral: String, measureHeight: Bool = false) -> String {
+    let heightScript = measureHeight ? """
+    // Report content height to Swift
+    function reportHeight() {
+      var height = document.body.scrollHeight;
+      if (height > 0) {
+        window.webkit.messageHandlers.heightChanged.postMessage(height);
+      }
+    }
+    // Report after render, after images load, and on resize
+    reportHeight();
+    window.addEventListener('load', reportHeight);
+    window.addEventListener('resize', reportHeight);
+    // Also observe DOM changes (images loading, etc.)
+    new MutationObserver(reportHeight).observe(document.body, {
+      childList: true, subtree: true, attributes: true
+    });
+    // Fallback: re-measure after a short delay for late layout
+    setTimeout(reportHeight, 100);
+    setTimeout(reportHeight, 500);
+    """ : ""
+
+    let overflowStyle = measureHeight ? "overflow: hidden;" : ""
+
+    return """
     <!DOCTYPE html>
     <html>
     <head>
@@ -45,6 +118,9 @@ struct MarkdownWebView: NSViewRepresentable {
     <style>
       :root {
         color-scheme: light dark;
+      }
+      html, body {
+        \(overflowStyle)
       }
       body {
         font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
@@ -295,6 +371,7 @@ struct MarkdownWebView: NSViewRepresentable {
 
     var raw = `\(markdownLiteral)`;
     document.getElementById('content').innerHTML = md(raw);
+    \(heightScript)
     </script>
     </body>
     </html>
@@ -303,7 +380,25 @@ struct MarkdownWebView: NSViewRepresentable {
 
   // MARK: - Coordinator
 
-  class Coordinator: NSObject, WKNavigationDelegate {
+  class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+    var onContentHeightChanged: ((CGFloat) -> Void)?
+
+    init(onContentHeightChanged: ((CGFloat) -> Void)?) {
+      self.onContentHeightChanged = onContentHeightChanged
+    }
+
+    // MARK: WKScriptMessageHandler
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+      if message.name == "heightChanged", let height = message.body as? CGFloat, height > 0 {
+        DispatchQueue.main.async { [weak self] in
+          self?.onContentHeightChanged?(height)
+        }
+      }
+    }
+
+    // MARK: WKNavigationDelegate
+
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
       // Open links in the default browser instead of navigating within the web view
       if navigationAction.navigationType == .linkActivated, let url = navigationAction.request.url {
@@ -312,6 +407,15 @@ struct MarkdownWebView: NSViewRepresentable {
         return
       }
       decisionHandler(.allow)
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+      // After navigation finishes, disable internal scrolling if we're measuring height
+      guard onContentHeightChanged != nil else { return }
+      if let scrollView = webView.enclosingScrollView {
+        scrollView.hasVerticalScroller = false
+        scrollView.hasHorizontalScroller = false
+      }
     }
   }
 }
