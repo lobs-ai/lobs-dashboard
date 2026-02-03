@@ -3341,7 +3341,7 @@ private struct CommandPaletteView: View {
   }
 
   private func selectResult(_ result: (task: DashboardTask, project: Project?)) {
-    vm.selectedProjectId = result.task.projectId
+    vm.selectedProjectId = result.task.projectId ?? "default"
     vm.showOverview = false
     vm.selectedTaskId = result.task.id
     vm.popoverTaskId = result.task.id
@@ -3455,7 +3455,6 @@ private struct CommandPaletteRow: View {
     case .completed: return .green
     case .rejected: return .red
     case .waitingOn: return .orange
-    case .blocked: return .red
     default: return .secondary
     }
   }

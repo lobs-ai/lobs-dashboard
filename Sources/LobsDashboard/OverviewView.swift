@@ -123,7 +123,7 @@ struct OverviewView: View {
 
   // MARK: - Activity Feed
 
-  private enum ActivityEvent: Identifiable {
+  fileprivate enum ActivityEvent: Identifiable {
     case taskCompleted(DashboardTask)
     case inboxItem(InboxItem)
     case workerRun(WorkerHistoryRun)
@@ -2272,7 +2272,6 @@ private struct TimelineSheetView: View {
       let pid = t.projectId ?? "default"
       if selectedProjectId != "all" && pid != selectedProjectId { return false }
       // Include tasks that intersect the window.
-      let start = t.createdAt
       let end = (t.status == .completed ? (t.finishedAt ?? t.updatedAt) : now)
       return end >= cutoff
     }
