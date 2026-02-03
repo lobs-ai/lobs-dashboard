@@ -475,19 +475,22 @@ private struct ProjectCard: View {
             .clipShape(Capsule())
         }
 
-        // Task counts
+        // Counts
         HStack(spacing: 12) {
-          CountBadge(label: "Active", count: activeCount, color: .orange)
-          if wipLimit > 0 && activeCount > wipLimit {
-            Text("WIP")
-              .font(.system(size: 11, weight: .bold))
-              .padding(.horizontal, 6)
-              .padding(.vertical, 2)
-              .background(Color.orange.opacity(0.2))
-              .foregroundStyle(.orange)
-              .clipShape(Capsule())
+          // Research projects don't use task status columns, so avoid showing Active/Done.
+          if project.resolvedType != .research {
+            CountBadge(label: "Active", count: activeCount, color: .orange)
+            if wipLimit > 0 && activeCount > wipLimit {
+              Text("WIP")
+                .font(.system(size: 11, weight: .bold))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.orange.opacity(0.2))
+                .foregroundStyle(.orange)
+                .clipShape(Capsule())
+            }
+            CountBadge(label: "Done", count: completedCount, color: .green)
           }
-          CountBadge(label: "Done", count: completedCount, color: .green)
           if researchRequestCount > 0 {
             CountBadge(label: "Research", count: researchRequestCount, color: .purple)
           }
