@@ -385,62 +385,109 @@ private struct UsageSplitView: View {
   private var mainPct: Double { total > 0 ? mainCost / total : 0 }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 14) {
-      Text("Main vs Worker")
+    VStack(alignment: .leading, spacing: 16) {
+      Text("Usage Breakdown")
         .font(.headline)
         .fontWeight(.bold)
 
       if total > 0 {
-        // Cost bar
+        // Proportional cost bar
         GeometryReader { geo in
-          HStack(spacing: 0) {
-            RoundedRectangle(cornerRadius: 4)
-              .fill(Color.orange.opacity(0.7))
-              .frame(width: max(4, geo.size.width * workerPct))
+          HStack(spacing: 1) {
             RoundedRectangle(cornerRadius: 4)
               .fill(Color.blue.opacity(0.7))
               .frame(width: max(4, geo.size.width * mainPct))
+            RoundedRectangle(cornerRadius: 4)
+              .fill(Color.orange.opacity(0.7))
+              .frame(width: max(4, geo.size.width * workerPct))
           }
         }
-        .frame(height: 20)
-        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .frame(height: 24)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
 
-        HStack(spacing: 20) {
-          VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 4) {
-              Circle().fill(Color.orange).frame(width: 8, height: 8)
-              Text("Worker")
-                .font(.footnote)
-                .fontWeight(.medium)
-            }
-            Text(String(format: "$%.2f (%.0f%%)", workerCost, workerPct * 100))
-              .font(.callout.monospacedDigit())
-              .foregroundStyle(.secondary)
-            Text("\(formatTokens(workerTokens)) tokens")
-              .font(.footnote.monospacedDigit())
-              .foregroundStyle(.tertiary)
-            Text("\(formatTokens(workerInput)) in / \(formatTokens(workerOutput)) out")
-              .font(.system(size: 10).monospacedDigit())
-              .foregroundStyle(.tertiary)
-          }
-
-          VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 4) {
-              Circle().fill(Color.blue).frame(width: 8, height: 8)
+        // Two side-by-side cards for Main and Worker
+        HStack(alignment: .top, spacing: 14) {
+          // Main Session card
+          VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+              Image(systemName: "bubble.left.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(.blue)
               Text("Main Session")
-                .font(.footnote)
-                .fontWeight(.medium)
+                .font(.system(size: 13, weight: .semibold))
             }
-            Text(String(format: "$%.2f (%.0f%%)", mainCost, mainPct * 100))
-              .font(.callout.monospacedDigit())
-              .foregroundStyle(.secondary)
-            Text("\(formatTokens(mainTokens)) tokens")
-              .font(.footnote.monospacedDigit())
+            Text("Heartbeats, conversations, task spawning")
+              .font(.system(size: 10))
               .foregroundStyle(.tertiary)
-            Text("\(formatTokens(mainInput)) in / \(formatTokens(mainOutput)) out")
-              .font(.system(size: 10).monospacedDigit())
-              .foregroundStyle(.tertiary)
+              .lineLimit(2)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 3) {
+              Text(String(format: "$%.2f", mainCost))
+                .font(.title3.monospacedDigit())
+                .fontWeight(.bold)
+                .foregroundStyle(.blue)
+              Text(String(format: "%.0f%% of total", mainPct * 100))
+                .font(.system(size: 11).monospacedDigit())
+                .foregroundStyle(.secondary)
+              Text("\(formatTokens(mainTokens)) tokens")
+                .font(.footnote.monospacedDigit())
+                .foregroundStyle(.tertiary)
+              Text("\(formatTokens(mainInput)) in / \(formatTokens(mainOutput)) out")
+                .font(.system(size: 10).monospacedDigit())
+                .foregroundStyle(.tertiary)
+            }
           }
+          .padding(14)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .background(Color.blue.opacity(0.04))
+          .clipShape(RoundedRectangle(cornerRadius: 10))
+          .overlay(
+            RoundedRectangle(cornerRadius: 10)
+              .stroke(Color.blue.opacity(0.15), lineWidth: 1)
+          )
+
+          // Worker card
+          VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+              Image(systemName: "bolt.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(.orange)
+              Text("Workers")
+                .font(.system(size: 13, weight: .semibold))
+            }
+            Text("Task-runner sub-agents, code & research")
+              .font(.system(size: 10))
+              .foregroundStyle(.tertiary)
+              .lineLimit(2)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 3) {
+              Text(String(format: "$%.2f", workerCost))
+                .font(.title3.monospacedDigit())
+                .fontWeight(.bold)
+                .foregroundStyle(.orange)
+              Text(String(format: "%.0f%% of total", workerPct * 100))
+                .font(.system(size: 11).monospacedDigit())
+                .foregroundStyle(.secondary)
+              Text("\(formatTokens(workerTokens)) tokens")
+                .font(.footnote.monospacedDigit())
+                .foregroundStyle(.tertiary)
+              Text("\(formatTokens(workerInput)) in / \(formatTokens(workerOutput)) out")
+                .font(.system(size: 10).monospacedDigit())
+                .foregroundStyle(.tertiary)
+            }
+          }
+          .padding(14)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .background(Color.orange.opacity(0.04))
+          .clipShape(RoundedRectangle(cornerRadius: 10))
+          .overlay(
+            RoundedRectangle(cornerRadius: 10)
+              .stroke(Color.orange.opacity(0.15), lineWidth: 1)
+          )
         }
       } else {
         Text("No usage data yet")
