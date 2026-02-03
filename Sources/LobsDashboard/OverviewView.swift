@@ -1863,7 +1863,7 @@ struct WorkerStatusCard: View {
               }
             }
           }
-        } else {"}
+        } else {
           // Idle state: show completion summary if available
           HStack(spacing: 12) {
             if let completed = status.tasksCompleted, completed > 0 {
