@@ -110,6 +110,8 @@ final class AppViewModel: ObservableObject {
   @Published var dashboardCommitsBehind: Int = 0
   /// True when local HEAD is ahead of the built commit (pulled but not compiled).
   @Published var dashboardNeedsRebuild: Bool = false
+  /// One-line summaries of pending update commits (for display in popover).
+  @Published var dashboardUpdateCommits: [String] = []
 
   // Kanban UX
   @Published var searchText: String = ""
@@ -406,11 +408,33 @@ final class AppViewModel: ObservableObject {
         // Total commits that need attention = behind remote + ahead of build (pulled but uncompiled)
         let totalBehind = behindRemote + aheadOfBuild
 
+        // Fetch one-line commit summaries for the pending updates
+        var commits: [String] = []
+        if needsRebuild && !built.isEmpty {
+          let logResult = try await Git.runAsync(
+            ["log", "--oneline", "\(built)..HEAD"], cwd: dashURL
+          )
+          if logResult.ok {
+            commits += logResult.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+              .split(separator: "\n").map(String.init)
+          }
+        }
+        if behindRemote > 0 {
+          let logResult = try await Git.runAsync(
+            ["log", "--oneline", "HEAD..origin/main"], cwd: dashURL
+          )
+          if logResult.ok {
+            commits += logResult.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+              .split(separator: "\n").map(String.init)
+          }
+        }
+
         self.dashboardLocalCommit = localHash
         self.dashboardRemoteCommit = remoteHash
         self.dashboardCommitsBehind = totalBehind
         self.dashboardUpdateAvailable = totalBehind > 0
         self.dashboardNeedsRebuild = needsRebuild && behindRemote == 0
+        self.dashboardUpdateCommits = commits
       } catch {
         print("[update-check] failed: \(error)")
       }

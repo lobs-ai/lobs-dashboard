@@ -59,6 +59,7 @@ struct ContentView: View {
   @State private var showHelp = false
   @State private var showTextDump = false
   @State private var showTextDumpResults = false
+  @State private var showUpdatePopover = false
 
   var body: some View {
     ZStack(alignment: .top) {
@@ -444,7 +445,8 @@ private struct ToolbarArea: View {
       // Update available indicator
       if vm.dashboardUpdateAvailable {
         Button {
-          vm.checkForDashboardUpdate() // Re-check on tap
+          showUpdatePopover.toggle()
+          vm.checkForDashboardUpdate() // Refresh data when opened
         } label: {
           HStack(spacing: 4) {
             Image(systemName: vm.dashboardNeedsRebuild ? "hammer.circle.fill" : "arrow.down.circle.fill")
@@ -462,9 +464,44 @@ private struct ToolbarArea: View {
           .clipShape(Capsule())
         }
         .buttonStyle(.plain)
-        .help(vm.dashboardNeedsRebuild
-          ? "You've pulled \(vm.dashboardCommitsBehind) new commit\(vm.dashboardCommitsBehind == 1 ? "" : "s") but haven't recompiled. Run `swift build && swift run` to update.\nBuilt: \(BuildInfo.builtCommit.prefix(7)) → HEAD: \(vm.dashboardLocalCommit)"
-          : "lobs-dashboard has \(vm.dashboardCommitsBehind) new commit\(vm.dashboardCommitsBehind == 1 ? "" : "s") on origin/main. Pull & rebuild to update.\nLocal: \(vm.dashboardLocalCommit) → Remote: \(vm.dashboardRemoteCommit)")
+        .popover(isPresented: $showUpdatePopover, arrowEdge: .bottom) {
+          VStack(alignment: .leading, spacing: 8) {
+            Text(vm.dashboardNeedsRebuild
+              ? "Pulled but not compiled"
+              : "New commits on origin/main")
+              .font(.system(size: 12, weight: .semibold))
+              .foregroundStyle(.secondary)
+
+            if vm.dashboardUpdateCommits.isEmpty {
+              Text("Loading…")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+            } else {
+              ForEach(vm.dashboardUpdateCommits, id: \.self) { commit in
+                HStack(alignment: .top, spacing: 6) {
+                  // Short hash (first 7 chars)
+                  let parts = commit.split(separator: " ", maxSplits: 1)
+                  Text(String(parts.first ?? ""))
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                  Text(String(parts.count > 1 ? parts[1] : ""))
+                    .font(.system(size: 11))
+                    .lineLimit(2)
+                }
+              }
+            }
+
+            Divider()
+
+            Text(vm.dashboardNeedsRebuild
+              ? "Run `./scripts/build.sh && swift run` to update."
+              : "Run `git pull` then `./scripts/build.sh && swift run`.")
+              .font(.system(size: 10))
+              .foregroundStyle(.tertiary)
+          }
+          .padding(12)
+          .frame(minWidth: 280, maxWidth: 400)
+        }
       }
 
       Spacer()
