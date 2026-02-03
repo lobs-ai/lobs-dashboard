@@ -59,12 +59,17 @@ struct ResearchDocView: View {
     }
     .onAppear {
       editContent = vm.researchDocContent
+      ensureDeliverableSelectedIfNeeded()
     }
     .onChange(of: vm.researchDocContent) { newValue in
       // Sync from external changes (git pull) only if significantly different
       if editContent != newValue && !isEditing {
         editContent = newValue
+        ensureDeliverableSelectedIfNeeded()
       }
+    }
+    .onChange(of: vm.researchDeliverables.count) { _ in
+      ensureDeliverableSelectedIfNeeded()
     }
     .sheet(isPresented: $showAddSource) {
       AddSourceSheet(vm: vm)
@@ -374,6 +379,18 @@ struct ResearchDocView: View {
 
   @State private var selectedDeliverable: ResearchDeliverable? = nil
 
+  private var docIsEmpty: Bool {
+    editContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  }
+
+  private func ensureDeliverableSelectedIfNeeded() {
+    guard docIsEmpty else { return }
+    guard selectedDeliverable == nil else { return }
+    if let first = vm.researchDeliverables.first {
+      selectedDeliverable = first
+    }
+  }
+
   private var deliverablesSection: some View {
     VStack(alignment: .leading, spacing: 6) {
       HStack {
@@ -389,6 +406,7 @@ struct ResearchDocView: View {
       ForEach(vm.researchDeliverables) { doc in
         Button {
           selectedDeliverable = doc
+          isEditing = false
         } label: {
           HStack(spacing: 6) {
             Image(systemName: "doc.text")
@@ -419,9 +437,6 @@ struct ResearchDocView: View {
     .padding(10)
     .background(Color.blue.opacity(0.06))
     .clipShape(RoundedRectangle(cornerRadius: 8))
-    .sheet(item: $selectedDeliverable) { doc in
-      DeliverableViewer(deliverable: doc)
-    }
   }
 
   // MARK: - Document Editor
@@ -485,6 +500,9 @@ struct ResearchDocView: View {
           .onChange(of: editContent) { _ in
             scheduleSave()
           }
+      } else if docIsEmpty, let deliverable = selectedDeliverable {
+        // If doc.md is empty/missing but we have deliverables, show those directly.
+        DeliverableInlineViewer(deliverable: deliverable)
       } else {
         // Preview (rendered markdown with collapsible sections)
         ScrollViewReader { proxy in
@@ -1130,17 +1148,16 @@ private struct AskLobsResearchSheet: View {
 
 // MARK: - Deliverable Viewer
 
-private struct DeliverableViewer: View {
+private struct DeliverableInlineViewer: View {
   let deliverable: ResearchDeliverable
-  @Environment(\.dismiss) private var dismiss
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      // Header
+      // Header (inline)
       HStack {
         VStack(alignment: .leading, spacing: 4) {
           Text(deliverable.title)
-            .font(.title3)
+            .font(.title2)
             .fontWeight(.bold)
           HStack(spacing: 8) {
             Text(deliverable.filename)
@@ -1165,23 +1182,18 @@ private struct DeliverableViewer: View {
         }
         .buttonStyle(.plain)
         .help("Copy to clipboard")
-
-        Button("Done") { dismiss() }
-          .keyboardShortcut(.cancelAction)
       }
       .padding(.horizontal, 20)
       .padding(.vertical, 14)
 
       Divider()
 
-      // Content
       ScrollView {
         MarkdownWebView(markdown: deliverable.content)
           .frame(maxWidth: .infinity, minHeight: 400)
           .padding(20)
       }
     }
-    .frame(width: 700, height: 600)
   }
 }
 
