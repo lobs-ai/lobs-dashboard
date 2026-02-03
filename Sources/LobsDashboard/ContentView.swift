@@ -61,6 +61,7 @@ struct ContentView: View {
   @State private var showTextDumpResults = false
   @State private var showUpdatePopover = false
   @State private var showAIUsage = false
+  @State private var requestSearchFocus = false
 
   var body: some View {
     ZStack(alignment: .top) {
@@ -80,7 +81,8 @@ struct ContentView: View {
           showHelp: $showHelp,
           showTextDump: $showTextDump,
           showTextDumpResults: $showTextDumpResults,
-          showUpdatePopover: $showUpdatePopover
+          showUpdatePopover: $showUpdatePopover,
+          requestSearchFocus: $requestSearchFocus
         )
 
         StatsBar(vm: vm)
@@ -317,12 +319,28 @@ struct ContentView: View {
         onPrevTask: { vm.selectPreviousTask() },
         onNextColumn: { vm.selectNextColumn() },
         onPrevColumn: { vm.selectPreviousColumn() },
-        onSearch: { /* Focus is handled by ⌘F via toolbar */ },
+        onSearch: {
+          // ⌘K: focus task search field
+          vm.showOverview = false
+          requestSearchFocus = true
+        },
         onHelp: { withAnimation(.easeInOut(duration: 0.25)) { showHelp = true } },
+        onInbox: { withAnimation(.easeInOut(duration: 0.25)) { showInbox = true } },
+        onProjectSwitch: { index in
+          let projects = vm.sortedActiveProjects
+          if index == 0 {
+            // ⌘0 → Overview
+            vm.showOverview = true
+          } else if index <= projects.count {
+            vm.selectedProjectId = projects[index - 1].id
+            vm.showOverview = false
+          }
+        },
         onEscape: {
+          if showAIUsage { withAnimation(.easeInOut(duration: 0.25)) { showAIUsage = false }; return true }
           if showInbox { withAnimation(.easeInOut(duration: 0.25)) { showInbox = false }; return true }
           if showSettings { showSettings = false; return true }
-          if showHelp { showHelp = false; return true }
+          if showHelp { withAnimation(.easeInOut(duration: 0.25)) { showHelp = false }; return true }
           if vm.isMultiSelectActive { withAnimation { vm.clearMultiSelect() }; return true }
           return false
         },
@@ -342,6 +360,8 @@ private struct KeyboardShortcutReceiver: View {
   var onPrevColumn: (() -> Void)? = nil
   let onSearch: () -> Void
   var onHelp: (() -> Void)? = nil
+  var onInbox: (() -> Void)? = nil
+  var onProjectSwitch: ((Int) -> Void)? = nil
   var onEscape: (() -> Bool)? = nil
 
   var body: some View {
@@ -358,12 +378,20 @@ private struct KeyboardShortcutReceiver: View {
         .keyboardShortcut("/", modifiers: .command)
         .opacity(0)
 
+      Button("") { onInbox?() }
+        .keyboardShortcut("i", modifiers: .command)
+        .opacity(0)
+
+      Button("") { onSearch() }
+        .keyboardShortcut("k", modifiers: .command)
+        .opacity(0)
+
     }
     .frame(width: 0, height: 0)
     .allowsHitTesting(false)
     #if os(macOS)
     .background(
-      ArrowKeyMonitor(onDown: onNextTask, onUp: onPrevTask, onRight: onNextColumn, onLeft: onPrevColumn, onEscape: onEscape)
+      ArrowKeyMonitor(onDown: onNextTask, onUp: onPrevTask, onRight: onNextColumn, onLeft: onPrevColumn, onEscape: onEscape, onProjectSwitch: onProjectSwitch)
     )
     #endif
   }
@@ -378,22 +406,35 @@ private struct ArrowKeyMonitor: NSViewRepresentable {
   var onRight: (() -> Void)? = nil
   var onLeft: (() -> Void)? = nil
   var onEscape: (() -> Bool)? = nil
+  var onProjectSwitch: ((Int) -> Void)? = nil
 
   func makeNSView(context: Context) -> NSView {
     let view = NSView()
     context.coordinator.onEscape = onEscape
     context.coordinator.onRight = onRight
     context.coordinator.onLeft = onLeft
+    context.coordinator.onProjectSwitch = onProjectSwitch
     context.coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
       // Escape key — close overlays first (works even when text fields are focused)
       if event.keyCode == 53 { // escape
         if let handler = context.coordinator.onEscape {
-          // Already on main thread — calling DispatchQueue.main.sync here would deadlock
           let handled = handler()
           if handled { return nil }
         }
         return event
       }
+
+      // ⌘0-9 — project switching (works even in text fields)
+      if event.modifierFlags.contains(.command),
+         let chars = event.charactersIgnoringModifiers,
+         let digit = chars.first,
+         digit >= "0" && digit <= "9",
+         let handler = context.coordinator.onProjectSwitch {
+        let index = Int(String(digit))!
+        DispatchQueue.main.async { handler(index) }
+        return nil
+      }
+
       // Let text fields handle their own key events
       if let responder = NSApp.keyWindow?.firstResponder,
          responder is NSTextView || responder is NSTextField {
@@ -429,6 +470,7 @@ private struct ArrowKeyMonitor: NSViewRepresentable {
     context.coordinator.onEscape = onEscape
     context.coordinator.onRight = onRight
     context.coordinator.onLeft = onLeft
+    context.coordinator.onProjectSwitch = onProjectSwitch
   }
 
   static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
@@ -444,6 +486,7 @@ private struct ArrowKeyMonitor: NSViewRepresentable {
     var onEscape: (() -> Bool)?
     var onRight: (() -> Void)?
     var onLeft: (() -> Void)?
+    var onProjectSwitch: ((Int) -> Void)?
   }
 }
 #endif
@@ -464,6 +507,10 @@ private struct ToolbarArea: View {
   @Binding var showTextDump: Bool
   @Binding var showTextDumpResults: Bool
   @Binding var showUpdatePopover: Bool
+  @Binding var requestSearchFocus: Bool
+
+  private enum FocusField { case search }
+  @FocusState private var focusField: FocusField?
 
   var body: some View {
     HStack(spacing: 12) {
@@ -551,14 +598,20 @@ private struct ToolbarArea: View {
           Image(systemName: "magnifyingglass")
             .foregroundStyle(.secondary)
             .font(.footnote)
-          TextField("Search tasks… (⌘F)", text: $vm.searchText)
+          TextField("Search tasks… (⌘F / ⌘K)", text: $vm.searchText)
             .textFieldStyle(.plain)
+            .focused($focusField, equals: .search)
             .frame(width: 180)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(Theme.subtle)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .onChange(of: requestSearchFocus) { shouldFocus in
+          guard shouldFocus else { return }
+          focusField = .search
+          requestSearchFocus = false
+        }
       }
 
       // Filter (hidden on home/overview)
