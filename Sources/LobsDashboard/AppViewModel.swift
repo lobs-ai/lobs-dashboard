@@ -172,7 +172,6 @@ final class AppViewModel: ObservableObject {
     didSet { settings.set(autoRefreshIntervalSeconds, forKey: autoRefreshIntervalSecondsKey) }
   }
   private var refreshTimer: Timer?
-  private var refreshTickCount: Int = 0
 
   init() {
     repoPath = settings.string(forKey: repoPathKey) ?? ""
@@ -246,11 +245,6 @@ final class AppViewModel: ObservableObject {
       Task { @MainActor [weak self] in
         guard let self else { return }
         self.silentReload()
-        // Check for dashboard updates every ~10 ticks (~5 min at 30s interval)
-        self.refreshTickCount += 1
-        if self.refreshTickCount % 10 == 0 {
-          self.checkForDashboardUpdate()
-        }
       }
     }
   }
@@ -320,6 +314,9 @@ final class AppViewModel: ObservableObject {
         loadTrackerData(store: store)
         loadInboxItems(store: store)
         loadWorkerStatus(store: store)
+
+        // Check for dashboard source updates on every sync
+        checkForDashboardUpdate()
       } catch {
         // Silent — don't overwrite errors from user actions.
       }
