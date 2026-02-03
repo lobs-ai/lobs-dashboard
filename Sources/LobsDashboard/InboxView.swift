@@ -501,78 +501,73 @@ private struct DocumentViewer: View {
 
       Divider()
 
-      // Document content + thread
+      // Message stream — original doc is the first message, thread follows naturally
       ScrollViewReader { proxy in
         ScrollView {
-          VStack(alignment: .leading, spacing: 0) {
-            // Gmail-style: keep the original doc + the replies in one vertical thread.
-            // The original message can be collapsed to focus on the conversation.
-            if let thread = thread, !thread.messages.isEmpty {
-              VStack(alignment: .leading, spacing: 10) {
+          VStack(alignment: .leading, spacing: 6) {
+            // Original document as the first "message" from Lobs
+            HStack(alignment: .top, spacing: 8) {
+              ZStack {
+                Circle()
+                  .fill(Color.purple.opacity(0.15))
+                  .frame(width: 28, height: 28)
+                Text("L")
+                  .font(.system(size: 13, weight: .bold))
+                  .foregroundStyle(.purple)
+              }
+
+              VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                  Image(systemName: "bubble.left.and.bubble.right")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                  Text("Conversation")
-                    .font(.callout)
-                    .fontWeight(.semibold)
-                  Text("(\(thread.messages.count))")
-                    .font(.footnote)
+                  Text("Lobs")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.purple)
+                  Text(item.modifiedAt.formatted(date: .abbreviated, time: .shortened))
+                    .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 16)
 
-                // Original message — shown at full natural height so content
-                // isn't cramped. Scroll down past it to see/add responses.
-                VStack(alignment: .leading, spacing: 4) {
-                  HStack(spacing: 6) {
-                    Image(systemName: "doc.text")
-                      .font(.footnote)
-                      .foregroundStyle(.secondary)
-                    Text("Original message")
-                      .font(.system(size: 12, weight: .semibold))
-                      .foregroundStyle(.secondary)
-
-                    Spacer()
-
-                    Button {
-                      showOriginalMessage.toggle()
-                    } label: {
-                      Text(showOriginalMessage ? "Hide" : "Show")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(ITheme.subtle)
-                        .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                  }
-
-                  if showOriginalMessage {
-                    // WKWebView has no intrinsic height in SwiftUI — give it a
-                    // minimum height so the original message is actually visible.
-                    MarkdownWebView(markdown: item.content)
-                      .frame(maxWidth: .infinity, minHeight: 240)
-                      .padding(.top, 4)
-                  }
+                if showOriginalMessage {
+                  MarkdownWebView(markdown: item.content)
+                    .frame(maxWidth: .infinity, minHeight: 200)
+                } else {
+                  Text(item.summary)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
                 }
-                .padding(.horizontal, 24)
 
-                ForEach(thread.messages) { msg in
-                  ThreadMessageBubble(message: msg, docId: item.id, vm: vm)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 3)
+                Button {
+                  showOriginalMessage.toggle()
+                } label: {
+                  Text(showOriginalMessage ? "Collapse" : "Show full message")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
                 }
+                .buttonStyle(.plain)
               }
-              .id("thread-bottom")
-            } else {
-              // No thread yet — show the doc as the primary content.
-              MarkdownWebView(markdown: item.content)
-                .frame(maxWidth: .infinity, minHeight: 200)
-                .padding(.horizontal, 4)
+
+              Spacer()
             }
+            .padding(10)
+            .background(
+              RoundedRectangle(cornerRadius: 10)
+                .fill(Color.purple.opacity(0.05))
+            )
+            .padding(.horizontal, 24)
+            .padding(.top, 16)
+
+            // Thread messages flow naturally after
+            if let thread = thread {
+              ForEach(thread.messages) { msg in
+                ThreadMessageBubble(message: msg, docId: item.id, vm: vm)
+                  .padding(.horizontal, 24)
+                  .padding(.vertical, 3)
+              }
+            }
+
+            Color.clear
+              .frame(height: 1)
+              .id("thread-bottom")
           }
         }
         .onChange(of: thread?.messages.count) { _ in
