@@ -80,6 +80,9 @@ final class AppViewModel: ObservableObject {
 
   // Projects
   @Published var projects: [Project] = []
+  /// Per-project last git commit time (computed from lobs-control repo history).
+  @Published var projectLastCommitAt: [String: Date] = [:]
+
   @Published var selectedProjectId: String = "default" {
     didSet {
       settings.set(selectedProjectId, forKey: selectedProjectIdKey)
@@ -501,10 +504,69 @@ final class AppViewModel: ObservableObject {
         loadTextDumps(store: store)
         refreshWorkerRequestPending()
 
+        refreshProjectLastCommitAt()
+
       } catch {
         lastError = String(describing: error)
       }
       isGitBusy = false
+    }
+  }
+
+  /// Refresh per-project last git commit times by querying the lobs-control git history for
+  /// files that belong to each project (project folder + its task JSON files).
+  func refreshProjectLastCommitAt() {
+    guard let repoURL else { return }
+
+    let projectsSnapshot = projects
+    let tasksSnapshot = tasks
+
+    Task.detached(priority: .utility) {
+      let fm = FileManager.default
+      var out: [String: Date] = [:]
+
+      for project in projectsSnapshot {
+        let pid = project.id
+        let projectTasks = tasksSnapshot.filter { ($0.projectId ?? "default") == pid }
+
+        var maxCT: Int64? = nil
+
+        // Include the per-project folder (research docs, etc) if it exists.
+        let projectDirRel = "state/projects/\(pid)"
+        let projectDirAbs = repoURL.appendingPathComponent(projectDirRel).path
+        var candidatePaths: [String] = []
+        if fm.fileExists(atPath: projectDirAbs) {
+          candidatePaths.append(projectDirRel)
+        }
+
+        // Include each task JSON file for the project.
+        candidatePaths += projectTasks.map { "state/tasks/\($0.id).json" }
+
+        // Always include projects.json since it contains the project metadata (title, notes, etc).
+        candidatePaths.append("state/projects.json")
+
+        for rel in candidatePaths {
+          do {
+            let res = try await Git.runAsync(["log", "-1", "--format=%ct", "--", rel], cwd: repoURL)
+            guard res.ok else { continue }
+            let s = res.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let ct = Int64(s) else { continue }
+            if maxCT == nil || ct > maxCT! {
+              maxCT = ct
+            }
+          } catch {
+            continue
+          }
+        }
+
+        if let maxCT {
+          out[pid] = Date(timeIntervalSince1970: TimeInterval(maxCT))
+        }
+      }
+
+      await MainActor.run {
+        self.projectLastCommitAt = out
+      }
     }
   }
 

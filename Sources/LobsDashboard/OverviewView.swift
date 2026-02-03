@@ -232,6 +232,7 @@ struct OverviewView: View {
               ProjectCard(
                 project: project,
                 tasks: allTasks.filter { ($0.projectId ?? "default") == project.id },
+                lastCommitAt: vm.projectLastCommitAt[project.id],
                 researchRequestCount: researchRequestCountsByProject[project.id] ?? 0,
                 totalResearchRequestCount: totalResearchRequestCountsByProject[project.id] ?? 0,
                 researchDeliverableCount: researchDeliverableCountsByProject[project.id] ?? 0,
@@ -506,6 +507,7 @@ private struct StatCard: View {
 private struct ProjectCard: View {
   let project: Project
   let tasks: [DashboardTask]
+  var lastCommitAt: Date? = nil
   var researchRequestCount: Int = 0
   var totalResearchRequestCount: Int = 0
   var researchDeliverableCount: Int = 0
@@ -522,6 +524,53 @@ private struct ProjectCard: View {
 
   private var lastActivity: Date? {
     tasks.map(\.updatedAt).max()
+  }
+
+  // Mini health metrics (7-day window)
+  private var createdLast7Days: Int {
+    let cutoff = Date().addingTimeInterval(-7 * 86400)
+    return tasks.filter { $0.createdAt >= cutoff }.count
+  }
+
+  private var completedLast7Days: Int {
+    let cutoff = Date().addingTimeInterval(-7 * 86400)
+    return tasks.filter { t in
+      guard t.status == .completed else { return false }
+      let finished = t.finishedAt ?? t.updatedAt
+      return finished >= cutoff
+    }.count
+  }
+
+  private var avgCompletionTime: TimeInterval? {
+    let durations: [TimeInterval] = tasks.compactMap { t in
+      guard t.status == .completed else { return nil }
+      let finished = t.finishedAt ?? t.updatedAt
+      let started = t.startedAt ?? t.createdAt
+      let dt = finished.timeIntervalSince(started)
+      guard dt > 0 else { return nil }
+      return dt
+    }
+    guard !durations.isEmpty else { return nil }
+    return durations.reduce(0, +) / Double(durations.count)
+  }
+
+  private var blockedRatio: Double {
+    let denom = Double(tasks.filter { $0.status != .completed }.count)
+    guard denom > 0 else { return 0 }
+    return Double(blockedCount) / denom
+  }
+
+  private func formatDuration(_ seconds: TimeInterval) -> String {
+    if seconds >= 2 * 86400 {
+      return String(format: "%.1fd", seconds / 86400)
+    }
+    if seconds >= 2 * 3600 {
+      return String(format: "%.1fh", seconds / 3600)
+    }
+    if seconds >= 120 {
+      return "\(Int(seconds / 60))m"
+    }
+    return "<1m"
   }
 
   /// Health indicator based on blocked ratio and staleness.
@@ -633,6 +682,37 @@ private struct ProjectCard: View {
             Text("\(totalCount) total")
               .font(.footnote)
               .foregroundStyle(.tertiary)
+          }
+        }
+
+        // Mini dashboard
+        if project.resolvedType != .research || lastCommitAt != nil {
+          VStack(alignment: .leading, spacing: 6) {
+            if project.resolvedType != .research {
+              HStack(spacing: 12) {
+                Text("In 7d: \(createdLast7Days)")
+                Text("Out 7d: \(completedLast7Days)")
+                if let avgCompletionTime {
+                  Text("Avg: \(formatDuration(avgCompletionTime))")
+                }
+                Text(String(format: "Blocked: %.0f%%", blockedRatio * 100))
+                Spacer()
+              }
+              .font(.footnote)
+              .foregroundStyle(.tertiary)
+              .lineLimit(1)
+            }
+
+            if let git = lastCommitAt {
+              HStack(spacing: 4) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                  .font(.system(size: 11))
+                  .foregroundStyle(.tertiary)
+                Text("Git: \(relativeTime(git))")
+                  .font(.footnote)
+                  .foregroundStyle(.tertiary)
+              }
+            }
           }
         }
 
