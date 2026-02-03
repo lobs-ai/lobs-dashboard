@@ -139,6 +139,9 @@ final class AppViewModel: ObservableObject {
   @Published var ownerFilter: String = "all" {
     didSet { settings.set(ownerFilter, forKey: ownerFilterKey) }
   }
+
+  /// Filter tasks by shape/type. nil = show all.
+  @Published var shapeFilter: TaskShape? = nil
   @Published var wipLimitActive: Int = 6 {
     didSet { settings.set(wipLimitActive, forKey: wipLimitActiveKey) }
   }
@@ -2347,6 +2350,21 @@ final class AppViewModel: ObservableObject {
     }
   }
 
+  func setTaskShape(taskId: String, shape: TaskShape?, autoPush: Bool) {
+    optimisticUpdate(taskId: taskId, localMutation: {
+      $0.shape = shape
+      $0.updatedAt = Date()
+    }) { repoURL in
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.setTaskField(taskId: taskId, field: "shape", value: shape?.rawValue)
+      try await self.asyncCommitAndMaybePush(
+        repoURL: repoURL,
+        message: "Lobs: set shape on \(taskId)",
+        autoPush: autoPush
+      )
+    }
+  }
+
   // MARK: - Task Dependencies
 
   func addBlocker(taskId: String, blockerTaskId: String, autoPush: Bool) {
@@ -2779,6 +2797,11 @@ final class AppViewModel: ObservableObject {
       out = out.filter { if case .other = $0.owner { return true } else { return false } }
     default:
       break
+    }
+
+    // Shape filter
+    if let shapeFilter {
+      out = out.filter { $0.shape == shapeFilter }
     }
 
     // Pinned tasks float to top within their column grouping

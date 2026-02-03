@@ -555,6 +555,28 @@ private struct ToolbarArea: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
+
+        // Shape filter chips
+        HStack(spacing: 4) {
+          ForEach(TaskShape.allCases, id: \.self) { shape in
+            Button {
+              vm.shapeFilter = vm.shapeFilter == shape ? nil : shape
+            } label: {
+              HStack(spacing: 3) {
+                Text(shapeIcon(shape))
+                  .font(.system(size: 11))
+                Text(shapeLabel(shape))
+                  .font(.system(size: 11, weight: .medium))
+              }
+              .padding(.horizontal, 8)
+              .padding(.vertical, 4)
+              .background(vm.shapeFilter == shape ? shapeColor(shape).opacity(0.18) : Theme.subtle)
+              .foregroundStyle(vm.shapeFilter == shape ? shapeColor(shape) : .secondary)
+              .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+          }
+        }
       }
 
       // Home button
@@ -1619,6 +1641,10 @@ private struct TaskTile: View {
       HStack(spacing: 5) {
         MiniTag(text: task.owner.rawValue, color: ownerColor)
 
+        if let shape = task.shape {
+          MiniTag(text: "\(shapeIcon(shape)) \(shapeLabel(shape))", color: shapeColor(shape))
+        }
+
         if let ws = task.workState {
           MiniTag(text: workStateLabel(ws), color: workStateColor(ws))
         }
@@ -1872,6 +1898,45 @@ private struct TaskDetailPopover: View {
             }
           }
 
+          // Shape picker
+          HStack(spacing: 4) {
+            Text("Shape:")
+              .font(.system(size: 12))
+              .foregroundStyle(.secondary)
+            Menu {
+              Button {
+                vm.setTaskShape(taskId: task.id, shape: nil, autoPush: autoPush)
+              } label: {
+                Label("None", systemImage: task.shape == nil ? "checkmark" : "")
+              }
+              Divider()
+              ForEach(TaskShape.allCases, id: \.self) { shape in
+                Button {
+                  vm.setTaskShape(taskId: task.id, shape: shape, autoPush: autoPush)
+                } label: {
+                  Label("\(shapeIcon(shape)) \(shapeLabel(shape))", systemImage: task.shape == shape ? "checkmark" : "")
+                }
+              }
+            } label: {
+              HStack(spacing: 3) {
+                if let shape = task.shape {
+                  Text("\(shapeIcon(shape)) \(shapeLabel(shape))")
+                    .font(.system(size: 11, weight: .medium))
+                } else {
+                  Text("Set shape…")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                }
+              }
+              .padding(.horizontal, 8)
+              .padding(.vertical, 3)
+              .background(Theme.subtle)
+              .clipShape(Capsule())
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+          }
+
           VStack(alignment: .leading, spacing: 6) {
             HStack {
               Text("Notes")
@@ -2092,6 +2157,38 @@ private struct TaskDetailPopover: View {
 
     autosaveWorkItem = item
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: item)
+  }
+}
+
+// MARK: - Task Shape Helpers
+
+private func shapeIcon(_ shape: TaskShape) -> String {
+  switch shape {
+  case .deep: return "🧠"
+  case .shallow: return "⚡"
+  case .creative: return "🎨"
+  case .waiting: return "⏳"
+  case .admin: return "📋"
+  }
+}
+
+private func shapeLabel(_ shape: TaskShape) -> String {
+  switch shape {
+  case .deep: return "Deep"
+  case .shallow: return "Quick"
+  case .creative: return "Creative"
+  case .waiting: return "Waiting"
+  case .admin: return "Admin"
+  }
+}
+
+private func shapeColor(_ shape: TaskShape) -> Color {
+  switch shape {
+  case .deep: return .purple
+  case .shallow: return .green
+  case .creative: return .orange
+  case .waiting: return .yellow
+  case .admin: return .blue
   }
 }
 

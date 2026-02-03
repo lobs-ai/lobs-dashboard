@@ -277,6 +277,23 @@ final class LobsControlStore {
     }
   }
 
+  func setTaskField(taskId: String, field: String, value: String?) throws {
+    if FileManager.default.fileExists(atPath: tasksDirURL.path) {
+      let url = taskFileURL(taskId: taskId)
+      guard FileManager.default.fileExists(atPath: url.path) else { return }
+      let data = try Data(contentsOf: url)
+      var dict = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+      if let value {
+        dict[field] = value
+      } else {
+        dict.removeValue(forKey: field)
+      }
+      dict["updatedAt"] = ISO8601DateFormatter().string(from: Date())
+      let out = try JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys])
+      try out.write(to: url, options: [.atomic])
+    }
+  }
+
   func setTitleAndNotes(taskId: String, title: String, notes: String?) throws {
     let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
     let cleanNotes = notes?.trimmingCharacters(in: .whitespacesAndNewlines)

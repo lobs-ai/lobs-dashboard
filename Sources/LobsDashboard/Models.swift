@@ -134,6 +134,15 @@ enum TaskOwner: Hashable, Codable {
   }
 }
 
+/// Task shape/type classification for filtering by work mode.
+enum TaskShape: String, Codable, Hashable, CaseIterable {
+  case deep = "deep"           // Deep work — focused, uninterrupted effort
+  case shallow = "shallow"     // Quick tasks, emails, admin
+  case creative = "creative"   // Design, brainstorming, open-ended
+  case waiting = "waiting"     // Blocked on someone/something external
+  case admin = "admin"         // Organizational, process, logistics
+}
+
 struct DashboardTask: Codable, Identifiable, Hashable {
   var id: String
   var title: String
@@ -175,6 +184,9 @@ struct DashboardTask: Codable, Identifiable, Hashable {
 
   /// Whether this task is pinned/starred (floats to top of its column).
   var pinned: Bool?
+
+  /// Work shape/type for filtering (deep work, shallow, creative, admin, waiting).
+  var shape: TaskShape?
 }
 
 enum ProjectType: String, Codable, CaseIterable, Hashable {
