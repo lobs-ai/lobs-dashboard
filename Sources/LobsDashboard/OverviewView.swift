@@ -382,15 +382,13 @@ private struct StatsRow: View {
 
   private var weeklySpend: Double {
     weeklyRuns.reduce(0.0) { total, run in
-      // Prefer actual per-task costs when available
-      let actualCost = run.taskLog?.compactMap { $0.costUSD }.reduce(0, +) ?? 0
-      return total + (actualCost > 0 ? actualCost : (run.estimatedCostUSD ?? 0))
+      total + (run.totalCostUSD ?? 0)
     }
   }
 
   private var weeklyTokens: Int {
     weeklyRuns.reduce(0) { total, run in
-      total + (run.taskLog?.compactMap { $0.tokens }.reduce(0, +) ?? 0)
+      total + (run.totalTokens ?? 0)
     }
   }
 
@@ -1451,13 +1449,38 @@ private func overviewProjectTypeColor(_ type: ProjectType) -> Color {
 
 // MARK: - Worker Status Card
 
-private struct WorkerStatusCard: View {
+struct WorkerStatusCard: View {
   let status: WorkerStatus
   var history: WorkerHistory? = nil
   var canRequestWorker: Bool = false
   var workerRequested: Bool = false
   var onRequestWorker: (() -> Void)? = nil
   @State private var showHistory = false
+  @State private var showUsageDetail = false
+  @State private var selectedUsagePeriod: UsagePeriod = .allTime
+
+  enum UsagePeriod: String, CaseIterable {
+    case today = "Today"
+    case thisWeek = "This Week"
+    case thisMonth = "This Month"
+    case allTime = "All Time"
+
+    func includes(_ date: Date) -> Bool {
+      let cal = Calendar.current
+      switch self {
+      case .today:
+        return cal.isDateInToday(date)
+      case .thisWeek:
+        let start = cal.dateInterval(of: .weekOfYear, for: Date())?.start ?? Date.distantPast
+        return date >= start
+      case .thisMonth:
+        let start = cal.dateInterval(of: .month, for: Date())?.start ?? Date.distantPast
+        return date >= start
+      case .allTime:
+        return true
+      }
+    }
+  }
 
   private var isActive: Bool { status.active }
 
@@ -1629,52 +1652,76 @@ private struct WorkerStatusCard: View {
       // Project breakdown removed (simplified token tracking)
     }
 
-    // Recent runs history
+    // Recent runs history + usage summary
     if let history = history, !history.runs.isEmpty {
+      let runsWithEnd = history.runs.filter { $0.endedAt != nil }
+      let filteredRuns = runsWithEnd.filter { run in
+        guard let ended = run.endedAt else { return false }
+        return selectedUsagePeriod.includes(ended)
+      }
+      let periodTokens = filteredRuns.reduce(0) { $0 + ($1.totalTokens ?? 0) }
+      let periodSpend = filteredRuns.reduce(0.0) { $0 + ($1.totalCostUSD ?? 0) }
+      let avgTokens = filteredRuns.isEmpty ? 0 : Int(Double(periodTokens) / Double(filteredRuns.count))
+      let avgSpend = filteredRuns.isEmpty ? 0.0 : (periodSpend / Double(filteredRuns.count))
+
       VStack(alignment: .leading, spacing: 0) {
-        Button {
-          withAnimation(.easeInOut(duration: 0.2)) { showHistory.toggle() }
-        } label: {
-          HStack(spacing: 6) {
-            Image(systemName: showHistory ? "chevron.down" : "chevron.right")
-              .font(.system(size: 10, weight: .semibold))
-              .foregroundStyle(.secondary)
-            Text("Recent Runs")
-              .font(.footnote)
-              .fontWeight(.medium)
-              .foregroundStyle(.secondary)
-            let totalRuns = history.runs.count
-            let shownRuns = min(totalRuns, 10)
-            Text(totalRuns > shownRuns ? "(last \\(shownRuns) of \\(totalRuns))" : "(\\(totalRuns))")
-              .font(.footnote)
-              .foregroundStyle(.tertiary)
-
-            Spacer()
-
-            // Token usage summary (per-run totals only)
-            let totalTokens = history.runs.reduce(0) { $0 + ($1.totalTokens ?? 0) }
-            let todayRuns = history.runs.filter { run in
-              guard let ended = run.endedAt else { return false }
-              return Calendar.current.isDateInToday(ended)
+        HStack(spacing: 10) {
+          Button {
+            withAnimation(.easeInOut(duration: 0.2)) { showHistory.toggle() }
+          } label: {
+            HStack(spacing: 6) {
+              Image(systemName: showHistory ? "chevron.down" : "chevron.right")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+              Text("Recent Runs")
+                .font(.footnote)
+                .fontWeight(.medium)
+                .foregroundStyle(.secondary)
             }
-            let todayTokens = todayRuns.reduce(0) { $0 + ($1.totalTokens ?? 0) }
-            if totalTokens > 0 {
-              HStack(spacing: 8) {
-                if todayTokens > 0 {
-                  Text("Today: \(todayTokens) tok")
-                    .font(.system(size: 11, weight: .medium).monospacedDigit())
-                    .foregroundStyle(.orange)
-                }
-                Text("Total: \(totalTokens) tok")
+          }
+          .buttonStyle(.plain)
+
+          Picker("Period", selection: $selectedUsagePeriod) {
+            ForEach(UsagePeriod.allCases, id: \.self) { p in
+              Text(p.rawValue).tag(p)
+            }
+          }
+          .pickerStyle(.segmented)
+          .frame(maxWidth: 260)
+
+          Spacer()
+
+          if periodTokens > 0 {
+            HStack(spacing: 10) {
+              HStack(spacing: 4) {
+                Image(systemName: "cpu")
+                  .font(.system(size: 10))
+                  .foregroundStyle(.purple.opacity(0.8))
+                Text(formatTokenCount(periodTokens))
                   .font(.system(size: 11, weight: .medium).monospacedDigit())
                   .foregroundStyle(.secondary)
               }
+              if periodSpend > 0 {
+                Text("$\(periodSpend, specifier: \"%.2f\")")
+                  .font(.system(size: 11, weight: .medium).monospacedDigit())
+                  .foregroundStyle(.secondary)
+              }
+              Button("Details") { showUsageDetail = true }
+                .font(.system(size: 11, weight: .medium))
+                .buttonStyle(.plain)
             }
           }
-          .padding(.horizontal, 14)
-          .padding(.vertical, 8)
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+
+        if periodTokens > 0, filteredRuns.count > 0 {
+          Text("Avg/run: \(formatTokenCount(avgTokens)) tok, $\(avgSpend, specifier: \"%.2f\")")
+            .font(.system(size: 10).monospacedDigit())
+            .foregroundStyle(.tertiary)
+            .padding(.horizontal, 14)
+            .padding(.bottom, 6)
+        }
 
         if showHistory {
           Divider().padding(.horizontal, 14)
@@ -1695,6 +1742,13 @@ private struct WorkerStatusCard: View {
         RoundedRectangle(cornerRadius: OTheme.cardRadius)
           .stroke(OTheme.border, lineWidth: 0.5)
       )
+      .sheet(isPresented: $showUsageDetail) {
+        WorkerUsageDetailSheet(
+          history: history,
+          period: selectedUsagePeriod
+        )
+        .frame(minWidth: 560, minHeight: 520)
+      }
     }
   }
 }
@@ -1764,8 +1818,19 @@ private struct WorkerHistoryRow: View {
               .foregroundStyle(.tertiary)
           }
 
-          // Total tokens for the run (per-run totals)
-          if let tokens = run.totalTokens, tokens > 0 {
+          // Tokens for the run
+          if let inTok = run.inputTokens, let outTok = run.outputTokens, (inTok + outTok) > 0 {
+            HStack(spacing: 3) {
+              Image(systemName: "arrow.down.right.and.arrow.up.left")
+                .font(.system(size: 9))
+                .foregroundStyle(.purple.opacity(0.7))
+              Text("\(formatTokenCount(inTok))/\(formatTokenCount(outTok))")
+                .font(.system(size: 11, weight: .medium).monospacedDigit())
+                .foregroundStyle(.purple.opacity(0.7))
+            }
+            .frame(width: 90, alignment: .leading)
+            .help("Input/Output tokens")
+          } else if let tokens = run.totalTokens, tokens > 0 {
             HStack(spacing: 2) {
               Image(systemName: "cpu")
                 .font(.system(size: 9))

@@ -511,8 +511,16 @@ struct WorkerHistoryRun: Codable, Identifiable {
   var timeoutReason: String?
   var model: String?
 
+  /// Optional token split (if recorded by the worker).
+  var inputTokens: Int?
+  var outputTokens: Int?
+
   /// Total tokens used in this worker run (optional).
   var totalTokens: Int?
+  /// Optional split of tokens (input/output) when available.
+  var inputTokens: Int?
+  var outputTokens: Int?
+
   /// Total cost (USD) for this worker run (optional).
   var totalCostUSD: Double?
 
