@@ -340,12 +340,12 @@ private struct InboxItemRow: View {
             .font(.callout)
             .fontWeight(item.isRead ? .regular : .semibold)
             .foregroundStyle(.primary)
-            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
 
           Text(item.summary)
             .font(.footnote)
             .foregroundStyle(.secondary)
-            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
 
           HStack(spacing: 8) {
             // Source badge
