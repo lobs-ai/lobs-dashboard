@@ -194,6 +194,8 @@ struct OverviewView: View {
             .background(OTheme.subtle)
             .clipShape(RoundedRectangle(cornerRadius: 8))
           }
+          .buttonStyle(.plain)
+
           Button {
             showDigest = true
           } label: {
@@ -208,8 +210,6 @@ struct OverviewView: View {
             .background(OTheme.subtle)
             .clipShape(RoundedRectangle(cornerRadius: 8))
           }
-          .buttonStyle(.plain)
-
           .buttonStyle(.plain)
 
           Button {
