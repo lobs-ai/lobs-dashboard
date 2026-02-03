@@ -676,16 +676,8 @@ private struct ThreadMessageBubble: View {
             }
           }
         } else {
-          Group {
-            if let md = try? AttributedString(markdown: message.text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
-              Text(md)
-            } else {
-              Text(message.text)
-            }
-          }
-            .font(.system(size: 13))
-            .textSelection(.enabled)
-            .lineSpacing(3)
+          MarkdownWebView(markdown: message.text)
+            .frame(minHeight: isLobs ? 200 : 60)
         }
       }
 
