@@ -285,6 +285,35 @@ struct ResearchRequest: Codable, Identifiable, Hashable {
   var author: String?       // who created the request
   var createdAt: Date
   var updatedAt: Date
+
+  enum CodingKeys: String, CodingKey {
+    case id, projectId, tileId, prompt, status, response, author, createdAt, updatedAt
+  }
+
+  init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    id = try c.decode(String.self, forKey: .id)
+    projectId = try c.decodeIfPresent(String.self, forKey: .projectId) ?? "unknown"
+    tileId = try c.decodeIfPresent(String.self, forKey: .tileId)
+    prompt = try c.decode(String.self, forKey: .prompt)
+    status = try c.decode(ResearchRequestStatus.self, forKey: .status)
+    response = try c.decodeIfPresent(String.self, forKey: .response)
+    author = try c.decodeIfPresent(String.self, forKey: .author)
+    createdAt = try c.decode(Date.self, forKey: .createdAt)
+    updatedAt = try c.decode(Date.self, forKey: .updatedAt)
+  }
+
+  init(id: String, projectId: String, tileId: String? = nil, prompt: String, status: ResearchRequestStatus, response: String? = nil, author: String? = nil, createdAt: Date, updatedAt: Date) {
+    self.id = id
+    self.projectId = projectId
+    self.tileId = tileId
+    self.prompt = prompt
+    self.status = status
+    self.response = response
+    self.author = author
+    self.createdAt = createdAt
+    self.updatedAt = updatedAt
+  }
 }
 
 // MARK: - Research Document (doc-based storage)

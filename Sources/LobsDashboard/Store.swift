@@ -919,7 +919,11 @@ final class LobsControlStore {
     for url in items where url.pathExtension.lowercased() == "json" {
       do {
         let data = try Data(contentsOf: url)
-        let req = try dec.decode(ResearchRequest.self, from: data)
+        var req = try dec.decode(ResearchRequest.self, from: data)
+        // Backfill projectId from directory context when missing from JSON
+        if req.projectId == "unknown" {
+          req.projectId = projectId
+        }
         requests.append(req)
       } catch {
         print("[LobsStore] Skipping request \(url.lastPathComponent): \(error.localizedDescription)")
@@ -1005,7 +1009,10 @@ final class LobsControlStore {
     for url in items where url.pathExtension.lowercased() == "json" {
       do {
         let data = try Data(contentsOf: url)
-        let req = try dec.decode(ResearchRequest.self, from: data)
+        var req = try dec.decode(ResearchRequest.self, from: data)
+        if req.projectId == "unknown" {
+          req.projectId = projectId
+        }
         requests.append(req)
       } catch {
         print("[LobsStore] Skipping tracker request \(url.lastPathComponent): \(error.localizedDescription)")
