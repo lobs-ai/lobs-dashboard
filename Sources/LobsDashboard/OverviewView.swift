@@ -40,6 +40,7 @@ struct OverviewView: View {
 
   @State private var detailTask: DashboardTask? = nil
   @State private var showDetailedStats: Bool = false
+  @State private var showTimeline: Bool = false
   @State private var draggingProjectId: String? = nil
   @State private var showCreateProject: Bool = false
 
@@ -169,6 +170,22 @@ struct OverviewView: View {
               Image(systemName: "chart.line.uptrend.xyaxis")
                 .font(.footnote)
               Text("AI Usage")
+                .font(.footnote)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(OTheme.subtle)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+          }
+          .buttonStyle(.plain)
+
+          Button {
+            showTimeline = true
+          } label: {
+            HStack(spacing: 4) {
+              Image(systemName: "calendar")
+                .font(.footnote)
+              Text("Timeline")
                 .font(.footnote)
             }
             .padding(.horizontal, 10)
@@ -377,6 +394,10 @@ struct OverviewView: View {
     .sheet(item: $detailTask) { task in
       OverviewTaskDetailSheet(task: task, vm: vm)
         .frame(minWidth: 480, minHeight: 500)
+    }
+    .sheet(isPresented: $showTimeline) {
+      TimelineSheetView(tasks: vm.tasks, projects: vm.projects)
+        .frame(minWidth: 900, minHeight: 600)
     }
   }
 }
@@ -2080,6 +2101,167 @@ private func formatTokenCount(_ tokens: Int) -> String {
     return String(format: "%.0fK", Double(tokens) / 1_000)
   }
   return "\(tokens)"
+}
+
+// MARK: - Timeline / Gantt-lite
+
+private struct TimelineSheetView: View {
+  let tasks: [DashboardTask]
+  let projects: [Project]
+
+  @Environment(\.dismiss) private var dismiss
+
+  @State private var selectedProjectId: String = "all"
+  @State private var daysBack: Int = 90
+
+  private var filteredTasks: [DashboardTask] {
+    let now = Date()
+    let cutoff = now.addingTimeInterval(TimeInterval(-daysBack) * 86400)
+    return tasks.filter { t in
+      let pid = t.projectId ?? "default"
+      if selectedProjectId != "all" && pid != selectedProjectId { return false }
+      // Include tasks that intersect the window.
+      let start = t.createdAt
+      let end = (t.status == .completed ? (t.finishedAt ?? t.updatedAt) : now)
+      return end >= cutoff
+    }
+    .sorted { a, b in
+      let aEnd = (a.status == .completed ? (a.finishedAt ?? a.updatedAt) : Date())
+      let bEnd = (b.status == .completed ? (b.finishedAt ?? b.updatedAt) : Date())
+      if aEnd != bEnd { return aEnd > bEnd }
+      return a.createdAt > b.createdAt
+    }
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack {
+        Text("Timeline")
+          .font(.title2)
+          .fontWeight(.bold)
+        Spacer()
+        Button("Done") { dismiss() }
+          .keyboardShortcut(.defaultAction)
+      }
+
+      HStack(spacing: 12) {
+        Picker("Project", selection: $selectedProjectId) {
+          Text("All").tag("all")
+          ForEach(projects.filter { !($0.archived ?? false) }) { p in
+            Text(p.title).tag(p.id)
+          }
+        }
+        .pickerStyle(.menu)
+
+        Picker("Range", selection: $daysBack) {
+          Text("30d").tag(30)
+          Text("90d").tag(90)
+          Text("365d").tag(365)
+        }
+        .pickerStyle(.segmented)
+        .frame(maxWidth: 240)
+
+        Spacer()
+
+        Text("Showing \\(filteredTasks.count) tasks")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+      }
+
+      TimelineChart(tasks: filteredTasks)
+    }
+    .padding(20)
+  }
+}
+
+private struct TimelineChart: View {
+  let tasks: [DashboardTask]
+
+  private var domain: (min: Date, max: Date) {
+    let now = Date()
+    let starts = tasks.map { $0.createdAt }
+    let ends = tasks.map { t in
+      t.status == .completed ? (t.finishedAt ?? t.updatedAt) : now
+    }
+    let minD = (starts.min() ?? now)
+    let maxD = (ends.max() ?? now)
+    // Avoid zero-width domain
+    if maxD <= minD {
+      return (minD.addingTimeInterval(-86400), maxD.addingTimeInterval(86400))
+    }
+    return (minD, maxD)
+  }
+
+  var body: some View {
+    GeometryReader { geo in
+      let width = max(1, geo.size.width - 180)
+      let minD = domain.min
+      let maxD = domain.max
+      let span = max(1, maxD.timeIntervalSince(minD))
+
+      ScrollView {
+        LazyVStack(alignment: .leading, spacing: 8) {
+          ForEach(tasks) { task in
+            TimelineRow(task: task, minDate: minD, span: span, barWidth: width)
+              .frame(height: 22)
+          }
+        }
+        .padding(.top, 6)
+        .padding(.bottom, 6)
+      }
+    }
+    .background(OTheme.cardBg)
+    .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
+    .overlay(
+      RoundedRectangle(cornerRadius: OTheme.cardRadius)
+        .stroke(OTheme.border, lineWidth: 0.5)
+    )
+  }
+}
+
+private struct TimelineRow: View {
+  let task: DashboardTask
+  let minDate: Date
+  let span: TimeInterval
+  let barWidth: CGFloat
+
+  private var endDate: Date {
+    if task.status == .completed { return task.finishedAt ?? task.updatedAt }
+    return Date()
+  }
+
+  private var barColor: Color {
+    if task.status == .completed { return .green.opacity(0.8) }
+    if task.workState == .blocked { return .red.opacity(0.8) }
+    if task.status == .active { return .orange.opacity(0.8) }
+    return .gray.opacity(0.6)
+  }
+
+  var body: some View {
+    HStack(spacing: 10) {
+      Text(task.title)
+        .font(.footnote)
+        .foregroundStyle(.primary)
+        .lineLimit(1)
+        .frame(width: 170, alignment: .leading)
+
+      ZStack(alignment: .leading) {
+        RoundedRectangle(cornerRadius: 6)
+          .fill(Color.secondary.opacity(0.08))
+          .frame(height: 12)
+
+        let startX = CGFloat(task.createdAt.timeIntervalSince(minDate) / span) * barWidth
+        let endX = CGFloat(endDate.timeIntervalSince(minDate) / span) * barWidth
+        let w = max(3, endX - startX)
+
+        RoundedRectangle(cornerRadius: 6)
+          .fill(barColor)
+          .frame(width: w, height: 12)
+          .offset(x: startX)
+      }
+      .frame(width: barWidth, height: 12)
+    }
+  }
 }
 
 // MARK: - Relative Time Helper
