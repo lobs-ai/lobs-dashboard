@@ -504,49 +504,21 @@ private struct DocumentViewer: View {
       ScrollViewReader { proxy in
         ScrollView {
           VStack(alignment: .leading, spacing: 6) {
-            // Original document as the first message (same style as thread messages)
-            HStack(alignment: .top, spacing: 8) {
-              ZStack {
-                Circle()
-                  .fill(Color.purple.opacity(0.15))
-                  .frame(width: 28, height: 28)
-                Text("L")
-                  .font(.system(size: 13, weight: .bold))
-                  .foregroundStyle(.purple)
-              }
-
-              VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                  Text("Lobs")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.purple)
-                  Text(item.modifiedAt.formatted(date: .abbreviated, time: .shortened))
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-                }
-
-                MarkdownWebView(markdown: item.content)
-                  .frame(maxWidth: .infinity, minHeight: 200)
-              }
-
-              Spacer()
-            }
-            .padding(10)
-            .background(
-              RoundedRectangle(cornerRadius: 10)
-                .fill(Color.purple.opacity(0.05))
+            // All messages in one flat list: original doc first, then thread replies
+            let syntheticOriginal = InboxThreadMessage(
+              id: "__original__\(item.id)",
+              author: "Lobs",
+              text: item.content,
+              createdAt: item.modifiedAt
             )
-            .padding(.horizontal, 24)
-            .padding(.top, 16)
+            let allMessages: [InboxThreadMessage] = [syntheticOriginal] + (thread?.messages ?? [])
 
-            // Thread messages flow naturally after
-            if let thread = thread {
-              ForEach(thread.messages) { msg in
-                ThreadMessageBubble(message: msg, docId: item.id, vm: vm)
-                  .padding(.horizontal, 24)
-                  .padding(.vertical, 3)
-              }
+            ForEach(allMessages) { msg in
+              ThreadMessageBubble(message: msg, docId: item.id, vm: vm)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 3)
             }
+            .padding(.top, 10)
 
             Color.clear
               .frame(height: 1)
