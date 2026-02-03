@@ -53,11 +53,11 @@ struct ResearchBoardView: View {
   }
 
   private var openRequests: [ResearchRequest] {
-    vm.researchRequests.filter { $0.status != .done }
+    vm.researchRequests.filter { $0.status != .done && $0.status != .completed }
   }
 
   private var completedRequests: [ResearchRequest] {
-    vm.researchRequests.filter { $0.status == .done }
+    vm.researchRequests.filter { $0.status == .done || $0.status == .completed }
   }
 
   var body: some View {
@@ -1282,7 +1282,7 @@ private func requestStatusColor(_ status: ResearchRequestStatus) -> Color {
   switch status {
   case .open: return .orange
   case .inProgress: return .blue
-  case .done: return .green
+  case .done, .completed: return .green
   case .blocked: return .red
   }
 }

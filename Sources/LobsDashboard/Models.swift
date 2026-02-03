@@ -259,6 +259,7 @@ enum ResearchRequestStatus: String, Codable, Hashable {
   case open
   case inProgress = "in_progress"
   case done
+  case completed
   case blocked
 }
 

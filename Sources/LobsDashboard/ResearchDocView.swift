@@ -39,11 +39,11 @@ struct ResearchDocView: View {
   }
 
   private var openRequests: [ResearchRequest] {
-    vm.researchRequests.filter { $0.status != .done }
+    vm.researchRequests.filter { $0.status != .done && $0.status != .completed }
   }
 
   private var completedRequests: [ResearchRequest] {
-    vm.researchRequests.filter { $0.status == .done }
+    vm.researchRequests.filter { $0.status == .done || $0.status == .completed }
   }
 
   var body: some View {
