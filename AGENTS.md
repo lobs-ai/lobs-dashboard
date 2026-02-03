@@ -5,12 +5,12 @@ macOS SwiftUI desktop app for managing tasks, projects, and research. Rafe's pri
 ## Quick Start
 Open `Sources/LobsDashboard/` in Xcode or build via:
 ```bash
-./scripts/build.sh   # Generates build info, builds, saves hash to ~/.lobs/dashboard-build-commit
+./bin/build   # Generates build info, builds, saves hash to ~/.lobs/dashboard-build-commit
 swift run
 ```
 
 ### Build Info
-The build script (`scripts/build.sh`) saves the current HEAD commit hash to
+The build script (`bin/build`) saves the current HEAD commit hash to
 `~/.lobs/dashboard-build-commit` after each successful build. The running app reads this file
 at runtime to detect when you've pulled new code but haven't recompiled (shows "N to rebuild"
 indicator). `BuildInfo.generated.swift` serves as a compile-time fallback if the hash file

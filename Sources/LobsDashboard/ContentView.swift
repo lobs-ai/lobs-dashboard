@@ -496,8 +496,8 @@ private struct ToolbarArea: View {
             Divider()
 
             Text(vm.dashboardNeedsRebuild
-              ? "Run `./scripts/build.sh && swift run` to update."
-              : "Run `git pull` then `./scripts/build.sh && swift run`.")
+              ? "Run `./bin/build && swift run` to update."
+              : "Run `git pull` then `./bin/build && swift run`.")
               .font(.system(size: 10))
               .foregroundStyle(.tertiary)
           }

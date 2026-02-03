@@ -10,14 +10,16 @@ Local macOS SwiftUI app for operating `lobs-control` tasks.
 
 ```bash
 cd ~/lobs-dashboard
+./bin/build
 swift run lobs-dashboard
 ```
 
-## Build a .app bundle (recommended)
+## Build + open the app bundle (recommended)
 
 ```bash
-./scripts/build-app.sh
-open .build/LobsDashboard.app
+cd ~/lobs-dashboard
+./bin/build
+./bin/run
 ```
 
 ## First-run usage

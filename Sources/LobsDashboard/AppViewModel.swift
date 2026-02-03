@@ -345,10 +345,10 @@ final class AppViewModel: ObservableObject {
   }
 
   /// The commit hash that this binary was built from.
-  /// Reads from ~/.lobs/dashboard-build-commit (written by scripts/build.sh at build time),
+  /// Reads from ~/.lobs/dashboard-build-commit (written by bin/build at build time),
   /// falling back to the compile-time BuildInfo.builtCommit.
   private var builtFromCommit: String {
-    // Prefer the runtime hash file written by build.sh — this survives pulls
+    // Prefer the runtime hash file written by bin/build — this survives pulls
     // without recompilation and always reflects the actual last build.
     let hashFile = FileManager.default.homeDirectoryForCurrentUser
       .appendingPathComponent(".lobs/dashboard-build-commit")
