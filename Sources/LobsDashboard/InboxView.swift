@@ -411,6 +411,7 @@ private struct DocumentViewer: View {
   @ObservedObject var vm: AppViewModel
 
   @State private var replyText: String = ""
+  @State private var showOriginalMessage: Bool = true
 
   /// Live read state from the view model (not the stale item snapshot).
   private var isRead: Bool {
@@ -504,22 +505,15 @@ private struct DocumentViewer: View {
       ScrollViewReader { proxy in
         ScrollView {
           VStack(alignment: .leading, spacing: 0) {
-            // Document content (rendered as full markdown)
-            MarkdownWebView(markdown: item.content)
-              .frame(maxWidth: .infinity, minHeight: 200)
-              .padding(.horizontal, 4)
-
-            // Thread messages
+            // Gmail-style: keep the original doc + the replies in one vertical thread.
+            // The original message can be collapsed to focus on the conversation.
             if let thread = thread, !thread.messages.isEmpty {
-              Divider()
-                .padding(.horizontal, 20)
-
-              VStack(alignment: .leading, spacing: 4) {
+              VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 6) {
                   Image(systemName: "bubble.left.and.bubble.right")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                  Text("Thread")
+                  Text("Conversation")
                     .font(.callout)
                     .fontWeight(.semibold)
                   Text("(\(thread.messages.count))")
@@ -528,7 +522,24 @@ private struct DocumentViewer: View {
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 16)
-                .padding(.bottom, 8)
+
+                DisclosureGroup(isExpanded: $showOriginalMessage) {
+                  MarkdownWebView(markdown: item.content)
+                    .frame(maxWidth: .infinity, minHeight: 200)
+                    .padding(.horizontal, 4)
+                    .padding(.top, 6)
+                } label: {
+                  HStack(spacing: 6) {
+                    Image(systemName: "doc.text")
+                      .font(.footnote)
+                      .foregroundStyle(.secondary)
+                    Text("Original message")
+                      .font(.system(size: 12, weight: .semibold))
+                      .foregroundStyle(.secondary)
+                    Spacer()
+                  }
+                }
+                .padding(.horizontal, 24)
 
                 ForEach(thread.messages) { msg in
                   ThreadMessageBubble(message: msg, docId: item.id, vm: vm)
@@ -537,6 +548,11 @@ private struct DocumentViewer: View {
                 }
               }
               .id("thread-bottom")
+            } else {
+              // No thread yet — show the doc as the primary content.
+              MarkdownWebView(markdown: item.content)
+                .frame(maxWidth: .infinity, minHeight: 200)
+                .padding(.horizontal, 4)
             }
           }
         }
