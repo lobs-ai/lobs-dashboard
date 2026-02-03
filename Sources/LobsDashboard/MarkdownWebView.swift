@@ -49,14 +49,11 @@ struct MarkdownWebView: NSViewRepresentable {
     webView.navigationDelegate = context.coordinator
 
     // Disable internal scrolling when we're self-sizing
+    // This ensures scroll events pass through to the parent ScrollView
     if onContentHeightChanged != nil {
-      webView.enclosingScrollView?.hasVerticalScroller = false
-      // For WKWebView, disable scrolling at the scroll view level after it's added
+      disableInternalScrolling(webView)
       DispatchQueue.main.async {
-        if let scrollView = webView.enclosingScrollView {
-          scrollView.hasVerticalScroller = false
-          scrollView.hasHorizontalScroller = false
-        }
+        disableInternalScrolling(webView)
       }
     }
 
@@ -412,10 +409,23 @@ struct MarkdownWebView: NSViewRepresentable {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
       // After navigation finishes, disable internal scrolling if we're measuring height
       guard onContentHeightChanged != nil else { return }
-      if let scrollView = webView.enclosingScrollView {
-        scrollView.hasVerticalScroller = false
-        scrollView.hasHorizontalScroller = false
-      }
+      disableInternalScrolling(webView)
     }
+  }
+}
+
+/// Recursively find and disable all scroll views inside a WKWebView so scroll
+/// events pass through to the parent SwiftUI ScrollView.
+private func disableInternalScrolling(_ view: NSView) {
+  for subview in view.subviews {
+    if let scrollView = subview as? NSScrollView {
+      scrollView.hasVerticalScroller = false
+      scrollView.hasHorizontalScroller = false
+      scrollView.scrollerStyle = .overlay
+      // Key: prevent the scroll view from capturing scroll wheel events
+      scrollView.verticalScrollElasticity = .none
+      scrollView.horizontalScrollElasticity = .none
+    }
+    disableInternalScrolling(subview)
   }
 }
