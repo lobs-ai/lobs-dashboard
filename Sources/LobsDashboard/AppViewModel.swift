@@ -203,6 +203,7 @@ final class AppViewModel: ObservableObject {
 
     // Check for dashboard source updates on launch
     checkForDashboardUpdate()
+    refreshWorkerRequestPending()
   }
 
   var selectedProject: Project? {
@@ -470,6 +471,7 @@ final class AppViewModel: ObservableObject {
         loadTemplates()
         loadWorkerStatus(store: store)
         loadTextDumps(store: store)
+        refreshWorkerRequestPending()
 
       } catch {
         lastError = String(describing: error)
@@ -968,9 +970,12 @@ final class AppViewModel: ObservableObject {
   }
 
   /// Whether a worker request is already pending (file exists on disk).
-  var workerRequestPending: Bool {
-    guard let repoURL else { return false }
-    return LobsControlStore(repoRoot: repoURL).workerRequestExists
+  @Published var workerRequestPending: Bool = false
+
+  /// Sync `workerRequestPending` with the actual file on disk.
+  func refreshWorkerRequestPending() {
+    guard let repoURL else { workerRequestPending = false; return }
+    workerRequestPending = LobsControlStore(repoRoot: repoURL).workerRequestExists
   }
 
   /// Request a worker run by writing state/worker-request.json, committing, and pushing.
@@ -979,6 +984,8 @@ final class AppViewModel: ObservableObject {
     let store = LobsControlStore(repoRoot: repoURL)
     do {
       try store.writeWorkerRequest()
+      // Update immediately so the UI reflects the change without waiting for reload
+      workerRequestPending = true
       try commitAndMaybePush(repoURL: repoURL, message: "Request worker from dashboard", autoPush: true)
     } catch {
       print("Failed to request worker: \(error)")
