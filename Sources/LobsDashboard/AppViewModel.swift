@@ -57,6 +57,10 @@ final class AppViewModel: ObservableObject {
   @Published var inboxResponsesByDocId: [String: InboxResponse] = [:]
   @Published var inboxThreadsByDocId: [String: InboxThread] = [:]
 
+  /// Threads with local edits that haven't been confirmed pushed yet.
+  /// Prevents auto-refresh from overwriting freshly-posted messages.
+  private var pendingThreadWrites: [String: InboxThread] = [:]
+
   // Project README
   @Published var projectReadme: String = ""
 
@@ -987,7 +991,27 @@ final class AppViewModel: ObservableObject {
       let responses = try s.loadInboxResponses()
       inboxResponsesByDocId = Dictionary(uniqueKeysWithValues: responses.map { ($0.docId, $0) })
 
-      inboxThreadsByDocId = try s.loadAllInboxThreads()
+      var loadedThreads = try s.loadAllInboxThreads()
+
+      // Merge back any threads with pending local writes that haven't been
+      // confirmed pushed yet. This prevents auto-refresh from overwriting
+      // freshly-posted messages with stale data from disk/git.
+      for (docId, pendingThread) in pendingThreadWrites {
+        if let diskThread = loadedThreads[docId] {
+          // Keep the pending version if it's newer (more messages or newer timestamp)
+          if pendingThread.updatedAt >= diskThread.updatedAt {
+            loadedThreads[docId] = pendingThread
+          } else {
+            // Disk version is newer (remote pushed an update) — drop pending
+            pendingThreadWrites.removeValue(forKey: docId)
+          }
+        } else {
+          // Thread only exists locally (new thread not yet on remote)
+          loadedThreads[docId] = pendingThread
+        }
+      }
+
+      inboxThreadsByDocId = loadedThreads
     } catch {
       flashError("Failed to load inbox: \(error.localizedDescription)")
     }
@@ -1413,6 +1437,11 @@ final class AppViewModel: ObservableObject {
       lastSeenThreadCounts[docId] = thread.messages.count
     }
 
+    // Track as pending so auto-refresh won't overwrite it with stale data
+    if let thread = inboxThreadsByDocId[docId] {
+      pendingThreadWrites[docId] = thread
+    }
+
     isGitBusy = true
     Task {
       do {
@@ -1421,8 +1450,11 @@ final class AppViewModel: ObservableObject {
           message: "Lobs: thread reply on \(docId)",
           autoPush: true
         )
+        // Push succeeded — safe to clear pending state
+        pendingThreadWrites.removeValue(forKey: docId)
       } catch {
         flashError("Git push failed: \(error.localizedDescription)")
+        // Keep pending so the message isn't lost on next refresh
       }
       isGitBusy = false
     }
@@ -1450,6 +1482,9 @@ final class AppViewModel: ObservableObject {
       return
     }
 
+    // Track as pending so auto-refresh won't overwrite it with stale data
+    pendingThreadWrites[docId] = thread
+
     isGitBusy = true
     Task {
       do {
@@ -1458,6 +1493,7 @@ final class AppViewModel: ObservableObject {
           message: "Lobs: edit thread message on \(docId)",
           autoPush: true
         )
+        pendingThreadWrites.removeValue(forKey: docId)
       } catch {
         flashError("Git push failed: \(error.localizedDescription)")
       }
@@ -1482,6 +1518,9 @@ final class AppViewModel: ObservableObject {
       return
     }
 
+    // Track as pending so auto-refresh won't overwrite it with stale data
+    pendingThreadWrites[docId] = thread
+
     isGitBusy = true
     Task {
       do {
@@ -1490,6 +1529,7 @@ final class AppViewModel: ObservableObject {
           message: "Lobs: delete thread message on \(docId)",
           autoPush: true
         )
+        pendingThreadWrites.removeValue(forKey: docId)
       } catch {
         flashError("Git push failed: \(error.localizedDescription)")
       }
