@@ -74,6 +74,7 @@ struct ResearchDocView: View {
     .onChange(of: vm.selectedProjectId) { _ in
       // Reset deliverable selection when switching projects
       selectedDeliverable = nil
+      showCombinedDocs = false
       editContent = vm.researchDocContent
       ensureDeliverableSelectedIfNeeded()
     }
@@ -404,6 +405,12 @@ struct ResearchDocView: View {
 
   private func ensureDeliverableSelectedIfNeeded() {
     guard docIsEmpty else { return }
+    // Default to combined view when there are multiple deliverables
+    if vm.researchDeliverables.count > 1 && selectedDeliverable == nil {
+      showCombinedDocs = true
+      return
+    }
+    // Single deliverable: auto-select it
     guard selectedDeliverable == nil else { return }
     if let first = vm.researchDeliverables.first {
       selectedDeliverable = first
@@ -422,7 +429,7 @@ struct ResearchDocView: View {
           .foregroundStyle(.secondary)
       }
 
-      // "View All Combined" button
+      // "All Documents" button (default view for multiple deliverables)
       if vm.researchDeliverables.count > 1 {
         Button {
           showCombinedDocs = true
@@ -430,14 +437,19 @@ struct ResearchDocView: View {
           isEditing = false
         } label: {
           HStack(spacing: 6) {
-            Image(systemName: "doc.on.doc")
+            Image(systemName: "doc.on.doc.fill")
               .font(.system(size: 11))
               .foregroundStyle(.indigo)
-            Text("View All Combined")
+            Text("All Documents")
               .font(.footnote)
-              .fontWeight(.medium)
-              .foregroundStyle(.indigo)
+              .fontWeight(.semibold)
+              .foregroundStyle(showCombinedDocs ? .indigo : .primary)
             Spacer()
+            if showCombinedDocs {
+              Image(systemName: "checkmark")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.indigo)
+            }
           }
           .padding(6)
           .background(showCombinedDocs ? Color.indigo.opacity(0.12) : Color.clear)
