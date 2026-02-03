@@ -378,7 +378,7 @@ final class AppViewModel: ObservableObject {
         // Get local HEAD hash (full)
         let localFullResult = try await Git.runAsync(["rev-parse", "HEAD"], cwd: dashURL)
         guard localFullResult.ok else { return }
-        let localFullHash = localFullResult.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        let _ = localFullResult.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // Get local HEAD hash (short, for display)
         let localResult = try await Git.runAsync(["rev-parse", "--short", "HEAD"], cwd: dashURL)
