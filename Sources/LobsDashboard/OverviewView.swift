@@ -41,6 +41,7 @@ struct OverviewView: View {
   @State private var detailTask: DashboardTask? = nil
   @State private var showDetailedStats: Bool = false
   @State private var showTimeline: Bool = false
+  @State private var showDigest: Bool = false
   @State private var draggingProjectId: String? = nil
   @State private var showCreateProject: Bool = false
 
@@ -193,6 +194,22 @@ struct OverviewView: View {
             .background(OTheme.subtle)
             .clipShape(RoundedRectangle(cornerRadius: 8))
           }
+          Button {
+            showDigest = true
+          } label: {
+            HStack(spacing: 4) {
+              Image(systemName: "doc.text")
+                .font(.footnote)
+              Text("Digest")
+                .font(.footnote)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(OTheme.subtle)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+          }
+          .buttonStyle(.plain)
+
           .buttonStyle(.plain)
 
           Button {
@@ -398,6 +415,10 @@ struct OverviewView: View {
     .sheet(isPresented: $showTimeline) {
       TimelineSheetView(tasks: vm.tasks, projects: vm.projects)
         .frame(minWidth: 900, minHeight: 600)
+    }
+    .sheet(isPresented: $showDigest) {
+      DigestSheetView(tasks: vm.tasks, projects: vm.projects, workerHistory: vm.workerHistory, mainSessionUsage: vm.mainSessionUsage)
+        .frame(minWidth: 820, minHeight: 600)
     }
   }
 }
@@ -2261,6 +2282,252 @@ private struct TimelineRow: View {
       }
       .frame(width: barWidth, height: 12)
     }
+  }
+}
+
+// MARK: - Digest
+
+private struct DigestSheetView: View {
+  let tasks: [DashboardTask]
+  let projects: [Project]
+  var workerHistory: WorkerHistory? = nil
+  var mainSessionUsage: MainSessionUsage? = nil
+
+  @Environment(\.dismiss) private var dismiss
+
+  @State private var daysBack: Int = 7
+
+  private var cutoff: Date {
+    Date().addingTimeInterval(TimeInterval(-daysBack) * 86400)
+  }
+
+  private var tasksCreated: [DashboardTask] {
+    tasks.filter { $0.createdAt >= cutoff }.sorted { $0.createdAt > $1.createdAt }
+  }
+
+  private var tasksCompleted: [DashboardTask] {
+    tasks.filter { t in
+      guard t.status == .completed else { return false }
+      let doneAt = t.finishedAt ?? t.updatedAt
+      return doneAt >= cutoff
+    }
+    .sorted {
+      let a = $0.finishedAt ?? $0.updatedAt
+      let b = $1.finishedAt ?? $1.updatedAt
+      return a > b
+    }
+  }
+
+  private var runsInWindow: [WorkerHistoryRun] {
+    guard let runs = workerHistory?.runs else { return [] }
+    return runs.filter { r in
+      guard let started = r.startedAt else { return false }
+      return started >= cutoff
+    }
+    .sorted { ($0.startedAt ?? .distantPast) > ($1.startedAt ?? .distantPast) }
+  }
+
+  private var totalWorkerCost: Double {
+    runsInWindow.compactMap { $0.totalCostUSD }.reduce(0, +)
+  }
+
+  private var totalWorkerTasks: Int {
+    runsInWindow.compactMap { $0.tasksCompleted }.reduce(0, +)
+  }
+
+  private var mainSessionCost: Double {
+    guard let usage = mainSessionUsage else { return 0 }
+    // dailySummaries keyed by YYYY-MM-DD (local time). Sum those whose day is within window.
+    let df = DateFormatter()
+    df.dateFormat = "yyyy-MM-dd"
+    let days = usage.dailySummaries.compactMap { k, v -> Double? in
+      guard let day = df.date(from: k) else { return nil }
+      if day >= Calendar.current.startOfDay(for: cutoff) { return v.costUSD }
+      return nil
+    }
+    return days.reduce(0, +)
+  }
+
+  private func projectTitle(_ id: String) -> String {
+    projects.first(where: { $0.id == id })?.title ?? id
+  }
+
+  private var projectActivity: [(String, created: Int, completed: Int)] {
+    let createdBy: [String: Int] = Dictionary(grouping: tasksCreated, by: { $0.projectId ?? "default" })
+      .mapValues { $0.count }
+    let completedBy: [String: Int] = Dictionary(grouping: tasksCompleted, by: { $0.projectId ?? "default" })
+      .mapValues { $0.count }
+
+    let allIds = Set(createdBy.keys).union(completedBy.keys)
+    return allIds.map { pid in
+      (pid, createdBy[pid] ?? 0, completedBy[pid] ?? 0)
+    }
+    .sorted { a, b in
+      (a.created + a.completed) > (b.created + b.completed)
+    }
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      HStack {
+        Text("Digest")
+          .font(.title2)
+          .fontWeight(.bold)
+        Spacer()
+        Picker("Range", selection: $daysBack) {
+          Text("1d").tag(1)
+          Text("7d").tag(7)
+          Text("30d").tag(30)
+        }
+        .pickerStyle(.segmented)
+        .frame(maxWidth: 240)
+
+        Button("Done") { dismiss() }
+          .keyboardShortcut(.defaultAction)
+      }
+
+      HStack(spacing: 12) {
+        DigestStatCard(label: "Tasks created", value: "\(tasksCreated.count)")
+        DigestStatCard(label: "Tasks completed", value: "\(tasksCompleted.count)")
+        DigestStatCard(label: "Worker runs", value: "\(runsInWindow.count)")
+        DigestStatCard(label: "Worker tasks", value: "\(totalWorkerTasks)")
+        DigestStatCard(label: "AI spend", value: String(format: "$%.2f", mainSessionCost + totalWorkerCost))
+      }
+
+      HStack(alignment: .top, spacing: 16) {
+        VStack(alignment: .leading, spacing: 10) {
+          Text("By project")
+            .font(.headline)
+          VStack(spacing: 0) {
+            ForEach(Array(projectActivity.prefix(10).enumerated()), id: \.offset) { idx, row in
+              HStack {
+                Text(projectTitle(row.0))
+                  .font(.footnote)
+                  .lineLimit(1)
+                Spacer()
+                Text("+\(row.created)")
+                  .font(.footnote)
+                  .foregroundStyle(.secondary)
+                Text("✓\(row.completed)")
+                  .font(.footnote)
+                  .foregroundStyle(.secondary)
+              }
+              .padding(.vertical, 6)
+              .padding(.horizontal, 10)
+              if idx < min(projectActivity.count, 10) - 1 {
+                Divider().padding(.leading, 10)
+              }
+            }
+          }
+          .background(OTheme.cardBg)
+          .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
+          .overlay(
+            RoundedRectangle(cornerRadius: OTheme.cardRadius)
+              .stroke(OTheme.border, lineWidth: 0.5)
+          )
+        }
+
+        VStack(alignment: .leading, spacing: 10) {
+          Text("Completed tasks")
+            .font(.headline)
+          ScrollView {
+            LazyVStack(alignment: .leading, spacing: 6) {
+              ForEach(tasksCompleted.prefix(20)) { t in
+                HStack {
+                  Text(t.title)
+                    .font(.footnote)
+                    .lineLimit(1)
+                  Spacer()
+                  Text(projectTitle(t.projectId ?? "default"))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                }
+                .padding(.vertical, 4)
+              }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+          }
+          .background(OTheme.cardBg)
+          .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
+          .overlay(
+            RoundedRectangle(cornerRadius: OTheme.cardRadius)
+              .stroke(OTheme.border, lineWidth: 0.5)
+          )
+        }
+      }
+
+      if !runsInWindow.isEmpty {
+        VStack(alignment: .leading, spacing: 8) {
+          Text("Worker runs")
+            .font(.headline)
+          VStack(alignment: .leading, spacing: 6) {
+            ForEach(runsInWindow.prefix(8)) { run in
+              let start = run.startedAt ?? Date.distantPast
+              let end = run.endedAt
+              HStack {
+                Text(run.workerId ?? "worker")
+                  .font(.footnote)
+                  .fontWeight(.medium)
+                Spacer()
+                Text("\(relativeTime(start))")
+                  .font(.footnote)
+                  .foregroundStyle(.tertiary)
+                if let cost = run.totalCostUSD {
+                  Text(String(format: "$%.2f", cost))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                }
+                if let t = run.tasksCompleted {
+                  Text("\(t) tasks")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                }
+              }
+              if end == nil {
+                Text("In progress")
+                  .font(.system(size: 11))
+                  .foregroundStyle(.tertiary)
+              }
+            }
+          }
+          .padding(10)
+          .background(OTheme.cardBg)
+          .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
+          .overlay(
+            RoundedRectangle(cornerRadius: OTheme.cardRadius)
+              .stroke(OTheme.border, lineWidth: 0.5)
+          )
+        }
+      }
+
+      Spacer(minLength: 0)
+    }
+    .padding(20)
+  }
+}
+
+private struct DigestStatCard: View {
+  let label: String
+  let value: String
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text(label)
+        .font(.system(size: 11))
+        .foregroundStyle(.secondary)
+      Text(value)
+        .font(.headline)
+        .fontWeight(.bold)
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 10)
+    .background(OTheme.cardBg)
+    .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
+    .overlay(
+      RoundedRectangle(cornerRadius: OTheme.cardRadius)
+        .stroke(OTheme.border, lineWidth: 0.5)
+    )
   }
 }
 
