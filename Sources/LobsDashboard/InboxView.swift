@@ -523,12 +523,9 @@ private struct DocumentViewer: View {
                 .padding(.horizontal, 24)
                 .padding(.top, 16)
 
-                DisclosureGroup(isExpanded: $showOriginalMessage) {
-                  MarkdownWebView(markdown: item.content)
-                    .frame(maxWidth: .infinity, minHeight: 200)
-                    .padding(.horizontal, 4)
-                    .padding(.top, 6)
-                } label: {
+                // Original message — shown at full natural height so content
+                // isn't cramped. Scroll down past it to see/add responses.
+                VStack(alignment: .leading, spacing: 4) {
                   HStack(spacing: 6) {
                     Image(systemName: "doc.text")
                       .font(.footnote)
@@ -536,8 +533,10 @@ private struct DocumentViewer: View {
                     Text("Original message")
                       .font(.system(size: 12, weight: .semibold))
                       .foregroundStyle(.secondary)
-                    Spacer()
                   }
+                  MarkdownWebView(markdown: item.content)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 4)
                 }
                 .padding(.horizontal, 24)
 
