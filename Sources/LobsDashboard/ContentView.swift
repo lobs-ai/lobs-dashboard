@@ -62,6 +62,7 @@ struct ContentView: View {
   @State private var showUpdatePopover = false
   @State private var showAIUsage = false
   @State private var requestSearchFocus = false
+  @State private var showCommandPalette = false
 
   var body: some View {
     ZStack(alignment: .top) {
@@ -258,6 +259,24 @@ struct ContentView: View {
           .zIndex(201)
       }
 
+      // Command Palette overlay (⌘K)
+      if showCommandPalette {
+        Color.black.opacity(0.3)
+          .ignoresSafeArea()
+          .onTapGesture { withAnimation(.easeInOut(duration: 0.25)) { showCommandPalette = false } }
+          .transition(.opacity)
+          .zIndex(200)
+
+        CommandPaletteView(vm: vm, isPresented: $showCommandPalette)
+          .frame(width: 560, height: 420)
+          .clipShape(RoundedRectangle(cornerRadius: 14))
+          .shadow(color: .black.opacity(0.3), radius: 30, y: 10)
+          .padding(.top, 80)
+          .onExitCommand { withAnimation(.easeInOut(duration: 0.25)) { showCommandPalette = false } }
+          .transition(.opacity.combined(with: .move(edge: .top)))
+          .zIndex(201)
+      }
+
       // Help overlay — clicking outside dismisses (Task #2EB50767)
       if showHelp {
         Color.black.opacity(0.3)
@@ -331,9 +350,8 @@ struct ContentView: View {
         onNextColumn: { vm.selectNextColumn() },
         onPrevColumn: { vm.selectPreviousColumn() },
         onSearch: {
-          // ⌘K: focus task search field
-          vm.showOverview = false
-          requestSearchFocus = true
+          // ⌘K: open global command palette
+          showCommandPalette = true
         },
         onHelp: { withAnimation(.easeInOut(duration: 0.25)) { showHelp = true } },
         onInbox: { withAnimation(.easeInOut(duration: 0.25)) { showInbox = true } },
@@ -352,6 +370,7 @@ struct ContentView: View {
           }
         },
         onEscape: {
+          if showCommandPalette { withAnimation(.easeInOut(duration: 0.25)) { showCommandPalette = false }; return true }
           if showAIUsage { withAnimation(.easeInOut(duration: 0.25)) { showAIUsage = false }; return true }
           if showInbox { withAnimation(.easeInOut(duration: 0.25)) { showInbox = false }; return true }
           if showSettings { showSettings = false; return true }
@@ -665,7 +684,7 @@ private struct ToolbarArea: View {
           Image(systemName: "magnifyingglass")
             .foregroundStyle(.secondary)
             .font(.footnote)
-          TextField("Search tasks… (⌘F / ⌘K)", text: $vm.searchText)
+          TextField("Search tasks…", text: $vm.searchText)
             .textFieldStyle(.plain)
             .focused($focusField, equals: .search)
             .frame(width: 180)
@@ -3279,6 +3298,230 @@ private struct EditTemplateSheet: View {
   }
 }
 
+// MARK: - Command Palette (⌘K)
+
+/// Global fuzzy-finder that searches tasks across ALL projects.
+/// Selecting a result switches to that project and selects the task.
+private struct CommandPaletteView: View {
+  @ObservedObject var vm: AppViewModel
+  @Binding var isPresented: Bool
+  @State private var query: String = ""
+  @State private var selectedIndex: Int = 0
+
+  private var results: [(task: DashboardTask, project: Project?)] {
+    let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    let allTasks = vm.tasks
+    let filtered: [DashboardTask]
+    if q.isEmpty {
+      // Show active tasks across all projects when no query
+      filtered = Array(allTasks.filter { $0.status == .active }.prefix(20))
+    } else {
+      filtered = allTasks.filter { task in
+        task.title.lowercased().contains(q)
+          || (task.notes ?? "").lowercased().contains(q)
+          || task.id.lowercased().hasPrefix(q)
+      }
+    }
+    return filtered.map { task in
+      let project = vm.projects.first(where: { $0.id == task.projectId })
+      return (task: task, project: project)
+    }
+  }
+
+  private func selectResult(_ result: (task: DashboardTask, project: Project?)) {
+    vm.selectedProjectId = result.task.projectId
+    vm.showOverview = false
+    vm.selectedTaskId = result.task.id
+    vm.popoverTaskId = result.task.id
+    withAnimation(.easeInOut(duration: 0.25)) { isPresented = false }
+  }
+
+  var body: some View {
+    VStack(spacing: 0) {
+      // Search bar
+      HStack(spacing: 10) {
+        Image(systemName: "magnifyingglass")
+          .font(.title3)
+          .foregroundStyle(.secondary)
+
+        TextField("Search all tasks…", text: $query)
+          .textFieldStyle(.plain)
+          .font(.title3)
+          .onSubmit {
+            if !results.isEmpty && selectedIndex < results.count {
+              selectResult(results[selectedIndex])
+            }
+          }
+
+        if !query.isEmpty {
+          Button {
+            query = ""
+          } label: {
+            Image(systemName: "xmark.circle.fill")
+              .foregroundStyle(.tertiary)
+          }
+          .buttonStyle(.plain)
+        }
+
+        Text("esc")
+          .font(.system(size: 11, weight: .medium))
+          .foregroundStyle(.tertiary)
+          .padding(.horizontal, 6)
+          .padding(.vertical, 3)
+          .background(Theme.subtle)
+          .clipShape(RoundedRectangle(cornerRadius: 4))
+      }
+      .padding(.horizontal, 16)
+      .padding(.vertical, 14)
+
+      Divider()
+
+      // Results
+      if results.isEmpty {
+        VStack(spacing: 10) {
+          Spacer()
+          Image(systemName: "magnifyingglass")
+            .font(.system(size: 28))
+            .foregroundStyle(.quaternary)
+          Text(query.isEmpty ? "Start typing to search…" : "No tasks found")
+            .font(.callout)
+            .foregroundStyle(.tertiary)
+          Spacer()
+        }
+        .frame(maxWidth: .infinity)
+      } else {
+        ScrollViewReader { proxy in
+          ScrollView {
+            LazyVStack(spacing: 2) {
+              ForEach(Array(results.enumerated()), id: \.element.task.id) { index, result in
+                CommandPaletteRow(
+                  task: result.task,
+                  projectName: result.project?.title ?? "Default",
+                  isSelected: index == selectedIndex
+                )
+                .id(index)
+                .onTapGesture {
+                  selectResult(result)
+                }
+              }
+            }
+            .padding(6)
+          }
+          .onChange(of: selectedIndex) { idx in
+            withAnimation { proxy.scrollTo(idx, anchor: .center) }
+          }
+        }
+      }
+    }
+    .background(Theme.bg)
+    .background(
+      CommandPaletteKeyHandler(
+        onUp: {
+          if selectedIndex > 0 { selectedIndex -= 1 }
+        },
+        onDown: {
+          if selectedIndex < results.count - 1 { selectedIndex += 1 }
+        }
+      )
+    )
+    .onChange(of: query) { _ in
+      selectedIndex = 0
+    }
+  }
+}
+
+private struct CommandPaletteRow: View {
+  let task: DashboardTask
+  let projectName: String
+  let isSelected: Bool
+
+  @State private var isHovering = false
+
+  private var statusColor: Color {
+    switch task.status {
+    case .active: return .blue
+    case .completed: return .green
+    case .rejected: return .red
+    case .waitingOn: return .orange
+    case .blocked: return .red
+    default: return .secondary
+    }
+  }
+
+  var body: some View {
+    HStack(spacing: 10) {
+      Circle()
+        .fill(statusColor)
+        .frame(width: 8, height: 8)
+
+      VStack(alignment: .leading, spacing: 2) {
+        Text(task.title)
+          .font(.callout)
+          .fontWeight(isSelected ? .semibold : .regular)
+          .lineLimit(1)
+
+        HStack(spacing: 6) {
+          Text(projectName)
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+          Text("·")
+            .foregroundStyle(.quaternary)
+          Text(task.status.rawValue)
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+        }
+      }
+
+      Spacer()
+
+      Text(task.id.prefix(8))
+        .font(.system(size: 10, design: .monospaced))
+        .foregroundStyle(.quaternary)
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 8)
+    .background(
+      RoundedRectangle(cornerRadius: 8)
+        .fill(isSelected ? Color.accentColor.opacity(0.12) : (isHovering ? Theme.subtle : Color.clear))
+    )
+    .onHover { h in isHovering = h }
+  }
+}
+
+/// Arrow key handler for the command palette.
+private struct CommandPaletteKeyHandler: NSViewRepresentable {
+  let onUp: () -> Void
+  let onDown: () -> Void
+
+  func makeNSView(context: Context) -> NSView {
+    let view = NSView()
+    context.coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+      switch event.keyCode {
+      case 125: // down arrow
+        DispatchQueue.main.async { self.onDown() }
+        return nil
+      case 126: // up arrow
+        DispatchQueue.main.async { self.onUp() }
+        return nil
+      default:
+        return event
+      }
+    }
+    return view
+  }
+
+  func updateNSView(_ nsView: NSView, context: Context) {}
+
+  static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+    if let monitor = coordinator.monitor {
+      NSEvent.removeMonitor(monitor)
+    }
+  }
+
+  func makeCoordinator() -> Coordinator { Coordinator() }
+  class Coordinator { var monitor: Any? }
+}
+
 // MARK: - Help Panel
 
 private struct HelpPanelSheet: View {
@@ -3335,6 +3578,7 @@ private struct HelpPanelSheet: View {
               .font(.headline)
 
             VStack(spacing: 8) {
+              ShortcutRow(keys: "⌘ K", description: "Global fuzzy-finder")
               ShortcutRow(keys: "⌘ N", description: "Create new task")
               ShortcutRow(keys: "⌘ R", description: "Refresh / sync with git")
               ShortcutRow(keys: "⌘ W", description: "Request worker")
