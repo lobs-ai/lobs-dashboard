@@ -2,5 +2,47 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-cd "$REPO_DIR"
-exec swift run
+APP_BUNDLE="$REPO_DIR/.build/LobsDashboard.app"
+EXECUTABLE="$REPO_DIR/.build/arm64-apple-macosx/debug/lobs-dashboard"
+
+if [ ! -f "$EXECUTABLE" ]; then
+  echo "No build found. Run bin/build first." >&2
+  exit 1
+fi
+
+# Create a minimal .app bundle wrapping the built executable
+rm -rf "$APP_BUNDLE"
+mkdir -p "$APP_BUNDLE/Contents/MacOS"
+mkdir -p "$APP_BUNDLE/Contents/Resources"
+
+# Symlink the executable
+ln -s "$EXECUTABLE" "$APP_BUNDLE/Contents/MacOS/lobs-dashboard"
+
+# Copy bundled resources if they exist
+RESOURCE_DIR="$REPO_DIR/.build/arm64-apple-macosx/debug/LobsDashboard_LobsDashboard.bundle"
+if [ -d "$RESOURCE_DIR" ]; then
+  ln -s "$RESOURCE_DIR" "$APP_BUNDLE/Contents/Resources/LobsDashboard_LobsDashboard.bundle"
+fi
+
+# Write Info.plist with a bundle identifier (needed for notifications, etc.)
+cat > "$APP_BUNDLE/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>com.lobs.dashboard</string>
+  <key>CFBundleName</key>
+  <string>LobsDashboard</string>
+  <key>CFBundleExecutable</key>
+  <string>lobs-dashboard</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>LSUIElement</key>
+  <false/>
+</dict>
+</plist>
+PLIST
+
+open "$APP_BUNDLE"
