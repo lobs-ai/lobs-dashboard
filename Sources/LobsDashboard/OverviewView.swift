@@ -121,13 +121,66 @@ struct OverviewView: View {
     vm.unreadInboxCount
   }
 
-  // Recent activity: tasks updated in the last 7 days, sorted by recency
-  private var recentActivity: [DashboardTask] {
+  // MARK: - Activity Feed
+
+  private enum ActivityEvent: Identifiable {
+    case taskCompleted(DashboardTask)
+    case inboxItem(InboxItem)
+    case workerRun(WorkerHistoryRun)
+
+    var id: String {
+      switch self {
+      case .taskCompleted(let t):
+        return "task-completed-\(t.id)-\(t.updatedAt.timeIntervalSince1970)"
+      case .inboxItem(let item):
+        return "inbox-\(item.id)-\(item.modifiedAt.timeIntervalSince1970)"
+      case .workerRun(let run):
+        return "worker-\(run.id)"
+      }
+    }
+
+    var date: Date {
+      switch self {
+      case .taskCompleted(let t):
+        return t.updatedAt
+      case .inboxItem(let item):
+        return item.modifiedAt
+      case .workerRun(let run):
+        return run.endedAt ?? run.startedAt ?? Date.distantPast
+      }
+    }
+  }
+
+  /// Reverse-chronological activity feed (last 7 days).
+  /// Uses state timestamps (tasks/inbox/worker history) as a lightweight proxy for git history.
+  private var activityFeed: [ActivityEvent] {
     let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
-    return allTasks
-      .filter { $0.updatedAt >= weekAgo }
-      .sorted { $0.updatedAt > $1.updatedAt }
-      .prefix(15)
+
+    var events: [ActivityEvent] = []
+
+    // Task completed
+    for t in allTasks where t.status == .completed && t.updatedAt >= weekAgo {
+      events.append(.taskCompleted(t))
+    }
+
+    // New/updated inbox items (docs/artifacts)
+    for item in vm.inboxItems where item.modifiedAt >= weekAgo {
+      events.append(.inboxItem(item))
+    }
+
+    // Worker ran
+    if let runs = vm.workerHistory?.runs {
+      for run in runs {
+        let d = run.endedAt ?? run.startedAt
+        if let d, d >= weekAgo {
+          events.append(.workerRun(run))
+        }
+      }
+    }
+
+    return events
+      .sorted { $0.date > $1.date }
+      .prefix(25)
       .map { $0 }
   }
 
@@ -295,13 +348,13 @@ struct OverviewView: View {
 
         // Two-column layout: Recent Activity + Inbox
         HStack(alignment: .top, spacing: 24) {
-          // Recent activity feed
+          // Activity feed
           VStack(alignment: .leading, spacing: 12) {
             Text("Recent Activity")
               .font(.headline)
               .fontWeight(.bold)
 
-            if recentActivity.isEmpty {
+            if activityFeed.isEmpty {
               Text("No recent activity")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -310,12 +363,19 @@ struct OverviewView: View {
             } else {
               ScrollView {
                 VStack(spacing: 0) {
-                  ForEach(Array(recentActivity.enumerated()), id: \.element.id) { idx, task in
-                    ActivityRow(task: task, onTap: {
-                      vm.selectTask(task)
-                      detailTask = task
-                    })
-                    if idx < recentActivity.count - 1 {
+                  ForEach(Array(activityFeed.enumerated()), id: \.element.id) { idx, ev in
+                    ActivityEventRow(
+                      vm: vm,
+                      event: ev,
+                      onOpenTask: { task in
+                        vm.selectTask(task)
+                        detailTask = task
+                      },
+                      onOpenInbox: { id in
+                        onOpenInbox?(id)
+                      }
+                    )
+                    if idx < activityFeed.count - 1 {
                       Divider().padding(.leading, 36)
                     }
                   }
@@ -794,46 +854,47 @@ private struct CountBadge: View {
   }
 }
 
-// MARK: - Activity Row
+// MARK: - Activity Feed Rows
 
-private struct ActivityRow: View {
-  let task: DashboardTask
-  let onTap: () -> Void
+private struct ActivityEventRow: View {
+  @ObservedObject var vm: AppViewModel
+  let event: OverviewView.ActivityEvent
+  let onOpenTask: (DashboardTask) -> Void
+  let onOpenInbox: (String?) -> Void
 
   @State private var isHovering = false
 
   var body: some View {
-    Button(action: onTap) {
+    Button {
+      switch event {
+      case .taskCompleted(let t):
+        onOpenTask(t)
+      case .inboxItem(let item):
+        onOpenInbox(item.id)
+      case .workerRun:
+        break
+      }
+    } label: {
       HStack(spacing: 10) {
-        // Status icon
-        statusIcon
+        icon
           .font(.footnote)
           .frame(width: 24)
 
         VStack(alignment: .leading, spacing: 2) {
-          Text(task.title)
+          Text(title)
             .font(.footnote)
             .fontWeight(.medium)
             .lineLimit(1)
 
-          HStack(spacing: 6) {
-            Text(task.owner.rawValue)
-              .font(.system(size: 11, weight: .medium))
-              .padding(.horizontal, 5)
-              .padding(.vertical, 1)
-              .background(Color.purple.opacity(0.1))
-              .foregroundStyle(.purple)
-              .clipShape(Capsule())
-
-            Text(task.status.rawValue.replacingOccurrences(of: "_", with: " "))
-              .font(.system(size: 11))
-              .foregroundStyle(.tertiary)
-          }
+          Text(subtitle)
+            .font(.system(size: 11))
+            .foregroundStyle(.tertiary)
+            .lineLimit(1)
         }
 
         Spacer()
 
-        Text(relativeTime(task.updatedAt))
+        Text(relativeTime(event.date))
           .font(.system(size: 11))
           .foregroundStyle(.tertiary)
       }
@@ -842,31 +903,66 @@ private struct ActivityRow: View {
       .background(isHovering ? OTheme.subtle : Color.clear)
     }
     .buttonStyle(.plain)
+    .disabled(!isClickable)
     .onHover { h in isHovering = h }
   }
 
+  private var isClickable: Bool {
+    switch event {
+    case .workerRun:
+      return false
+    default:
+      return true
+    }
+  }
+
+  private var title: String {
+    switch event {
+    case .taskCompleted(let t):
+      return "Completed: \(t.title)"
+    case .inboxItem(let item):
+      return "Inbox: \(item.title)"
+    case .workerRun:
+      return "Worker ran"
+    }
+  }
+
+  private var subtitle: String {
+    switch event {
+    case .taskCompleted(let t):
+      let projectId = t.projectId ?? "default"
+      let projectName = vm.projects.first(where: { $0.id == projectId })?.title ?? projectId
+      return "\(projectName) · \(t.owner.rawValue)"
+    case .inboxItem(let item):
+      return item.summary
+    case .workerRun(let run):
+      let tasks = run.tasksCompleted ?? 0
+      let dur = formatDuration(start: run.startedAt, end: run.endedAt)
+      return "\(tasks) task(s) · \(dur)"
+    }
+  }
+
   @ViewBuilder
-  private var statusIcon: some View {
-    switch task.status {
-    case .active:
-      Image(systemName: "bolt.circle.fill")
-        .foregroundStyle(.orange)
-    case .completed:
+  private var icon: some View {
+    switch event {
+    case .taskCompleted:
       Image(systemName: "checkmark.circle.fill")
         .foregroundStyle(.green)
-    case .inbox:
+    case .inboxItem:
       Image(systemName: "tray.circle.fill")
         .foregroundStyle(.blue)
-    case .rejected:
-      Image(systemName: "xmark.circle.fill")
-        .foregroundStyle(.red)
-    case .waitingOn:
-      Image(systemName: "clock.circle.fill")
-        .foregroundStyle(.yellow)
-    case .other:
-      Image(systemName: "questionmark.circle.fill")
-        .foregroundStyle(.gray)
+    case .workerRun:
+      Image(systemName: "gearshape.2.fill")
+        .foregroundStyle(.purple)
     }
+  }
+
+  private func formatDuration(start: Date?, end: Date?) -> String {
+    guard let start, let end else { return "" }
+    let s = max(0, end.timeIntervalSince(start))
+    if s < 60 { return "\(Int(s))s" }
+    if s < 3600 { return "\(Int(s/60))m" }
+    return String(format: "%.1fh", s/3600)
   }
 }
 
