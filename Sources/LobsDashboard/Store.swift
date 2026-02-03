@@ -206,6 +206,7 @@ final class LobsControlStore {
   func setStatus(taskId: String, status: TaskStatus) throws {
     if FileManager.default.fileExists(atPath: tasksDirURL.path) {
       let url = taskFileURL(taskId: taskId)
+      guard FileManager.default.fileExists(atPath: url.path) else { return }
       let data = try Data(contentsOf: url)
       var task = try decoder().decode(DashboardTask.self, from: data)
       task.status = status
@@ -225,6 +226,7 @@ final class LobsControlStore {
   func setWorkState(taskId: String, workState: WorkState?) throws {
     if FileManager.default.fileExists(atPath: tasksDirURL.path) {
       let url = taskFileURL(taskId: taskId)
+      guard FileManager.default.fileExists(atPath: url.path) else { return }
       let data = try Data(contentsOf: url)
       var task = try decoder().decode(DashboardTask.self, from: data)
       task.workState = workState
@@ -244,6 +246,7 @@ final class LobsControlStore {
   func setReviewState(taskId: String, reviewState: ReviewState?) throws {
     if FileManager.default.fileExists(atPath: tasksDirURL.path) {
       let url = taskFileURL(taskId: taskId)
+      guard FileManager.default.fileExists(atPath: url.path) else { return }
       let data = try Data(contentsOf: url)
       var task = try decoder().decode(DashboardTask.self, from: data)
       task.reviewState = reviewState
@@ -280,6 +283,7 @@ final class LobsControlStore {
 
     if FileManager.default.fileExists(atPath: tasksDirURL.path) {
       let url = taskFileURL(taskId: taskId)
+      guard FileManager.default.fileExists(atPath: url.path) else { return }
       let data = try Data(contentsOf: url)
       var task = try decoder().decode(DashboardTask.self, from: data)
       task.title = cleanTitle.isEmpty ? task.title : cleanTitle
