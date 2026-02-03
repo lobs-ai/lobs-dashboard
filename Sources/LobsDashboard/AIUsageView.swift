@@ -199,16 +199,16 @@ struct AIUsageView: View {
 
         // Summary cards
         HStack(spacing: 16) {
-          UsageSummaryCard(title: "Total Cost", value: String(format: "$%.2f", totalCost), icon: "dollarsign.circle.fill", color: .mint,
-            tooltip: "Estimated total cost based on model pricing.\nOpus: $5/$25 per 1M in/out\nSonnet: $3/$15 per 1M in/out")
           UsageSummaryCard(title: "Total Tokens", value: formatTokens(totalTokens), icon: "cpu", color: .indigo,
             tooltip: "Combined input + output tokens across all sessions")
+          UsageSummaryCard(title: "Worker Runs", value: "\(filteredWorkerRuns.count)", icon: "arrow.triangle.2.circlepath", color: .purple,
+            tooltip: "Number of task-runner sub-agent sessions in this period")
           UsageSummaryCard(title: "Worker Cost", value: String(format: "$%.2f", workerTotalCost), icon: "bolt.fill", color: .orange,
             tooltip: "Cost from task-runner sub-agents — code implementation, research, file operations")
           UsageSummaryCard(title: "Main Session", value: String(format: "$%.2f", mainSessionCost), icon: "bubble.left.fill", color: .cyan,
             tooltip: "Cost from Lobs main session — heartbeat checks, conversations, task spawning and coordination")
-          UsageSummaryCard(title: "Worker Runs", value: "\(filteredWorkerRuns.count)", icon: "arrow.triangle.2.circlepath", color: .purple,
-            tooltip: "Number of task-runner sub-agent sessions in this period")
+          UsageSummaryCard(title: "AI Spend", value: String(format: "$%.2f", totalCost), icon: "dollarsign.circle.fill", color: .mint,
+            tooltip: "Estimated total cost based on model pricing.\nOpus: $5/$25 per 1M in/out\nSonnet: $3/$15 per 1M in/out")
         }
 
         // Daily usage chart
