@@ -120,6 +120,14 @@ final class AppViewModel: ObservableObject {
   /// One-line summaries of pending update commits (for display in popover).
   @Published var dashboardUpdateCommits: [String] = []
 
+  // Self-update state
+  /// Whether a self-update (pull + build + relaunch) is in progress.
+  @Published var isUpdating: Bool = false
+  /// Progress log lines from the update process.
+  @Published var updateLog: [String] = []
+  /// Error message if the update failed.
+  @Published var updateError: String? = nil
+
   // Kanban UX
   @Published var searchText: String = ""
   @Published var multiSelectedTaskIds: Set<String> = []
@@ -445,6 +453,117 @@ final class AppViewModel: ObservableObject {
       } catch {
         print("[update-check] failed: \(error)")
       }
+    }
+  }
+
+  /// Perform a self-update: git pull --rebase, ./bin/build, then relaunch the app.
+  func performSelfUpdate() {
+    guard let dashURL = dashboardRepoURL else {
+      updateError = "Cannot find lobs-dashboard repo"
+      return
+    }
+    guard !isUpdating else { return }
+
+    isUpdating = true
+    updateLog = []
+    updateError = nil
+
+    Task {
+      do {
+        // Step 1: git pull --rebase
+        updateLog.append("Pulling latest changes…")
+        let pull = try await Git.runAsync(["pull", "--rebase"], cwd: dashURL)
+        if !pull.ok {
+          updateError = "git pull failed: \(pull.stderr)"
+          isUpdating = false
+          return
+        }
+        let pullMsg = pull.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !pullMsg.isEmpty {
+          updateLog.append(pullMsg)
+        }
+
+        // Step 2: Run ./bin/build
+        updateLog.append("Building…")
+        let buildResult = try await runBuildScript(cwd: dashURL)
+        if !buildResult.ok {
+          updateError = "Build failed: \(buildResult.stderr)"
+          isUpdating = false
+          return
+        }
+        updateLog.append("Build succeeded!")
+
+        // Step 3: Relaunch
+        updateLog.append("Relaunching…")
+        // Small delay so the user can see the success message
+        try await Task.sleep(nanoseconds: 500_000_000)
+        relaunchApp(dashURL: dashURL)
+      } catch {
+        updateError = "Update failed: \(error.localizedDescription)"
+        isUpdating = false
+      }
+    }
+  }
+
+  /// Run the bin/build script asynchronously and return the result.
+  private func runBuildScript(cwd: URL) async throws -> Git.Result {
+    try await withCheckedThrowingContinuation { continuation in
+      DispatchQueue.global(qos: .userInitiated).async {
+        do {
+          let proc = Process()
+          proc.executableURL = URL(fileURLWithPath: "/bin/bash")
+          proc.arguments = [cwd.appendingPathComponent("bin/build").path]
+          proc.currentDirectoryURL = cwd
+
+          // The build script temporarily overrides HOME for SwiftPM caching.
+          // Pass through the current environment.
+          proc.environment = ProcessInfo.processInfo.environment
+
+          let out = Pipe()
+          let err = Pipe()
+          proc.standardOutput = out
+          proc.standardError = err
+
+          try proc.run()
+          proc.waitUntilExit()
+
+          let stdout = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+          let stderr = String(data: err.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+
+          continuation.resume(returning: Git.Result(
+            exitCode: proc.terminationStatus,
+            stdout: stdout,
+            stderr: stderr
+          ))
+        } catch {
+          continuation.resume(throwing: error)
+        }
+      }
+    }
+  }
+
+  /// Relaunch the app by exec-ing the new binary built by `swift build`.
+  private func relaunchApp(dashURL: URL) {
+    // Find the built binary. `swift build` puts it in .build/debug/LobsDashboard
+    let binaryPath = dashURL.appendingPathComponent(".build/debug/LobsDashboard").path
+
+    // Use a shell script to wait a moment then launch the new binary
+    let script = """
+    sleep 0.5
+    exec "\(binaryPath)"
+    """
+
+    let proc = Process()
+    proc.executableURL = URL(fileURLWithPath: "/bin/bash")
+    proc.arguments = ["-c", script]
+    proc.environment = ProcessInfo.processInfo.environment
+    // Detach from parent process group so it survives our exit
+    proc.qualityOfService = .userInitiated
+    try? proc.run()
+
+    // Exit the current app
+    DispatchQueue.main.async {
+      NSApplication.shared.terminate(nil)
     }
   }
 

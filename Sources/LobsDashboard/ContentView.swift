@@ -579,11 +579,58 @@ private struct ToolbarArea: View {
 
             Divider()
 
-            Text(vm.dashboardNeedsRebuild
-              ? "Run `./bin/build && swift run` to update."
-              : "Run `git pull` then `./bin/build && swift run`.")
-              .font(.system(size: 10))
-              .foregroundStyle(.tertiary)
+            if vm.isUpdating {
+              HStack(spacing: 8) {
+                ProgressView()
+                  .scaleEffect(0.8)
+                Text("Updating…")
+                  .font(.system(size: 11, weight: .medium))
+                  .foregroundStyle(.secondary)
+                Spacer()
+              }
+
+              if !vm.updateLog.isEmpty {
+                ScrollView {
+                  VStack(alignment: .leading, spacing: 4) {
+                    ForEach(vm.updateLog, id: \.self) { line in
+                      Text(line)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                  }
+                  .padding(.vertical, 4)
+                }
+                .frame(maxHeight: 120)
+              }
+            } else {
+              if let err = vm.updateError {
+                Text(err)
+                  .font(.system(size: 11))
+                  .foregroundStyle(.red)
+              }
+
+              Button {
+                vm.performSelfUpdate()
+              } label: {
+                HStack(spacing: 6) {
+                  Image(systemName: "arrow.triangle.2.circlepath")
+                  Text("Update now")
+                }
+                .font(.system(size: 11, weight: .semibold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.accentColor.opacity(0.15))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+              }
+              .buttonStyle(.plain)
+
+              Text(vm.dashboardNeedsRebuild
+                ? "Will rebuild and relaunch this app."
+                : "Will pull, rebuild, and relaunch this app.")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+            }
           }
           .padding(12)
           .frame(minWidth: 280, maxWidth: 400)
