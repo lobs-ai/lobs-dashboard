@@ -1714,27 +1714,69 @@ private struct TaskDetailPopover: View {
   @State private var lastAutosavedNotes: String = ""
   @State private var showMarkdownPreview: Bool = false
 
+  private enum FocusField { case title }
+  @FocusState private var focusField: FocusField?
+  @State private var isEditingTitle: Bool = false
+
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 16) {
         // Header
         VStack(alignment: .leading, spacing: 8) {
-          TextField("Title", text: $editTitle)
-            .font(.title3)
-            .fontWeight(.bold)
-            .textFieldStyle(.plain)
-            .onAppear {
-              editTitle = task.title
-              editNotes = task.notes ?? ""
-              lastAutosavedTitle = editTitle
-              lastAutosavedNotes = editNotes
+          // Don't auto-focus the title field when opening the popover; it steals
+          // keyboard navigation (↑/↓) from the board. Enter edit mode explicitly.
+          Group {
+            if isEditingTitle {
+              TextField("Title", text: $editTitle)
+                .font(.title3)
+                .fontWeight(.bold)
+                .textFieldStyle(.plain)
+                .focused($focusField, equals: .title)
+                .onSubmit {
+                  vm.editTask(taskId: task.id, title: editTitle, notes: editNotes, autoPush: autoPush)
+                  lastAutosavedTitle = editTitle
+                  lastAutosavedNotes = editNotes
+                  isEditingTitle = false
+                  focusField = nil
+                }
+                .onChange(of: editTitle) { _ in scheduleAutosave() }
+                .onExitCommand {
+                  isEditingTitle = false
+                  focusField = nil
+                }
+            } else {
+              HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(editTitle)
+                  .font(.title3)
+                  .fontWeight(.bold)
+                  .lineLimit(3)
+                  .frame(maxWidth: .infinity, alignment: .leading)
+                  .onTapGesture(count: 2) {
+                    isEditingTitle = true
+                    DispatchQueue.main.async { focusField = .title }
+                  }
+
+                Button {
+                  isEditingTitle = true
+                  DispatchQueue.main.async { focusField = .title }
+                } label: {
+                  Image(systemName: "pencil")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Edit title")
+              }
             }
-            .onSubmit {
-              vm.editTask(taskId: task.id, title: editTitle, notes: editNotes, autoPush: autoPush)
-              lastAutosavedTitle = editTitle
-              lastAutosavedNotes = editNotes
-            }
-            .onChange(of: editTitle) { _ in scheduleAutosave() }
+          }
+          .onAppear {
+            editTitle = task.title
+            editNotes = task.notes ?? ""
+            lastAutosavedTitle = editTitle
+            lastAutosavedNotes = editNotes
+            isEditingTitle = false
+            focusField = nil
+          }
 
           HStack(spacing: 6) {
             DetailTag(text: task.owner.rawValue, icon: "person", color: .purple)
