@@ -295,7 +295,7 @@ struct OverviewView: View {
                   .fontWeight(.medium)
                   .foregroundStyle(.secondary)
               }
-              .frame(maxWidth: .infinity, minHeight: 100)
+              .frame(maxWidth: .infinity, minHeight: 160, maxHeight: 160)
               .contentShape(Rectangle())
               .background(
                 RoundedRectangle(cornerRadius: OTheme.cardRadius)
@@ -779,7 +779,7 @@ private struct ProjectCard: View {
         }
       }
       .padding(16)
-      .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
+      .frame(maxWidth: .infinity, minHeight: 160, maxHeight: 160, alignment: .topLeading)
       .contentShape(Rectangle())
       .background(
         RoundedRectangle(cornerRadius: OTheme.cardRadius)
