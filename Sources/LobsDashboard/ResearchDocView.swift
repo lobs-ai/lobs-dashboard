@@ -1161,6 +1161,86 @@ private struct AddSourceSheet: View {
 
 // MARK: - Ask Lobs Sheet (Research)
 
+/// Research request templates with structured fields.
+private struct ResearchTemplate: Identifiable {
+  let id: String
+  let name: String
+  let icon: String
+  let color: Color
+  let promptTemplate: String
+
+  static let all: [ResearchTemplate] = [
+    ResearchTemplate(
+      id: "literature-scan",
+      name: "Literature Scan",
+      icon: "book.pages",
+      color: .blue,
+      promptTemplate: """
+      Literature scan — \
+      Goal: [What are you trying to understand?]
+      Scope: [Specific area, time period, or constraints]
+      Deliverable: Summary of key papers/sources with relevance notes
+      Depth: [quick overview / thorough survey]
+      """
+    ),
+    ResearchTemplate(
+      id: "comparison",
+      name: "Comparison Matrix",
+      icon: "tablecells",
+      color: .green,
+      promptTemplate: """
+      Comparison matrix — \
+      Goal: [What options are you comparing?]
+      Options: [Option A, Option B, Option C, ...]
+      Criteria: [What dimensions matter? e.g. cost, features, ease of use]
+      Deliverable: Side-by-side comparison table with recommendation
+      Depth: [quick / detailed]
+      """
+    ),
+    ResearchTemplate(
+      id: "implementation-plan",
+      name: "Implementation Plan",
+      icon: "hammer",
+      color: .orange,
+      promptTemplate: """
+      Implementation plan — \
+      Goal: [What are you building/implementing?]
+      Constraints: [Timeline, tech stack, team size, budget]
+      Deliverable: Step-by-step plan with milestones and risk assessment
+      Depth: [high-level / detailed breakdown]
+      """
+    ),
+    ResearchTemplate(
+      id: "itinerary",
+      name: "Itinerary Planning",
+      icon: "map",
+      color: .purple,
+      promptTemplate: """
+      Itinerary planning — \
+      Goal: [Trip destination and purpose]
+      Dates: [When? How many days?]
+      Constraints: [Budget, interests, dietary needs, accessibility]
+      Deliverable: Day-by-day itinerary with recommendations
+      Depth: [overview / detailed with reservations]
+      """
+    ),
+    ResearchTemplate(
+      id: "deep-dive",
+      name: "Deep Dive",
+      icon: "magnifyingglass",
+      color: .red,
+      promptTemplate: """
+      Deep dive — \
+      Goal: [Topic to investigate thoroughly]
+      Key questions: [What specific questions need answers?]
+      Constraints: [Any boundaries or focus areas]
+      Deliverable: Comprehensive analysis document
+      Depth: thorough
+      """
+    ),
+  ]
+}
+
 private struct AskLobsResearchSheet: View {
   @ObservedObject var vm: AppViewModel
   @Environment(\.dismiss) private var dismiss
@@ -1169,6 +1249,7 @@ private struct AskLobsResearchSheet: View {
   var sectionContext: String? = nil
 
   @State private var prompt: String = ""
+  @State private var selectedTemplate: ResearchTemplate? = nil
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
@@ -1206,6 +1287,39 @@ private struct AskLobsResearchSheet: View {
         .padding(.vertical, 6)
         .background(Color.orange.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+      }
+
+      // Template picker (only show when no section context)
+      if sectionContext == nil {
+        VStack(alignment: .leading, spacing: 6) {
+          Text("Templates")
+            .font(.footnote)
+            .fontWeight(.semibold)
+            .foregroundStyle(.secondary)
+          ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+              ForEach(ResearchTemplate.all) { template in
+                Button {
+                  selectedTemplate = template
+                  prompt = template.promptTemplate
+                } label: {
+                  HStack(spacing: 5) {
+                    Image(systemName: template.icon)
+                      .font(.system(size: 11))
+                    Text(template.name)
+                      .font(.system(size: 11, weight: .medium))
+                  }
+                  .padding(.horizontal, 10)
+                  .padding(.vertical, 6)
+                  .background(selectedTemplate?.id == template.id ? template.color.opacity(0.15) : DocTheme.subtle)
+                  .foregroundStyle(selectedTemplate?.id == template.id ? template.color : .secondary)
+                  .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+              }
+            }
+          }
+        }
       }
 
       TextEditor(text: $prompt)
