@@ -612,6 +612,7 @@ private struct ThreadMessageBubble: View {
 
   @State private var isEditing = false
   @State private var editText = ""
+  @State private var showDeleteConfirm = false
 
   private var isRafe: Bool { message.author.lowercased() == "rafe" }
   private var isLobs: Bool { message.author.lowercased() == "lobs" }
@@ -653,6 +654,16 @@ private struct ThreadMessageBubble: View {
             }
             .buttonStyle(.plain)
             .help("Edit message")
+
+            Button {
+              showDeleteConfirm = true
+            } label: {
+              Image(systemName: "trash")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.plain)
+            .help("Delete message")
           }
         }
 
@@ -704,6 +715,14 @@ private struct ThreadMessageBubble: View {
       RoundedRectangle(cornerRadius: 10)
         .fill(isLobs ? Color.purple.opacity(0.05) : Color.blue.opacity(0.05))
     )
+    .alert("Delete message?", isPresented: $showDeleteConfirm) {
+      Button("Delete", role: .destructive) {
+        vm.deleteInboxThreadMessage(docId: docId, messageId: message.id)
+      }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("This will permanently remove this message from the thread.")
+    }
   }
 }
 
