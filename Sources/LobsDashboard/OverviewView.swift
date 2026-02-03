@@ -76,6 +76,32 @@ struct OverviewView: View {
     return counts
   }
 
+  /// Total (all statuses) research request counts per project.
+  private var totalResearchRequestCountsByProject: [String: Int] {
+    guard let repoURL = vm.repoURL else { return [:] }
+    let store = LobsControlStore(repoRoot: repoURL)
+    var counts: [String: Int] = [:]
+    for project in activeProjects where project.resolvedType == .research {
+      if let requests = try? store.loadRequests(projectId: project.id) {
+        counts[project.id] = requests.count
+      }
+    }
+    return counts
+  }
+
+  /// Research deliverable counts per project.
+  private var researchDeliverableCountsByProject: [String: Int] {
+    guard let repoURL = vm.repoURL else { return [:] }
+    let store = LobsControlStore(repoRoot: repoURL)
+    var counts: [String: Int] = [:]
+    for project in activeProjects where project.resolvedType == .research {
+      if let deliverables = try? store.loadResearchDeliverables(projectId: project.id) {
+        counts[project.id] = deliverables.count
+      }
+    }
+    return counts
+  }
+
   private var openResearchRequests: Int {
     researchRequestCountsByProject.values.reduce(0, +)
   }
@@ -186,6 +212,8 @@ struct OverviewView: View {
                 project: project,
                 tasks: allTasks.filter { ($0.projectId ?? "default") == project.id },
                 researchRequestCount: researchRequestCountsByProject[project.id] ?? 0,
+                totalResearchRequestCount: totalResearchRequestCountsByProject[project.id] ?? 0,
+                researchDeliverableCount: researchDeliverableCountsByProject[project.id] ?? 0,
                 wipLimit: vm.wipLimitActive,
                 onTap: { onSelectProject(project.id) }
               )
@@ -414,6 +442,8 @@ private struct ProjectCard: View {
   let project: Project
   let tasks: [DashboardTask]
   var researchRequestCount: Int = 0
+  var totalResearchRequestCount: Int = 0
+  var researchDeliverableCount: Int = 0
   var wipLimit: Int = 0
   let onTap: () -> Void
 
@@ -431,6 +461,11 @@ private struct ProjectCard: View {
 
   /// Health indicator based on blocked ratio and staleness.
   private var health: Health {
+    // Research projects: base health on deliverables and requests
+    if project.resolvedType == .research {
+      if researchDeliverableCount > 0 || totalResearchRequestCount > 0 { return .good }
+      return .neutral
+    }
     if totalCount == 0 { return .neutral }
     if blockedCount > 0 { return .warning }
     let stale = tasks.filter {
@@ -494,8 +529,19 @@ private struct ProjectCard: View {
 
         // Counts
         HStack(spacing: 12) {
-          // Research projects don't use task status columns, so avoid showing Active/Done.
-          if project.resolvedType != .research {
+          // Research projects show deliverables + requests instead of task columns.
+          if project.resolvedType == .research {
+            if researchDeliverableCount > 0 {
+              CountBadge(label: "Docs", count: researchDeliverableCount, color: .blue)
+            }
+            if researchRequestCount > 0 {
+              CountBadge(label: "Open", count: researchRequestCount, color: .purple)
+            }
+            let completedResearch = totalResearchRequestCount - researchRequestCount
+            if completedResearch > 0 {
+              CountBadge(label: "Done", count: completedResearch, color: .green)
+            }
+          } else {
             CountBadge(label: "Active", count: activeCount, color: .orange)
             if wipLimit > 0 && activeCount > wipLimit {
               Text("WIP")
@@ -507,9 +553,9 @@ private struct ProjectCard: View {
                 .clipShape(Capsule())
             }
             CountBadge(label: "Done", count: completedCount, color: .green)
-          }
-          if researchRequestCount > 0 {
-            CountBadge(label: "Research", count: researchRequestCount, color: .purple)
+            if researchRequestCount > 0 {
+              CountBadge(label: "Research", count: researchRequestCount, color: .purple)
+            }
           }
           if inboxCount > 0 {
             CountBadge(label: "Inbox", count: inboxCount, color: .blue)
@@ -518,9 +564,11 @@ private struct ProjectCard: View {
             CountBadge(label: "Blocked", count: blockedCount, color: .red)
           }
           Spacer()
-          Text("\(totalCount) total")
-            .font(.footnote)
-            .foregroundStyle(.tertiary)
+          if project.resolvedType != .research {
+            Text("\(totalCount) total")
+              .font(.footnote)
+              .foregroundStyle(.tertiary)
+          }
         }
 
         // Last activity

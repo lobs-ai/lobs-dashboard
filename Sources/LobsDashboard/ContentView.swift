@@ -99,6 +99,7 @@ struct ContentView: View {
             })
           } else if vm.isResearchProject {
             ResearchDocView(vm: vm)
+              .id("research-\(vm.selectedProjectId)")
           } else if vm.isTrackerProject {
             TrackerBoardView(vm: vm)
           } else {
