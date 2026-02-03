@@ -58,6 +58,7 @@ struct ContentView: View {
   @State private var showTemplates = false
   @State private var showHelp = false
   @State private var showTextDump = false
+  @State private var showTextDumpResults = false
 
   var body: some View {
     ZStack(alignment: .top) {
@@ -75,7 +76,8 @@ struct ContentView: View {
           showInbox: $showInbox,
           showTemplates: $showTemplates,
           showHelp: $showHelp,
-          showTextDump: $showTextDump
+          showTextDump: $showTextDump,
+          showTextDumpResults: $showTextDumpResults
         )
 
         StatsBar(vm: vm)
@@ -257,7 +259,16 @@ struct ContentView: View {
     .sheet(isPresented: $showTextDump) {
       TextDumpSheet(vm: vm, projectId: vm.showOverview ? nil : vm.selectedProjectId)
     }
+    .sheet(isPresented: $showTextDumpResults) {
+      TextDumpResultsSheet(vm: vm)
+    }
     .onAppear { vm.reloadIfPossible() }
+    .onChange(of: vm.textDumps) { _ in
+      // Auto-show results when a dump finishes processing
+      if !vm.unreviewedCompletedDumps.isEmpty && !showTextDumpResults {
+        showTextDumpResults = true
+      }
+    }
     // Keyboard shortcuts (Task #84248F22)
     .background(
       KeyboardShortcutReceiver(
@@ -412,6 +423,7 @@ private struct ToolbarArea: View {
   @Binding var showTemplates: Bool
   @Binding var showHelp: Bool
   @Binding var showTextDump: Bool
+  @Binding var showTextDumpResults: Bool
 
   var body: some View {
     HStack(spacing: 12) {
@@ -737,9 +749,32 @@ private struct ToolbarArea: View {
           .padding(6)
           .background(Theme.subtle)
           .clipShape(RoundedRectangle(cornerRadius: 8))
+          .overlay(alignment: .topTrailing) {
+            let count = vm.unreviewedCompletedDumps.count
+            if count > 0 {
+              Text("\(count)")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(Color.orange)
+                .clipShape(Capsule())
+                .offset(x: 4, y: -4)
+            }
+          }
       }
       .buttonStyle(.plain)
-      .help("Paste Text → Tasks")
+      .help(vm.unreviewedCompletedDumps.isEmpty ? "Paste Text → Tasks" : "Paste Text → Tasks (\(vm.unreviewedCompletedDumps.count) ready to review)")
+      .contextMenu {
+        if !vm.unreviewedCompletedDumps.isEmpty {
+          Button("Review Processed Results…") {
+            showTextDumpResults = true
+          }
+        }
+        Button("View All Text Dumps…") {
+          showTextDumpResults = true
+        }
+      }
 
       // Help button (⌘/)
       Button {
@@ -3171,5 +3206,353 @@ private struct TextDumpSheet: View {
     }
     .padding(20)
     .frame(width: 520)
+  }
+}
+
+// MARK: - Text Dump Results Sheet
+
+private struct TextDumpResultsSheet: View {
+  @ObservedObject var vm: AppViewModel
+  @Environment(\.dismiss) private var dismiss
+
+  @State private var expandedDumpId: String? = nil
+  @State private var editingTaskId: String? = nil
+  @State private var editTitle: String = ""
+  @State private var editNotes: String = ""
+
+  private var completedDumps: [TextDump] {
+    vm.textDumps.filter { $0.status == .completed }
+  }
+
+  private var pendingDumps: [TextDump] {
+    vm.textDumps.filter { $0.status == .pending || $0.status == .processing }
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      // Header
+      HStack {
+        Image(systemName: "doc.plaintext.fill")
+          .font(.title2)
+          .foregroundStyle(.linearGradient(
+            colors: [.orange, .red],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+          ))
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Text → Tasks Results")
+            .font(.title3)
+            .fontWeight(.bold)
+          Text("Review and edit tasks created from your text dumps.")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
+        Spacer()
+        Button("Done") { dismiss() }
+          .keyboardShortcut(.cancelAction)
+      }
+      .padding(20)
+
+      Divider()
+
+      ScrollView {
+        VStack(alignment: .leading, spacing: 16) {
+          // Pending dumps
+          if !pendingDumps.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+              Label("Processing", systemImage: "clock")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+              ForEach(pendingDumps) { dump in
+                HStack(spacing: 8) {
+                  ProgressView()
+                    .scaleEffect(0.7)
+                  Text(dump.text.prefix(80) + (dump.text.count > 80 ? "…" : ""))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                  Spacer()
+                  Text(projectName(dump.projectId))
+                    .font(.caption)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Theme.subtle)
+                    .clipShape(Capsule())
+                }
+                .padding(10)
+                .background(Theme.subtle.opacity(0.5))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+              }
+            }
+          }
+
+          // Completed dumps
+          if completedDumps.isEmpty && pendingDumps.isEmpty {
+            VStack(spacing: 12) {
+              Image(systemName: "tray")
+                .font(.largeTitle)
+                .foregroundStyle(.tertiary)
+              Text("No text dumps yet.")
+                .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 40)
+          }
+
+          ForEach(completedDumps) { dump in
+            completedDumpRow(dump)
+          }
+        }
+        .padding(20)
+      }
+    }
+    .frame(width: 680, minHeight: 400, maxHeight: 700)
+    .onAppear {
+      // Auto-expand the first unreviewed dump
+      if let first = vm.unreviewedCompletedDumps.first {
+        expandedDumpId = first.id
+      }
+    }
+  }
+
+  @ViewBuilder
+  private func completedDumpRow(_ dump: TextDump) -> some View {
+    let isExpanded = expandedDumpId == dump.id
+    let isUnreviewed = !vm.reviewedDumpIds.contains(dump.id)
+    let createdTasks = vm.tasksForDump(dump)
+
+    VStack(alignment: .leading, spacing: 0) {
+      // Dump header — clickable to expand/collapse
+      Button {
+        withAnimation(.easeInOut(duration: 0.2)) {
+          expandedDumpId = isExpanded ? nil : dump.id
+        }
+      } label: {
+        HStack(spacing: 10) {
+          Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+            .font(.caption)
+            .foregroundStyle(.tertiary)
+            .frame(width: 12)
+
+          if isUnreviewed {
+            Circle()
+              .fill(.orange)
+              .frame(width: 8, height: 8)
+          }
+
+          VStack(alignment: .leading, spacing: 2) {
+            Text(dump.text.prefix(100) + (dump.text.count > 100 ? "…" : ""))
+              .font(.callout)
+              .fontWeight(isUnreviewed ? .semibold : .regular)
+              .lineLimit(1)
+              .foregroundColor(.primary)
+            HStack(spacing: 8) {
+              Text(projectName(dump.projectId))
+                .font(.caption)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 1)
+                .background(Theme.subtle)
+                .clipShape(Capsule())
+              Text("\(createdTasks.count) task\(createdTasks.count == 1 ? "" : "s") created")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+              Text(dump.updatedAt, style: .relative)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            }
+          }
+
+          Spacer()
+
+          if isUnreviewed {
+            Button("Mark Reviewed") {
+              vm.markDumpReviewed(dump.id)
+            }
+            .font(.caption)
+            .buttonStyle(.bordered)
+            .tint(.orange)
+          } else {
+            Image(systemName: "checkmark.circle.fill")
+              .foregroundStyle(.green)
+              .font(.callout)
+          }
+        }
+        .padding(12)
+      }
+      .buttonStyle(.plain)
+
+      // Expanded: show created tasks
+      if isExpanded {
+        Divider()
+          .padding(.horizontal, 12)
+
+        VStack(alignment: .leading, spacing: 1) {
+          ForEach(createdTasks) { task in
+            if editingTaskId == task.id {
+              taskEditRow(task: task, dump: dump)
+            } else {
+              taskDisplayRow(task: task)
+            }
+          }
+
+          if createdTasks.isEmpty {
+            Text("No tasks found (they may have been deleted or archived).")
+              .font(.caption)
+              .foregroundStyle(.tertiary)
+              .padding(12)
+          }
+        }
+        .padding(.bottom, 8)
+
+        // Original text (collapsed by default)
+        DisclosureGroup("Original Text") {
+          Text(dump.text)
+            .font(.system(size: 11, design: .monospaced))
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+            .padding(8)
+            .background(Theme.subtle.opacity(0.5))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 12)
+        .padding(.bottom, 12)
+
+        // Mark reviewed at bottom if expanded
+        if isUnreviewed {
+          HStack {
+            Spacer()
+            Button {
+              vm.markDumpReviewed(dump.id)
+            } label: {
+              Label("Mark as Reviewed", systemImage: "checkmark.circle")
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.orange)
+            .controlSize(.small)
+          }
+          .padding(.horizontal, 12)
+          .padding(.bottom, 12)
+        }
+      }
+    }
+    .background(isUnreviewed ? Color.orange.opacity(0.04) : Color.clear)
+    .clipShape(RoundedRectangle(cornerRadius: 10))
+    .overlay(
+      RoundedRectangle(cornerRadius: 10)
+        .stroke(isUnreviewed ? Color.orange.opacity(0.2) : Color.primary.opacity(0.06), lineWidth: 1)
+    )
+  }
+
+  @ViewBuilder
+  private func taskDisplayRow(task: DashboardTask) -> some View {
+    HStack(spacing: 8) {
+      statusIcon(task.status)
+        .font(.caption)
+        .frame(width: 16)
+
+      Text(task.title)
+        .font(.callout)
+        .lineLimit(2)
+
+      Spacer()
+
+      if let notes = task.notes, !notes.isEmpty {
+        Image(systemName: "note.text")
+          .font(.caption2)
+          .foregroundStyle(.tertiary)
+      }
+
+      // Edit button
+      Button {
+        editingTaskId = task.id
+        editTitle = task.title
+        editNotes = task.notes ?? ""
+      } label: {
+        Image(systemName: "pencil")
+          .font(.caption)
+      }
+      .buttonStyle(.plain)
+      .foregroundStyle(.secondary)
+
+      // Delete button
+      Button {
+        vm.deleteTask(taskId: task.id)
+      } label: {
+        Image(systemName: "trash")
+          .font(.caption)
+      }
+      .buttonStyle(.plain)
+      .foregroundStyle(.red.opacity(0.6))
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 6)
+    .contentShape(Rectangle())
+  }
+
+  @ViewBuilder
+  private func taskEditRow(task: DashboardTask, dump: TextDump) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      TextField("Title", text: $editTitle)
+        .textFieldStyle(.roundedBorder)
+        .font(.callout)
+
+      TextField("Notes (optional)", text: $editNotes, axis: .vertical)
+        .textFieldStyle(.roundedBorder)
+        .font(.caption)
+        .lineLimit(2...5)
+
+      HStack {
+        Button("Cancel") {
+          editingTaskId = nil
+        }
+        .keyboardShortcut(.cancelAction)
+
+        Spacer()
+
+        Button("Save") {
+          let cleanTitle = editTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+          let cleanNotes = editNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+          if !cleanTitle.isEmpty {
+            vm.updateTaskTitleAndNotes(
+              taskId: task.id,
+              title: cleanTitle,
+              notes: cleanNotes.isEmpty ? nil : cleanNotes
+            )
+          }
+          editingTaskId = nil
+        }
+        .keyboardShortcut(.defaultAction)
+        .disabled(editTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+      }
+    }
+    .padding(12)
+    .background(Theme.subtle.opacity(0.5))
+  }
+
+  private func projectName(_ id: String) -> String {
+    vm.projects.first(where: { $0.id == id })?.title ?? id
+  }
+
+  @ViewBuilder
+  private func statusIcon(_ status: TaskStatus) -> some View {
+    switch status {
+    case .active:
+      Image(systemName: "circle.inset.filled")
+        .foregroundStyle(.blue)
+    case .completed:
+      Image(systemName: "checkmark.circle.fill")
+        .foregroundStyle(.green)
+    case .rejected:
+      Image(systemName: "xmark.circle.fill")
+        .foregroundStyle(.red)
+    case .inbox:
+      Image(systemName: "tray.circle")
+        .foregroundStyle(.secondary)
+    default:
+      Image(systemName: "circle")
+        .foregroundStyle(.secondary)
+    }
   }
 }

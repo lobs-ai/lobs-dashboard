@@ -63,6 +63,17 @@ final class AppViewModel: ObservableObject {
   @Published var workerStatus: WorkerStatus? = nil
   @Published var workerHistory: WorkerHistory? = nil
 
+  // Text Dumps
+  @Published var textDumps: [TextDump] = []
+  /// IDs of completed dumps the user has already reviewed.
+  @Published var reviewedDumpIds: Set<String> = [] {
+    didSet { settings.set(Array(reviewedDumpIds), forKey: "reviewedTextDumpIds") }
+  }
+  /// Completed text dumps that haven't been reviewed yet.
+  var unreviewedCompletedDumps: [TextDump] {
+    textDumps.filter { $0.status == .completed && !reviewedDumpIds.contains($0.id) }
+  }
+
   // Projects
   @Published var projects: [Project] = []
   @Published var selectedProjectId: String = "default" {
@@ -182,6 +193,9 @@ final class AppViewModel: ObservableObject {
        let decoded = try? JSONDecoder().decode([String: Int].self, from: data) {
       lastSeenThreadCounts = decoded
     }
+
+    // Text dump reviewed state
+    reviewedDumpIds = Set(settings.stringArray(forKey: "reviewedTextDumpIds") ?? [])
 
     startAutoRefreshIfNeeded()
 
@@ -413,6 +427,7 @@ final class AppViewModel: ObservableObject {
         loadProjectReadme(store: store)
         loadTemplates()
         loadWorkerStatus(store: store)
+        loadTextDumps(store: store)
 
       } catch {
         lastError = String(describing: error)
@@ -1505,6 +1520,59 @@ final class AppViewModel: ObservableObject {
   // MARK: - Projects
 
   // MARK: - Text Dumps
+
+  func loadTextDumps(store: LobsControlStore? = nil) {
+    guard let repoURL else { return }
+    let s = store ?? LobsControlStore(repoRoot: repoURL)
+    do {
+      textDumps = try s.loadTextDumps()
+    } catch {
+      textDumps = []
+    }
+  }
+
+  /// Mark a completed text dump as reviewed by the user.
+  func markDumpReviewed(_ dumpId: String) {
+    reviewedDumpIds.insert(dumpId)
+  }
+
+  /// Get tasks created from a specific text dump.
+  func tasksForDump(_ dump: TextDump) -> [DashboardTask] {
+    guard let ids = dump.taskIds else { return [] }
+    let idSet = Set(ids)
+    return tasks.filter { idSet.contains($0.id) }
+  }
+
+  /// Delete a single task by ID (used from text dump results).
+  func deleteTask(taskId: String) {
+    guard let repoURL else { return }
+    tasks.removeAll { $0.id == taskId }
+    let store = LobsControlStore(repoRoot: repoURL)
+    do {
+      try store.deleteTask(taskId: taskId)
+    } catch {
+      flashError("Failed to delete task: \(error.localizedDescription)")
+      return
+    }
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: delete task \(taskId)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
+    }
+  }
+
+  /// Update a task's title and notes (used from text dump results).
+  func updateTaskTitleAndNotes(taskId: String, title: String, notes: String?) {
+    editTask(taskId: taskId, title: title, notes: notes, autoPush: true)
+  }
 
   func submitTextDump(text: String, projectId: String) {
     guard let repoURL else { return }
