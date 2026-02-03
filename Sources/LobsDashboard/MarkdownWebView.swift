@@ -44,7 +44,13 @@ struct MarkdownWebView: NSViewRepresentable {
       config.userContentController.add(context.coordinator, name: "heightChanged")
     }
 
-    let webView = WKWebView(frame: .zero, configuration: config)
+    let webView: WKWebView
+    if onContentHeightChanged != nil {
+      // Use scroll-through subclass so scroll events pass to parent ScrollView
+      webView = ScrollThroughWebView(frame: .zero, configuration: config)
+    } else {
+      webView = WKWebView(frame: .zero, configuration: config)
+    }
     webView.setValue(false, forKey: "drawsBackground")
     webView.navigationDelegate = context.coordinator
 
@@ -427,5 +433,17 @@ private func disableInternalScrolling(_ view: NSView) {
       scrollView.horizontalScrollElasticity = .none
     }
     disableInternalScrolling(subview)
+  }
+}
+
+// MARK: - Scroll-Through WKWebView
+
+/// A WKWebView subclass that forwards scroll wheel events to its parent,
+/// preventing the internal web view scroll from eating scroll gestures
+/// that should reach the enclosing SwiftUI ScrollView.
+class ScrollThroughWebView: WKWebView {
+  override func scrollWheel(with event: NSEvent) {
+    // Forward to next responder (parent scroll view) instead of handling internally
+    nextResponder?.scrollWheel(with: event)
   }
 }
