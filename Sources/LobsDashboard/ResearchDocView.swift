@@ -405,15 +405,10 @@ struct ResearchDocView: View {
 
   private func ensureDeliverableSelectedIfNeeded() {
     guard docIsEmpty else { return }
-    // Default to combined view when there are multiple deliverables
-    if vm.researchDeliverables.count > 1 && selectedDeliverable == nil {
+    // Default to combined view when there are deliverables and nothing selected
+    if !vm.researchDeliverables.isEmpty && selectedDeliverable == nil {
       showCombinedDocs = true
       return
-    }
-    // Single deliverable: auto-select it
-    guard selectedDeliverable == nil else { return }
-    if let first = vm.researchDeliverables.first {
-      selectedDeliverable = first
     }
   }
 
@@ -429,8 +424,8 @@ struct ResearchDocView: View {
           .foregroundStyle(.secondary)
       }
 
-      // "All Documents" button (default view for multiple deliverables)
-      if vm.researchDeliverables.count > 1 {
+      // "All Documents" button (shows combined view of all deliverables)
+      if !vm.researchDeliverables.isEmpty {
         Button {
           showCombinedDocs = true
           selectedDeliverable = nil
@@ -556,7 +551,7 @@ struct ResearchDocView: View {
           .onChange(of: editContent) { _ in
             scheduleSave()
           }
-      } else if showCombinedDocs && vm.researchDeliverables.count > 1 {
+      } else if showCombinedDocs && !vm.researchDeliverables.isEmpty {
         // Combined view: all deliverable docs in one scrollable markdown view
         ScrollView {
           VStack(alignment: .leading, spacing: 0) {
@@ -614,8 +609,8 @@ struct ResearchDocView: View {
               .padding(.horizontal, 8)
           }
         }
-      } else if docIsEmpty, let deliverable = selectedDeliverable {
-        // If doc.md is empty/missing but we have deliverables, show those directly.
+      } else if let deliverable = selectedDeliverable {
+        // Show selected deliverable (works whether doc.md has content or not)
         DeliverableInlineViewer(deliverable: deliverable)
       } else if docIsEmpty && !vm.researchDeliverables.isEmpty {
         // Doc is empty but deliverables exist — prompt to select one
