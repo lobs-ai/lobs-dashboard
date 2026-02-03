@@ -103,6 +103,8 @@ final class AppViewModel: ObservableObject {
 
   /// Transient error banner — shown briefly then auto-dismissed.
   @Published var errorBanner: String? = nil
+  /// Transient success banner — shown briefly then auto-dismissed.
+  @Published var successBanner: String? = nil
 
   /// Whether a background git operation is in flight.
   @Published var isGitBusy: Bool = false
@@ -1551,6 +1553,14 @@ final class AppViewModel: ObservableObject {
     Task {
       try? await Task.sleep(nanoseconds: 5_000_000_000)
       if errorBanner == message { errorBanner = nil }
+    }
+  }
+
+  func flashSuccess(_ message: String) {
+    successBanner = message
+    Task {
+      try? await Task.sleep(nanoseconds: 3_000_000_000)
+      if successBanner == message { successBanner = nil }
     }
   }
 
