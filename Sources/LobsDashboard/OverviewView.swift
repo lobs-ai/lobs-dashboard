@@ -1651,21 +1651,21 @@ private struct WorkerStatusCard: View {
 
             Spacer()
 
-            // Cumulative cost summary
-            let totalCost = history.runs.reduce(0.0) { $0 + ($1.estimatedCostUSD ?? 0) }
+            // Token usage summary (per-run totals only)
+            let totalTokens = history.runs.reduce(0) { $0 + ($1.totalTokens ?? 0) }
             let todayRuns = history.runs.filter { run in
               guard let ended = run.endedAt else { return false }
               return Calendar.current.isDateInToday(ended)
             }
-            let todayCost = todayRuns.reduce(0.0) { $0 + ($1.estimatedCostUSD ?? 0) }
-            if totalCost > 0 {
+            let todayTokens = todayRuns.reduce(0) { $0 + ($1.totalTokens ?? 0) }
+            if totalTokens > 0 {
               HStack(spacing: 8) {
-                if todayCost > 0 {
-                  Text("Today: ~$\(todayCost, specifier: "%.2f")")
+                if todayTokens > 0 {
+                  Text("Today: \(todayTokens) tok")
                     .font(.system(size: 11, weight: .medium).monospacedDigit())
                     .foregroundStyle(.orange)
                 }
-                Text("Total: ~$\(totalCost, specifier: "%.2f")")
+                Text("Total: \(totalTokens) tok")
                   .font(.system(size: 11, weight: .medium).monospacedDigit())
                   .foregroundStyle(.secondary)
               }

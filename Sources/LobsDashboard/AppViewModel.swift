@@ -2550,7 +2550,7 @@ final class AppViewModel: ObservableObject {
 
   // MARK: - Research Requests
 
-  func addRequest(prompt: String, tileId: String? = nil) {
+  func addRequest(prompt: String, tileId: String? = nil, priority: ResearchPriority? = nil, deliverables: [RequestDeliverable]? = nil) {
     guard let repoURL else { return }
     let now = Date()
     let req = ResearchRequest(
@@ -2561,6 +2561,8 @@ final class AppViewModel: ObservableObject {
       status: .open,
       response: nil,
       author: "rafe",
+      priority: priority,
+      deliverables: deliverables,
       createdAt: now,
       updatedAt: now
     )
@@ -2638,6 +2640,99 @@ final class AppViewModel: ObservableObject {
     updated.status = status
     updateRequest(updated)
   }
+
+  /// Edit a research request's prompt with versioning. Saves the old prompt in editHistory.
+  func editResearchRequestWithVersioning(requestId: String, newPrompt: String, editedBy: String = "rafe") {
+    guard let req = researchRequests.first(where: { $0.id == requestId }) else { return }
+    var updated = req
+
+    // Save current prompt as a version before overwriting
+    let versionNumber = (req.editHistory?.count ?? 0) + 1
+    let snapshot = RequestEditVersion(
+      id: "v\(versionNumber)",
+      prompt: req.prompt,
+      editedAt: Date(),
+      editedBy: editedBy
+    )
+    var history = updated.editHistory ?? []
+    history.append(snapshot)
+    updated.editHistory = history
+    updated.prompt = newPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+    updateRequest(updated)
+  }
+
+  /// Assign a worker to a research request.
+  func assignResearchRequestWorker(requestId: String, worker: String?) {
+    guard let req = researchRequests.first(where: { $0.id == requestId }) else { return }
+    var updated = req
+    updated.assignedWorker = worker
+    updateRequest(updated)
+  }
+
+  /// Split a research request into a sub-request. Creates a new request with parentRequestId set.
+  func splitResearchRequest(parentId: String, newPrompt: String) {
+    guard let parent = researchRequests.first(where: { $0.id == parentId }) else { return }
+    guard let repoURL else { return }
+    let now = Date()
+    let sub = ResearchRequest(
+      id: UUID().uuidString,
+      projectId: parent.projectId,
+      tileId: parent.tileId,
+      prompt: newPrompt,
+      status: .open,
+      response: nil,
+      author: "rafe",
+      priority: parent.priority,
+      deliverables: nil,
+      editHistory: nil,
+      parentRequestId: parentId,
+      assignedWorker: nil,
+      createdAt: now,
+      updatedAt: now
+    )
+
+    researchRequests.insert(sub, at: 0)
+
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.saveRequest(sub)
+    } catch {
+      flashError("Failed to save sub-request: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: split request \(parentId) → \(sub.id)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
+    }
+  }
+
+  /// Update deliverables on a research request.
+  func updateResearchRequestDeliverables(requestId: String, deliverables: [RequestDeliverable]) {
+    guard let req = researchRequests.first(where: { $0.id == requestId }) else { return }
+    var updated = req
+    updated.deliverables = deliverables.isEmpty ? nil : deliverables
+    updateRequest(updated)
+  }
+
+  /// Toggle a specific deliverable's fulfilled state.
+  func toggleDeliverableFulfilled(requestId: String, deliverableId: String) {
+    guard let req = researchRequests.first(where: { $0.id == requestId }) else { return }
+    var updated = req
+    guard var dels = updated.deliverables,
+          let idx = dels.firstIndex(where: { $0.id == deliverableId }) else { return }
+    dels[idx].fulfilled.toggle()
+    updated.deliverables = dels
+    updateRequest(updated)
   }
 
   // MARK: - Async Git Helpers

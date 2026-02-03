@@ -283,6 +283,31 @@ enum ResearchPriority: String, Codable, Hashable, CaseIterable {
   case urgent
 }
 
+/// A single expected deliverable artifact for a research request.
+struct RequestDeliverable: Codable, Identifiable, Hashable {
+  var id: String
+  var kind: String       // e.g. "markdown", "bullet-summary", "links-list", "comparison-table"
+  var label: String      // human description, e.g. "Main research document"
+  var fulfilled: Bool    // whether the artifact has been produced
+
+  static let commonKinds: [(String, String)] = [
+    ("markdown", "Markdown document"),
+    ("bullet-summary", "Bullet summary"),
+    ("links-list", "Links / sources list"),
+    ("comparison-table", "Comparison table"),
+    ("implementation-plan", "Implementation plan"),
+    ("custom", "Custom"),
+  ]
+}
+
+/// A snapshot of a request prompt at a point in time (for edit versioning).
+struct RequestEditVersion: Codable, Identifiable, Hashable {
+  var id: String          // "v1", "v2", etc.
+  var prompt: String
+  var editedAt: Date
+  var editedBy: String?   // "rafe" or "lobs"
+}
+
 struct ResearchRequest: Codable, Identifiable, Hashable {
   var id: String
   var projectId: String
@@ -292,14 +317,37 @@ struct ResearchRequest: Codable, Identifiable, Hashable {
   var response: String?
   var author: String?       // who created the request
   var priority: ResearchPriority?  // nil defaults to .normal
+  var deliverables: [RequestDeliverable]?  // expected output artifacts
+  var editHistory: [RequestEditVersion]?   // version history of prompt edits
+  var parentRequestId: String?   // if this was split from another request
+  var assignedWorker: String?    // worker assignment (e.g. "lobs")
   var createdAt: Date
   var updatedAt: Date
 
   /// Resolved priority (defaults to .normal if nil)
   var resolvedPriority: ResearchPriority { priority ?? .normal }
 
+  /// Whether all declared deliverables are fulfilled.
+  var allDeliverablesFulfilled: Bool {
+    guard let dels = deliverables, !dels.isEmpty else { return true }
+    return dels.allSatisfy { $0.fulfilled }
+  }
+
+  /// Number of fulfilled deliverables vs total.
+  var deliverableProgress: (fulfilled: Int, total: Int) {
+    guard let dels = deliverables else { return (0, 0) }
+    return (dels.filter { $0.fulfilled }.count, dels.count)
+  }
+
+  /// Current version number based on edit history.
+  var currentVersion: Int {
+    (editHistory?.count ?? 0) + 1
+  }
+
   enum CodingKeys: String, CodingKey {
-    case id, projectId, tileId, prompt, status, response, author, priority, createdAt, updatedAt
+    case id, projectId, tileId, prompt, status, response, author, priority
+    case deliverables, editHistory, parentRequestId, assignedWorker
+    case createdAt, updatedAt
   }
 
   init(from decoder: Decoder) throws {
@@ -312,11 +360,15 @@ struct ResearchRequest: Codable, Identifiable, Hashable {
     response = try c.decodeIfPresent(String.self, forKey: .response)
     author = try c.decodeIfPresent(String.self, forKey: .author)
     priority = try c.decodeIfPresent(ResearchPriority.self, forKey: .priority)
+    deliverables = try c.decodeIfPresent([RequestDeliverable].self, forKey: .deliverables)
+    editHistory = try c.decodeIfPresent([RequestEditVersion].self, forKey: .editHistory)
+    parentRequestId = try c.decodeIfPresent(String.self, forKey: .parentRequestId)
+    assignedWorker = try c.decodeIfPresent(String.self, forKey: .assignedWorker)
     createdAt = try c.decode(Date.self, forKey: .createdAt)
     updatedAt = try c.decode(Date.self, forKey: .updatedAt)
   }
 
-  init(id: String, projectId: String, tileId: String? = nil, prompt: String, status: ResearchRequestStatus, response: String? = nil, author: String? = nil, priority: ResearchPriority? = nil, createdAt: Date, updatedAt: Date) {
+  init(id: String, projectId: String, tileId: String? = nil, prompt: String, status: ResearchRequestStatus, response: String? = nil, author: String? = nil, priority: ResearchPriority? = nil, deliverables: [RequestDeliverable]? = nil, editHistory: [RequestEditVersion]? = nil, parentRequestId: String? = nil, assignedWorker: String? = nil, createdAt: Date, updatedAt: Date) {
     self.id = id
     self.projectId = projectId
     self.tileId = tileId
@@ -325,6 +377,10 @@ struct ResearchRequest: Codable, Identifiable, Hashable {
     self.response = response
     self.author = author
     self.priority = priority
+    self.deliverables = deliverables
+    self.editHistory = editHistory
+    self.parentRequestId = parentRequestId
+    self.assignedWorker = assignedWorker
     self.createdAt = createdAt
     self.updatedAt = updatedAt
   }
@@ -445,8 +501,6 @@ struct WorkerTaskLogEntry: Codable {
   var task: String?
   var project: String?
   var completedAt: Date?
-  var tokens: Int?
-  var costUSD: Double?
 }
 
 struct WorkerHistoryRun: Codable, Identifiable {
@@ -456,7 +510,13 @@ struct WorkerHistoryRun: Codable, Identifiable {
   var tasksCompleted: Int?
   var timeoutReason: String?
   var model: String?
-  var estimatedCostUSD: Double?
+
+  /// Total tokens used in this worker run (optional).
+  var totalTokens: Int?
+  /// Total cost (USD) for this worker run (optional).
+  var totalCostUSD: Double?
+
+  /// Optional: lightweight list of tasks completed during the run.
   var taskLog: [WorkerTaskLogEntry]?
 
   var id: String { "\(workerId ?? "unknown")-\(startedAt?.timeIntervalSince1970 ?? 0)" }

@@ -750,11 +750,22 @@ private struct RequestCard: View {
         Circle()
           .fill(requestStatusColor(request.status))
           .frame(width: 8, height: 8)
+        // Priority indicator
+        if request.resolvedPriority == .high || request.resolvedPriority == .urgent {
+          Image(systemName: request.resolvedPriority == .urgent ? "exclamationmark.2" : "exclamationmark")
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(request.resolvedPriority == .urgent ? .red : .orange)
+        }
         Text(request.prompt)
           .font(.callout)
           .fontWeight(.medium)
           .lineLimit(2)
         Spacer()
+        if request.currentVersion > 1 {
+          Text("v\(request.currentVersion)")
+            .font(.system(size: 10, weight: .medium, design: .monospaced))
+            .foregroundStyle(.secondary)
+        }
         if isHovering && request.status != .done && request.status != .completed {
           Button(action: { showEditSheet = true }) {
             Image(systemName: "pencil")
@@ -773,6 +784,57 @@ private struct RequestCard: View {
           .clipShape(Capsule())
       }
 
+      // Deliverable checklist
+      if let dels = request.deliverables, !dels.isEmpty {
+        VStack(alignment: .leading, spacing: 4) {
+          HStack(spacing: 4) {
+            Image(systemName: "doc.badge.plus")
+              .font(.system(size: 11))
+              .foregroundStyle(.secondary)
+            Text("Deliverables")
+              .font(.system(size: 11, weight: .bold))
+              .foregroundStyle(.secondary)
+          }
+          ForEach(dels) { del in
+            HStack(spacing: 6) {
+              Button {
+                vm.toggleDeliverableFulfilled(requestId: request.id, deliverableId: del.id)
+              } label: {
+                Image(systemName: del.fulfilled ? "checkmark.square.fill" : "square")
+                  .font(.system(size: 13))
+                  .foregroundStyle(del.fulfilled ? .green : .secondary)
+              }
+              .buttonStyle(.plain)
+              Text(del.label)
+                .font(.system(size: 12))
+                .foregroundStyle(del.fulfilled ? .secondary : .primary)
+                .strikethrough(del.fulfilled)
+              Spacer()
+              Text(del.kind)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.tertiary)
+            }
+          }
+          // Completion validation warning
+          if (request.status == .completed || request.status == .done) && !request.allDeliverablesFulfilled {
+            HStack(spacing: 4) {
+              Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 11))
+                .foregroundStyle(.orange)
+              Text("Marked done but \(request.deliverableProgress.total - request.deliverableProgress.fulfilled) deliverable(s) unfulfilled")
+                .font(.system(size: 11))
+                .foregroundStyle(.orange)
+            }
+            .padding(6)
+            .background(Color.orange.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+          }
+        }
+        .padding(8)
+        .background(RTheme.subtle)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+      }
+
       if let response = request.response, !response.isEmpty {
         Text(response)
           .font(.footnote)
@@ -789,6 +851,20 @@ private struct RequestCard: View {
           Text("by \(author)")
             .font(.system(size: 11))
             .foregroundStyle(.tertiary)
+        }
+        if let worker = request.assignedWorker {
+          Text("→ \(worker)")
+            .font(.system(size: 11))
+            .foregroundStyle(.blue)
+        }
+        if request.parentRequestId != nil {
+          HStack(spacing: 2) {
+            Image(systemName: "arrow.branch")
+              .font(.system(size: 9))
+            Text("sub-request")
+              .font(.system(size: 11))
+          }
+          .foregroundStyle(.purple)
         }
         Text("·")
           .font(.system(size: 11))
@@ -1240,6 +1316,9 @@ private struct AddRequestSheet: View {
 
   @State private var prompt: String = ""
   @State private var selectedTileId: String? = nil
+  @State private var selectedPriority: ResearchPriority = .normal
+  @State private var deliverables: [RequestDeliverable] = []
+  @State private var showDeliverables: Bool = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
@@ -1266,6 +1345,72 @@ private struct AddRequestSheet: View {
           .lineLimit(6, reservesSpace: true)
       }
 
+      // Priority
+      HStack(spacing: 8) {
+        Text("Priority:")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+        Picker("Priority", selection: $selectedPriority) {
+          ForEach(ResearchPriority.allCases, id: \.self) { p in
+            Text(p.rawValue.capitalized).tag(p)
+          }
+        }
+        .pickerStyle(.segmented)
+        .frame(maxWidth: 300)
+      }
+
+      // Expected deliverables (collapsible)
+      DisclosureGroup(isExpanded: $showDeliverables) {
+        VStack(alignment: .leading, spacing: 8) {
+          ForEach(deliverables.indices, id: \.self) { idx in
+            HStack(spacing: 8) {
+              Text(deliverables[idx].label)
+                .font(.footnote)
+              Spacer()
+              Text(deliverables[idx].kind)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.secondary)
+              Button {
+                deliverables.remove(at: idx)
+              } label: {
+                Image(systemName: "xmark.circle.fill")
+                  .font(.footnote)
+                  .foregroundStyle(.secondary)
+              }
+              .buttonStyle(.plain)
+            }
+            .padding(6)
+            .background(RTheme.subtle)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+          }
+
+          // Add deliverable menu
+          Menu {
+            ForEach(RequestDeliverable.commonKinds, id: \.0) { kind, label in
+              Button(label) {
+                deliverables.append(RequestDeliverable(
+                  id: UUID().uuidString,
+                  kind: kind,
+                  label: label,
+                  fulfilled: false
+                ))
+              }
+            }
+          } label: {
+            Label("Add Expected Deliverable", systemImage: "plus.circle")
+              .font(.footnote)
+          }
+        }
+      } label: {
+        HStack(spacing: 4) {
+          Image(systemName: "doc.badge.plus")
+            .font(.footnote)
+          Text("Expected Deliverables (\(deliverables.count))")
+            .font(.footnote)
+        }
+        .foregroundStyle(.secondary)
+      }
+
       // Optionally attach to a tile
       if !vm.researchTiles.isEmpty {
         VStack(alignment: .leading, spacing: 6) {
@@ -1286,7 +1431,12 @@ private struct AddRequestSheet: View {
           .keyboardShortcut(.cancelAction)
         Spacer()
         Button("Submit Request") {
-          vm.addRequest(prompt: prompt, tileId: selectedTileId)
+          vm.addRequest(
+            prompt: prompt,
+            tileId: selectedTileId,
+            priority: selectedPriority == .normal ? nil : selectedPriority,
+            deliverables: deliverables.isEmpty ? nil : deliverables
+          )
           dismiss()
         }
         .keyboardShortcut(.defaultAction)
@@ -1295,7 +1445,7 @@ private struct AddRequestSheet: View {
       }
     }
     .padding(20)
-    .frame(width: 480)
+    .frame(width: 520)
     .onAppear {
       prompt = initialPrompt
       selectedTileId = initialTileId
@@ -1313,6 +1463,7 @@ private struct EditRequestSheet: View {
 
   @State private var prompt: String = ""
   @State private var selectedTileId: String? = nil
+  @State private var showHistory: Bool = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
@@ -1328,6 +1479,11 @@ private struct EditRequestSheet: View {
           .font(.title3)
           .fontWeight(.bold)
         Spacer()
+        if request.currentVersion > 1 {
+          Text("v\(request.currentVersion)")
+            .font(.system(size: 12, weight: .medium, design: .monospaced))
+            .foregroundStyle(.secondary)
+        }
       }
 
       VStack(alignment: .leading, spacing: 6) {
@@ -1337,6 +1493,85 @@ private struct EditRequestSheet: View {
         TextField("Describe what you want researched…", text: $prompt, axis: .vertical)
           .textFieldStyle(.roundedBorder)
           .lineLimit(6, reservesSpace: true)
+      }
+
+      // Show diff if prompt changed from original
+      if prompt != request.prompt && !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        VStack(alignment: .leading, spacing: 4) {
+          Text("Changes from v\(request.currentVersion):")
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(.secondary)
+          HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+              Text("Before")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.red)
+              Text(request.prompt)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(4)
+            }
+            .padding(6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.red.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+
+            VStack(alignment: .leading, spacing: 2) {
+              Text("After")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.green)
+              Text(prompt)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(4)
+            }
+            .padding(6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.green.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+          }
+        }
+      }
+
+      // Edit history
+      if let history = request.editHistory, !history.isEmpty {
+        DisclosureGroup(isExpanded: $showHistory) {
+          VStack(alignment: .leading, spacing: 6) {
+            ForEach(history.reversed()) { version in
+              VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                  Text(version.id)
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.blue)
+                  if let editor = version.editedBy {
+                    Text("by \(editor)")
+                      .font(.system(size: 10))
+                      .foregroundStyle(.tertiary)
+                  }
+                  Text(relativeTime(version.editedAt))
+                    .font(.system(size: 10))
+                    .foregroundStyle(.quaternary)
+                }
+                Text(version.prompt)
+                  .font(.system(size: 11))
+                  .foregroundStyle(.secondary)
+                  .lineLimit(3)
+              }
+              .padding(6)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .background(RTheme.subtle)
+              .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+          }
+        } label: {
+          HStack(spacing: 4) {
+            Image(systemName: "clock.arrow.circlepath")
+              .font(.system(size: 11))
+            Text("Edit History (\(history.count) version\(history.count == 1 ? "" : "s"))")
+              .font(.system(size: 11))
+          }
+          .foregroundStyle(.secondary)
+        }
       }
 
       // Optionally attach to a tile
@@ -1359,10 +1594,16 @@ private struct EditRequestSheet: View {
           .keyboardShortcut(.cancelAction)
         Spacer()
         Button("Save Changes") {
-          var updated = request
-          updated.prompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-          updated.tileId = selectedTileId
-          vm.updateRequest(updated)
+          let newPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+          // If prompt changed, use versioned edit; otherwise just update tile
+          if newPrompt != request.prompt {
+            vm.editResearchRequestWithVersioning(requestId: request.id, newPrompt: newPrompt)
+          }
+          if selectedTileId != request.tileId {
+            var updated = vm.researchRequests.first(where: { $0.id == request.id }) ?? request
+            updated.tileId = selectedTileId
+            vm.updateRequest(updated)
+          }
           dismiss()
         }
         .keyboardShortcut(.defaultAction)
@@ -1371,7 +1612,7 @@ private struct EditRequestSheet: View {
       }
     }
     .padding(20)
-    .frame(width: 480)
+    .frame(width: 520)
     .onAppear {
       prompt = request.prompt
       selectedTileId = request.tileId
