@@ -411,7 +411,6 @@ private struct DocumentViewer: View {
   @ObservedObject var vm: AppViewModel
 
   @State private var replyText: String = ""
-  @State private var showOriginalMessage: Bool = true
 
   /// Live read state from the view model (not the stale item snapshot).
   private var isRead: Bool {
@@ -505,7 +504,7 @@ private struct DocumentViewer: View {
       ScrollViewReader { proxy in
         ScrollView {
           VStack(alignment: .leading, spacing: 6) {
-            // Original document as the first "message" from Lobs
+            // Original document as the first message (same style as thread messages)
             HStack(alignment: .top, spacing: 8) {
               ZStack {
                 Circle()
@@ -526,24 +525,8 @@ private struct DocumentViewer: View {
                     .foregroundStyle(.tertiary)
                 }
 
-                if showOriginalMessage {
-                  MarkdownWebView(markdown: item.content)
-                    .frame(maxWidth: .infinity, minHeight: 200)
-                } else {
-                  Text(item.summary)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(3)
-                }
-
-                Button {
-                  showOriginalMessage.toggle()
-                } label: {
-                  Text(showOriginalMessage ? "Collapse" : "Show full message")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
+                MarkdownWebView(markdown: item.content)
+                  .frame(maxWidth: .infinity, minHeight: 200)
               }
 
               Spacer()
@@ -614,6 +597,9 @@ private struct DocumentViewer: View {
       .background(ITheme.bg.opacity(0.5))
     }
     .background(ITheme.bg)
+    .onChange(of: item.id) { _ in
+      replyText = ""
+    }
   }
 }
 
