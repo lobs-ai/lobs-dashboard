@@ -78,7 +78,8 @@ struct ContentView: View {
           showTemplates: $showTemplates,
           showHelp: $showHelp,
           showTextDump: $showTextDump,
-          showTextDumpResults: $showTextDumpResults
+          showTextDumpResults: $showTextDumpResults,
+          showUpdatePopover: $showUpdatePopover
         )
 
         StatsBar(vm: vm)
@@ -425,6 +426,7 @@ private struct ToolbarArea: View {
   @Binding var showHelp: Bool
   @Binding var showTextDump: Bool
   @Binding var showTextDumpResults: Bool
+  @Binding var showUpdatePopover: Bool
 
   var body: some View {
     HStack(spacing: 12) {
@@ -3347,7 +3349,7 @@ private struct TextDumpResultsSheet: View {
         .padding(20)
       }
     }
-    .frame(width: 680, minHeight: 400, maxHeight: 700)
+    .frame(minWidth: 680, maxWidth: 680, minHeight: 400, maxHeight: 700)
     .onAppear {
       // Auto-expand the first unreviewed dump
       if let first = vm.unreviewedCompletedDumps.first {
