@@ -448,10 +448,10 @@ private struct UsageSplitView: View {
                 .foregroundStyle(.secondary)
               Text("\(formatTokens(mainTokens)) tokens")
                 .font(.footnote.monospacedDigit())
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.blue)
               Text("\(formatTokens(mainInput)) in / \(formatTokens(mainOutput)) out")
                 .font(.system(size: 10).monospacedDigit())
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Color.blue.opacity(0.8))
             }
           }
           .padding(14)
