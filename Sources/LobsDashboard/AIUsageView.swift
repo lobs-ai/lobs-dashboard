@@ -449,9 +449,6 @@ private struct UsageSplitView: View {
               Text("\(formatTokens(mainTokens)) tokens")
                 .font(.footnote.monospacedDigit())
                 .foregroundStyle(.blue)
-              Text("\(formatTokens(mainInput)) in / \(formatTokens(mainOutput)) out")
-                .font(.system(size: 10).monospacedDigit())
-                .foregroundStyle(Color.blue.opacity(0.8))
             }
           }
           .padding(14)
@@ -489,9 +486,6 @@ private struct UsageSplitView: View {
                 .foregroundStyle(.secondary)
               Text("\(formatTokens(workerTokens)) tokens")
                 .font(.footnote.monospacedDigit())
-                .foregroundStyle(.tertiary)
-              Text("\(formatTokens(workerInput)) in / \(formatTokens(workerOutput)) out")
-                .font(.system(size: 10).monospacedDigit())
                 .foregroundStyle(.tertiary)
             }
           }
