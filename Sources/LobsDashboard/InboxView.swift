@@ -504,21 +504,30 @@ private struct DocumentViewer: View {
       ScrollViewReader { proxy in
         ScrollView {
           VStack(alignment: .leading, spacing: 6) {
-            // All messages in one flat list: original doc first, then thread replies
-            let syntheticOriginal = InboxThreadMessage(
-              id: "__original__\(item.id)",
-              author: "Lobs",
-              text: item.content,
-              createdAt: item.modifiedAt
+            // Original document as the first message
+            ThreadMessageBubble(
+              message: InboxThreadMessage(
+                id: "__original__\(item.id)",
+                author: "Lobs",
+                text: item.content,
+                createdAt: item.modifiedAt
+              ),
+              docId: item.id,
+              vm: vm
             )
-            let allMessages: [InboxThreadMessage] = [syntheticOriginal] + (thread?.messages ?? [])
-
-            ForEach(allMessages) { msg in
-              ThreadMessageBubble(message: msg, docId: item.id, vm: vm)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 3)
-            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 3)
             .padding(.top, 10)
+            .id("original-\(item.id)")
+
+            // Thread replies
+            if let thread = thread {
+              ForEach(thread.messages) { msg in
+                ThreadMessageBubble(message: msg, docId: item.id, vm: vm)
+                  .padding(.horizontal, 24)
+                  .padding(.vertical, 3)
+              }
+            }
 
             Color.clear
               .frame(height: 1)
