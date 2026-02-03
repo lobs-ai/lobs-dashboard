@@ -40,10 +40,18 @@ final class QuickCapturePanel {
   }
 
   private func isHotkey(_ event: NSEvent) -> Bool {
-    // Cmd+Shift+Space
-    event.keyCode == 49 // space
-      && event.modifierFlags.contains(.command)
-      && event.modifierFlags.contains(.shift)
+    // Hotkey is configurable via UserDefaults (set by AppViewModel)
+    // 0 = ⌘⇧Space, 1 = ⌥Space
+    let mode = UserDefaults.standard.integer(forKey: "quickCaptureHotkeyMode")
+    let isSpace = (event.keyCode == 49)
+    if !isSpace { return false }
+
+    switch mode {
+    case 0:
+      return event.modifierFlags.contains(.command) && event.modifierFlags.contains(.shift)
+    default:
+      return event.modifierFlags.contains(.option)
+    }
   }
 
   func toggle() {
@@ -139,7 +147,7 @@ struct QuickCaptureView: View {
 
         Spacer()
 
-        Text("⌘⇧Space")
+        Text(vm.quickCaptureHotkeyMode == 0 ? "⌘⇧Space" : "⌥Space")
           .font(.system(size: 11, design: .monospaced))
           .foregroundStyle(.tertiary)
       }

@@ -1190,6 +1190,18 @@ private struct SettingsPopover: View {
           }
 
           HStack {
+            Text("Quick Capture")
+              .font(.footnote)
+            Spacer()
+            Picker("", selection: $vm.quickCaptureHotkeyMode) {
+              Text("⌥Space").tag(1)
+              Text("⌘⇧Space").tag(0)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 180)
+          }
+
+          HStack {
             Text("WIP limit (Active)")
               .font(.footnote)
             Stepper(value: $vm.wipLimitActive, in: 1...20) {

@@ -190,6 +190,14 @@ final class AppViewModel: ObservableObject {
     }
   }
 
+  // Quick Capture
+  /// 0 = ⌘⇧Space, 1 = ⌥Space
+  @Published var quickCaptureHotkeyMode: Int = 1 {
+    didSet {
+      settings.set(quickCaptureHotkeyMode, forKey: "quickCaptureHotkeyMode")
+    }
+  }
+
   // Auto-refresh
   @Published var autoRefreshEnabled: Bool = true {
     didSet { settings.set(autoRefreshEnabled, forKey: autoRefreshEnabledKey) }
@@ -236,6 +244,10 @@ final class AppViewModel: ObservableObject {
     // Appearance mode
     appearanceMode = settings.integer(forKey: "appearanceMode")
     applyAppearance()
+
+    // Quick capture hotkey
+    let qc = settings.integer(forKey: "quickCaptureHotkeyMode")
+    quickCaptureHotkeyMode = (qc == 0 || qc == 1) ? qc : 1
 
     startAutoRefreshIfNeeded()
 
