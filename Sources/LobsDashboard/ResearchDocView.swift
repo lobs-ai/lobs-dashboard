@@ -387,8 +387,15 @@ struct ResearchDocView: View {
   @State private var showCombinedDocs: Bool = false
 
   /// All deliverable docs combined into one markdown string, separated by horizontal rules.
+  ///
+  /// We include a heading per deliverable so multiple small answers are easier to scan.
   private var combinedDocsContent: String {
-    vm.researchDeliverables.map { $0.content }.joined(separator: "\n\n---\n\n")
+    vm.researchDeliverables
+      .map { doc in
+        let body = doc.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        return "## \(doc.title)\n\n\(body)"
+      }
+      .joined(separator: "\n\n---\n\n")
   }
 
   private var docIsEmpty: Bool {
@@ -565,6 +572,27 @@ struct ResearchDocView: View {
               }
               .buttonStyle(.plain)
               .help("Copy combined document to clipboard")
+
+              Button {
+                let combined = combinedDocsContent
+                editContent = combined
+                showCombinedDocs = false
+                selectedDeliverable = nil
+                isEditing = true
+                vm.saveResearchDocContent(combined)
+              } label: {
+                HStack(spacing: 4) {
+                  Image(systemName: "square.and.arrow.down")
+                  Text("Save as Doc")
+                    .font(.footnote)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.indigo.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+              }
+              .buttonStyle(.plain)
+              .help("Write the combined results into the project doc so you can edit/summarize them in one place")
             }
             .padding(.horizontal, 24)
             .padding(.top, 16)
