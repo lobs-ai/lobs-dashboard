@@ -16,6 +16,8 @@ struct ResearchBoardView: View {
   @State private var pendingRequestTileId: String? = nil
   @State private var pendingRequestPrompt: String = ""
   @State private var searchText: String = ""
+  @State private var isEditingReadme: Bool = false
+  @State private var readmeEditText: String = ""
 
   private var activeTiles: [ResearchTile] {
     vm.researchTiles.filter { $0.resolvedStatus == .active }
@@ -166,17 +168,88 @@ struct ResearchBoardView: View {
       // Main content: document view
       ScrollView {
         VStack(alignment: .leading, spacing: 0) {
-          // Document header
+          // Document header with editable README
           if let project = vm.selectedProject {
             VStack(alignment: .leading, spacing: 8) {
-              Text(project.title)
-                .font(.largeTitle)
-                .fontWeight(.bold)
+              HStack {
+                Text(project.title)
+                  .font(.largeTitle)
+                  .fontWeight(.bold)
+                Spacer()
+                Button {
+                  if isEditingReadme {
+                    // Save
+                    vm.saveProjectReadme(content: readmeEditText)
+                    isEditingReadme = false
+                  } else {
+                    // Start editing — load current README
+                    readmeEditText = vm.projectReadme.isEmpty ? (project.notes ?? "") : vm.projectReadme
+                    isEditingReadme = true
+                  }
+                } label: {
+                  HStack(spacing: 4) {
+                    Image(systemName: isEditingReadme ? "checkmark" : "pencil")
+                      .font(.footnote)
+                    Text(isEditingReadme ? "Save" : "Edit README")
+                      .font(.footnote)
+                  }
+                  .padding(.horizontal, 10)
+                  .padding(.vertical, 6)
+                  .background(isEditingReadme ? Color.green.opacity(0.15) : RTheme.subtle)
+                  .foregroundStyle(isEditingReadme ? .green : .secondary)
+                  .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
 
-              if let notes = project.notes, !notes.isEmpty {
-                Text(notes)
-                  .font(.body)
-                  .foregroundStyle(.secondary)
+                if isEditingReadme {
+                  Button {
+                    isEditingReadme = false
+                  } label: {
+                    Text("Cancel")
+                      .font(.footnote)
+                      .padding(.horizontal, 10)
+                      .padding(.vertical, 6)
+                      .background(RTheme.subtle)
+                      .foregroundStyle(.secondary)
+                      .clipShape(RoundedRectangle(cornerRadius: 8))
+                  }
+                  .buttonStyle(.plain)
+                }
+              }
+
+              if isEditingReadme {
+                SpellCheckingTextEditor(text: $readmeEditText)
+                  .frame(minHeight: 120, maxHeight: 300)
+                  .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                      .stroke(RTheme.border, lineWidth: 0.5)
+                  )
+              } else {
+                if !vm.projectReadme.isEmpty {
+                  Text(vm.projectReadme)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                } else if let notes = project.notes, !notes.isEmpty {
+                  Text(notes)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                } else {
+                  Button {
+                    readmeEditText = ""
+                    isEditingReadme = true
+                  } label: {
+                    HStack(spacing: 4) {
+                      Image(systemName: "plus.circle")
+                        .font(.footnote)
+                      Text("Add a README…")
+                        .font(.footnote)
+                    }
+                    .foregroundStyle(.secondary)
+                  }
+                  .buttonStyle(.plain)
+                }
               }
 
               HStack(spacing: 12) {
@@ -204,6 +277,9 @@ struct ResearchBoardView: View {
             .padding(.horizontal, 40)
             .padding(.top, 32)
             .padding(.bottom, 16)
+            .onAppear {
+              vm.loadProjectReadme()
+            }
           }
 
           // Document body — render tiles as sections of a brief
