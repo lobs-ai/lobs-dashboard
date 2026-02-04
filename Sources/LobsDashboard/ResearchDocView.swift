@@ -941,7 +941,6 @@ private struct SectionedMarkdownPreview: View {
         citationFootnotes
       }
     }
-    .textSelection(.enabled)
   }
 
   @ViewBuilder
