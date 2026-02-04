@@ -34,6 +34,8 @@ private struct EnterToSendTextView: NSViewRepresentable {
   }
 
   func updateNSView(_ scrollView: NSScrollView, context: Context) {
+    // Keep coordinator's parent in sync so onSend always references the current item
+    context.coordinator.parent = self
     guard let textView = scrollView.documentView as? NSTextView else { return }
     if textView.string != text {
       textView.string = text
