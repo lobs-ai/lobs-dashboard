@@ -467,17 +467,19 @@ struct OverviewView: View {
           }
         }
 
-        // Inbox row (kept below the three columns)
+        // Inbox (vertical scrolling list, same style as the columns above)
         if !vm.inboxItems.isEmpty || vm.unreadInboxCount > 0 {
           VStack(alignment: .leading, spacing: 12) {
-            HStack {
+            HStack(spacing: 6) {
+              Image(systemName: "tray.full.fill")
+                .font(.footnote)
+                .foregroundStyle(.blue)
               Text("Inbox")
                 .font(.headline)
                 .fontWeight(.bold)
               if vm.unreadInboxCount > 0 {
                 Text("\(vm.unreadInboxCount)")
-                  .font(.footnote)
-                  .fontWeight(.bold)
+                  .font(.system(size: 11, weight: .bold))
                   .foregroundStyle(.white)
                   .padding(.horizontal, 6)
                   .padding(.vertical, 2)
@@ -486,30 +488,41 @@ struct OverviewView: View {
               }
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-              HStack(spacing: 12) {
-                let sortedItems = vm.inboxItems.sorted { a, b in
-                  let aNeeds = !a.isRead || vm.unreadFollowupCount(docId: a.id) > 0
-                  let bNeeds = !b.isRead || vm.unreadFollowupCount(docId: b.id) > 0
-                  if aNeeds != bNeeds { return aNeeds }
-                  return a.modifiedAt > b.modifiedAt
-                }
-                ForEach(sortedItems.prefix(10)) { item in
-                  InboxRow(item: item, unreadFollowups: vm.unreadFollowupCount(docId: item.id), onTap: {
-                    vm.markInboxItemRead(item)
-                    if let onOpenInbox {
-                      onOpenInbox(item.id)
+            if vm.inboxItems.isEmpty {
+              Text("No inbox items")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(.vertical, 20)
+                .frame(maxWidth: .infinity)
+            } else {
+              ScrollView {
+                VStack(spacing: 0) {
+                  let sortedItems = vm.inboxItems.sorted { a, b in
+                    let aNeeds = !a.isRead || vm.unreadFollowupCount(docId: a.id) > 0
+                    let bNeeds = !b.isRead || vm.unreadFollowupCount(docId: b.id) > 0
+                    if aNeeds != bNeeds { return aNeeds }
+                    return a.modifiedAt > b.modifiedAt
+                  }
+                  ForEach(Array(sortedItems.prefix(10).enumerated()), id: \.element.id) { idx, item in
+                    InboxRow(item: item, unreadFollowups: vm.unreadFollowupCount(docId: item.id), onTap: {
+                      vm.markInboxItemRead(item)
+                      if let onOpenInbox {
+                        onOpenInbox(item.id)
+                      }
+                    })
+                    if idx < min(sortedItems.count, 10) - 1 {
+                      Divider().padding(.leading, 36)
                     }
-                  })
-                  .frame(width: 300)
-                  .background(OTheme.cardBg)
-                  .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
-                  .overlay(
-                    RoundedRectangle(cornerRadius: OTheme.cardRadius)
-                      .stroke(OTheme.border, lineWidth: 0.5)
-                  )
+                  }
                 }
               }
+              .frame(maxHeight: 400)
+              .background(OTheme.cardBg)
+              .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
+              .overlay(
+                RoundedRectangle(cornerRadius: OTheme.cardRadius)
+                  .stroke(OTheme.border, lineWidth: 0.5)
+              )
             }
           }
         }
