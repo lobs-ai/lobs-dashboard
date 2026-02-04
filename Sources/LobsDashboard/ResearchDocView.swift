@@ -661,6 +661,10 @@ struct ResearchDocView: View {
                 followUpSheetContext = FollowUpContext(sectionHeading: sectionHeading)
               }
             )
+            // Force a fresh render when content changes. Without this, SwiftUI can
+            // occasionally fail to update the preview until another interaction
+            // (e.g. clicking a sidebar document) triggers a view refresh.
+            .id(editContent.hashValue)
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
           }
