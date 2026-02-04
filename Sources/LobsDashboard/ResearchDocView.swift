@@ -1029,6 +1029,15 @@ private struct SectionCardView: View {
 
   @State private var isHovering = false
 
+  private func copySectionToClipboard() {
+    let headingPrefix = String(repeating: "#", count: max(1, section.level))
+    let sectionMarkdown = (["\(headingPrefix) \(section.heading)"] + section.lines).joined(separator: "\n") + "\n"
+
+    let pb = NSPasteboard.general
+    pb.clearContents()
+    pb.setString(sectionMarkdown, forType: .string)
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       // Section header (always visible)
@@ -1059,6 +1068,27 @@ private struct SectionCardView: View {
             .background(DocTheme.subtle)
             .clipShape(Capsule())
         }
+
+        // Copy section button (makes it easy to copy even if text selection can't span cards)
+        Button(action: copySectionToClipboard) {
+          HStack(spacing: 3) {
+            Image(systemName: "doc.on.doc")
+              .font(.system(size: 10))
+            if isHovering {
+              Text("Copy")
+                .font(.system(size: 10))
+            }
+          }
+          .foregroundStyle(.secondary)
+          .padding(.horizontal, 6)
+          .padding(.vertical, 3)
+          .background(isHovering ? DocTheme.subtle : Color.clear)
+          .clipShape(Capsule())
+          .opacity(isHovering ? 1.0 : 0.35)
+          .animation(.easeInOut(duration: 0.15), value: isHovering)
+        }
+        .buttonStyle(.plain)
+        .help("Copy this section as markdown")
 
         // Ask follow-up button (always visible, more prominent on hover)
         Button(action: onAskFollowUp) {
