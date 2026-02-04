@@ -280,6 +280,7 @@ private struct UsageSummaryCard: View {
             Image(systemName: "info.circle")
               .font(.system(size: 10))
               .foregroundStyle(.tertiary)
+              .frame(width: 14, height: 14, alignment: .center)
           }
           .buttonStyle(.plain)
           .help(tip)
@@ -626,6 +627,7 @@ private struct SectionHeaderWithInfo: View {
         Image(systemName: "info.circle")
           .font(.system(size: 12))
           .foregroundStyle(.tertiary)
+          .frame(width: 18, height: 18, alignment: .center)
       }
       .buttonStyle(.plain)
       .help(tooltip)
