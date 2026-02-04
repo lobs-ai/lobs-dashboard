@@ -1290,11 +1290,14 @@ private struct AddTileSheet: View {
   @ObservedObject var vm: AppViewModel
   @Environment(\.dismiss) private var dismiss
 
-  @State private var tileType: ResearchTileType = .note
+  @State private var tileType: ResearchTileType? = nil
   @State private var title: String = ""
   @State private var url: String = ""
   @State private var content: String = ""
   @State private var claim: String = ""
+
+  /// Resolved tile type: defaults to .note if nothing selected.
+  private var resolvedTileType: ResearchTileType { tileType ?? .note }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
@@ -1312,18 +1315,46 @@ private struct AddTileSheet: View {
         Spacer()
       }
 
-      // Type picker
+      // Type picker (tap again to deselect)
       VStack(alignment: .leading, spacing: 6) {
         Text("Type")
           .font(.footnote)
           .foregroundStyle(.secondary)
-        Picker("Type", selection: $tileType) {
+        HStack(spacing: 8) {
           ForEach(ResearchTileType.allCases, id: \.self) { type in
-            Label(tileTypeLabel(type), systemImage: tileTypeIcon(type))
-              .tag(type)
+            Button {
+              withAnimation(.easeInOut(duration: 0.15)) {
+                if tileType == type {
+                  tileType = nil  // Unselect
+                } else {
+                  tileType = type
+                }
+              }
+            } label: {
+              HStack(spacing: 4) {
+                Image(systemName: tileTypeIcon(type))
+                  .font(.system(size: 12))
+                Text(tileTypeLabel(type))
+                  .font(.footnote)
+              }
+              .padding(.horizontal, 10)
+              .padding(.vertical, 6)
+              .background(tileType == type ? tileTypeColor(type).opacity(0.2) : RTheme.subtle)
+              .foregroundStyle(tileType == type ? tileTypeColor(type) : .secondary)
+              .clipShape(RoundedRectangle(cornerRadius: 8))
+              .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                  .stroke(tileType == type ? tileTypeColor(type).opacity(0.5) : Color.clear, lineWidth: 1)
+              )
+            }
+            .buttonStyle(.plain)
           }
         }
-        .pickerStyle(.segmented)
+        if tileType == nil {
+          Text("Defaults to Note if no type selected")
+            .font(.system(size: 11))
+            .foregroundStyle(.tertiary)
+        }
       }
 
       // Title
@@ -1331,7 +1362,7 @@ private struct AddTileSheet: View {
         .textFieldStyle(.roundedBorder)
 
       // Type-specific fields
-      switch tileType {
+      switch resolvedTileType {
       case .link:
         TextField("URL", text: $url)
           .textFieldStyle(.roundedBorder)
@@ -1358,7 +1389,7 @@ private struct AddTileSheet: View {
         Spacer()
         Button("Create") {
           vm.addTile(
-            type: tileType,
+            type: resolvedTileType,
             title: title,
             url: url.isEmpty ? nil : url,
             content: content.isEmpty ? nil : content,
