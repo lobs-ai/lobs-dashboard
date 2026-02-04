@@ -777,6 +777,13 @@ final class LobsControlStore {
     try content.write(to: url, atomically: true, encoding: .utf8)
   }
 
+  func saveResearchDeliverable(projectId: String, filename: String, content: String) throws {
+    let docsDir = researchDirURL.appendingPathComponent(projectId).appendingPathComponent("docs")
+    try FileManager.default.createDirectory(at: docsDir, withIntermediateDirectories: true)
+    let url = docsDir.appendingPathComponent(filename)
+    try content.write(to: url, atomically: true, encoding: .utf8)
+  }
+
   func loadResearchSources(projectId: String) throws -> [ResearchSource] {
     let url = researchSourcesURL(projectId: projectId)
     guard FileManager.default.fileExists(atPath: url.path) else { return [] }

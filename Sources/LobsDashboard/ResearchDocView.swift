@@ -61,11 +61,33 @@ struct ResearchDocView: View {
       editContent = vm.researchDocContent
       ensureDeliverableSelectedIfNeeded()
     }
+    .onChange(of: selectedDeliverable?.id) { _ in
+      // When a specific deliverable is selected, the TOC + editor should operate on that file.
+      if let deliverable = selectedDeliverable {
+        editContent = deliverable.content
+      } else if showCombinedDocs {
+        editContent = combinedDocsContent
+      } else {
+        editContent = vm.researchDocContent
+      }
+      collapsedSections.removeAll()
+    }
+    .onChange(of: showCombinedDocs) { _ in
+      if showCombinedDocs {
+        selectedDeliverable = nil
+        editContent = combinedDocsContent
+      } else if selectedDeliverable == nil {
+        editContent = vm.researchDocContent
+      }
+      collapsedSections.removeAll()
+    }
     .onChange(of: vm.researchDocContent) { newValue in
-      // Sync from external changes (git pull) only if significantly different
-      if editContent != newValue && !isEditing {
-        editContent = newValue
-        ensureDeliverableSelectedIfNeeded()
+      // Sync from external changes (git pull) only when we're showing the project doc.
+      if selectedDeliverable == nil && !showCombinedDocs {
+        if editContent != newValue && !isEditing {
+          editContent = newValue
+          ensureDeliverableSelectedIfNeeded()
+        }
       }
     }
     .onChange(of: vm.researchDeliverables.count) { _ in
@@ -611,9 +633,10 @@ struct ResearchDocView: View {
               .textSelection(.enabled)
           }
         }
-      } else if let deliverable = selectedDeliverable {
+      } else if let selected = selectedDeliverable {
         // Show selected deliverable (works whether doc.md has content or not)
-        DeliverableInlineViewer(deliverable: deliverable)
+        let live = vm.researchDeliverables.first(where: { $0.id == selected.id }) ?? selected
+        DeliverableInlineViewer(deliverable: live)
       } else if docIsEmpty && !vm.researchDeliverables.isEmpty {
         // Doc is empty but deliverables exist — prompt to select one
         VStack(spacing: 16) {
@@ -688,7 +711,11 @@ struct ResearchDocView: View {
     saveTimer?.invalidate()
     saveTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { _ in
       Task { @MainActor in
-        vm.saveResearchDocContent(editContent)
+        if let deliverable = selectedDeliverable {
+          vm.saveResearchDeliverableContent(filename: deliverable.filename, content: editContent)
+        } else {
+          vm.saveResearchDocContent(editContent)
+        }
       }
     }
   }

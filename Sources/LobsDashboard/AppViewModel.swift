@@ -826,6 +826,40 @@ final class AppViewModel: ObservableObject {
     }
   }
 
+  func saveResearchDeliverableContent(filename: String, content: String) {
+    guard let repoURL else { return }
+
+    // Update local cache
+    if let idx = researchDeliverables.firstIndex(where: { $0.filename == filename }) {
+      researchDeliverables[idx].content = content
+      researchDeliverables[idx].modifiedAt = Date()
+    }
+
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.saveResearchDeliverable(projectId: selectedProjectId, filename: filename, content: content)
+      // Reload deliverables so modifiedAt reflects the filesystem timestamp ordering
+      researchDeliverables = try store.loadResearchDeliverables(projectId: selectedProjectId)
+    } catch {
+      flashError("Failed to save research deliverable: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: update research deliverable \(filename)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
+    }
+  }
+
   func addResearchSource(url: String, title: String, tags: [String]? = nil) {
     guard let repoURL else { return }
     let source = ResearchSource(
