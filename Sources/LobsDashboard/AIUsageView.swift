@@ -262,6 +262,8 @@ private struct UsageSummaryCard: View {
   let color: Color
   var tooltip: String? = nil
 
+  @State private var showingPopover = false
+
   var body: some View {
     VStack(spacing: 10) {
       HStack(spacing: 6) {
@@ -271,10 +273,23 @@ private struct UsageSummaryCard: View {
         Text(title)
           .font(.system(size: 12, weight: .medium))
           .foregroundStyle(.secondary)
-        if tooltip != nil {
-          Image(systemName: "info.circle")
-            .font(.system(size: 10))
-            .foregroundStyle(.tertiary)
+        if let tip = tooltip {
+          Button {
+            showingPopover.toggle()
+          } label: {
+            Image(systemName: "info.circle")
+              .font(.system(size: 10))
+              .foregroundStyle(.tertiary)
+          }
+          .buttonStyle(.plain)
+          .help(tip)
+          .popover(isPresented: $showingPopover, arrowEdge: .bottom) {
+            Text(tip)
+              .font(.system(size: 12))
+              .foregroundStyle(.secondary)
+              .padding(12)
+              .frame(maxWidth: 300)
+          }
         }
       }
       Text(value)
@@ -285,7 +300,6 @@ private struct UsageSummaryCard: View {
     .frame(minWidth: 130, maxWidth: .infinity)
     .padding(.horizontal, 18)
     .padding(.vertical, 16)
-    .help(tooltip ?? "")
     .background(ATheme.cardBg)
     .clipShape(RoundedRectangle(cornerRadius: ATheme.cardRadius))
     .overlay(
