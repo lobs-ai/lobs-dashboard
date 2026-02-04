@@ -1769,11 +1769,47 @@ private struct BoardColumn: View {
           }
 
           if (isDone || isRejected) && !showAll && tasks.count > vm.completedShowRecent {
-            Text("+\(tasks.count - vm.completedShowRecent) more")
-              .font(.footnote)
+            Button {
+              withAnimation(.easeInOut(duration: 0.2)) {
+                if isDone { showAllDone = true } else { showAllRejected = true }
+              }
+            } label: {
+              HStack(spacing: 6) {
+                Image(systemName: "chevron.down")
+                  .font(.system(size: 10))
+                Text("See all \(tasks.count) tasks")
+                  .font(.footnote)
+                  .fontWeight(.medium)
+              }
+              .foregroundStyle(columnColor)
+              .frame(maxWidth: .infinity)
+              .padding(.vertical, 8)
+              .background(columnColor.opacity(0.08))
+              .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+          }
+
+          if (isDone || isRejected) && showAll && tasks.count > vm.completedShowRecent {
+            Button {
+              withAnimation(.easeInOut(duration: 0.2)) {
+                if isDone { showAllDone = false } else { showAllRejected = false }
+              }
+            } label: {
+              HStack(spacing: 6) {
+                Image(systemName: "chevron.up")
+                  .font(.system(size: 10))
+                Text("Show less")
+                  .font(.footnote)
+                  .fontWeight(.medium)
+              }
               .foregroundStyle(.secondary)
               .frame(maxWidth: .infinity)
-              .padding(.vertical, 4)
+              .padding(.vertical, 8)
+              .background(Theme.subtle)
+              .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
           }
         }
         .padding(10)
