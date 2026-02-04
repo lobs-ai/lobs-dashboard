@@ -386,6 +386,7 @@ struct ResearchDocView: View {
 
   @State private var selectedDeliverable: ResearchDeliverable? = nil
   @State private var showCombinedDocs: Bool = false
+  @State private var combinedDocsHeight: CGFloat = 800
 
   /// All deliverable docs combined into one markdown string, separated by horizontal rules.
   ///
@@ -605,8 +606,10 @@ struct ResearchDocView: View {
             .padding(.top, 16)
             .padding(.bottom, 8)
 
-            MarkdownWebView(markdown: combinedDocsContent)
-              .frame(maxWidth: .infinity, minHeight: 400)
+            MarkdownWebView(markdown: combinedDocsContent, onContentHeightChanged: { height in
+              combinedDocsHeight = max(height, 400)
+            })
+              .frame(maxWidth: .infinity, minHeight: combinedDocsHeight)
               .padding(.horizontal, 8)
           }
         }
@@ -1408,6 +1411,8 @@ private struct AskLobsResearchSheet: View {
 private struct DeliverableInlineViewer: View {
   let deliverable: ResearchDeliverable
 
+  @State private var contentHeight: CGFloat = 800
+
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       // Header (inline)
@@ -1446,11 +1451,14 @@ private struct DeliverableInlineViewer: View {
       Divider()
 
       ScrollView {
-        MarkdownWebView(markdown: deliverable.content)
-          .frame(maxWidth: .infinity, minHeight: 400)
+        MarkdownWebView(markdown: deliverable.content, onContentHeightChanged: { height in
+          contentHeight = max(height, 400)
+        })
+          .frame(maxWidth: .infinity, minHeight: contentHeight)
           .padding(20)
       }
     }
+    .frame(maxHeight: .infinity)
   }
 }
 
