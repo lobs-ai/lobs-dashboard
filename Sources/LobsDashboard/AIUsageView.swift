@@ -284,11 +284,15 @@ private struct UsageSummaryCard: View {
           .buttonStyle(.plain)
           .help(tip)
           .popover(isPresented: $showingPopover, arrowEdge: .bottom) {
-            Text(tip)
-              .font(.system(size: 12))
-              .foregroundStyle(.secondary)
-              .padding(12)
-              .frame(maxWidth: 300)
+            ScrollView {
+              Text(tip)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(12)
+            }
+            .frame(maxWidth: 360, maxHeight: 260)
           }
         }
       }
@@ -626,11 +630,15 @@ private struct SectionHeaderWithInfo: View {
       .buttonStyle(.plain)
       .help(tooltip)
       .popover(isPresented: $showingPopover, arrowEdge: .bottom) {
-        Text(tooltip)
-          .font(.system(size: 12))
-          .foregroundStyle(.secondary)
-          .padding(12)
-          .frame(maxWidth: 300)
+        ScrollView {
+          Text(tooltip)
+            .font(.system(size: 12))
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(12)
+        }
+        .frame(maxWidth: 360, maxHeight: 260)
       }
     }
   }
