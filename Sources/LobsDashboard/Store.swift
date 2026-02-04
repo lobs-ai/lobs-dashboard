@@ -476,20 +476,37 @@ final class LobsControlStore {
         // Skip README files
         guard filename.lowercased() != "readme.md" else { continue }
 
-        let content = try String(contentsOf: fileURL, encoding: .utf8)
+        // Load only a small preview of the content to keep sync + navigation snappy.
+        // Full content is loaded on-demand when the user selects an item.
         let attrs = try fm.attributesOfItem(atPath: fileURL.path)
         let modDate = (attrs[.modificationDate] as? Date) ?? Date()
+        let fileSize = (attrs[.size] as? NSNumber)?.intValue ?? 0
 
-        // Derive title from first heading or filename
-        let title = extractTitle(from: content, filename: filename)
-        let summary = extractSummary(from: content)
+        let maxPreviewBytes = 64 * 1024
+        let previewData: Data = {
+          if let handle = try? FileHandle(forReadingFrom: fileURL) {
+            defer { try? handle.close() }
+            return handle.readData(ofLength: maxPreviewBytes)
+          }
+          return (try? Data(contentsOf: fileURL)) ?? Data()
+        }()
+
+        let preview = String(data: previewData, encoding: .utf8)
+          ?? String(decoding: previewData, as: UTF8.self)
+
+        let isTruncated = fileSize > previewData.count
+
+        // Derive title/summary from preview (good enough for list rendering)
+        let title = extractTitle(from: preview, filename: filename)
+        let summary = extractSummary(from: preview)
 
         let item = InboxItem(
           id: "\(prefix)/\(filename)",
           title: title,
           filename: filename,
           relativePath: "\(prefix)/\(filename)",
-          content: content,
+          content: preview,
+          contentIsTruncated: isTruncated,
           modifiedAt: modDate,
           isRead: false,
           summary: summary

@@ -1104,6 +1104,31 @@ final class AppViewModel: ObservableObject {
     // Do not change lastSeenThreadCounts here.
   }
 
+  /// If the inbox item's content was loaded as a preview, load the full file contents.
+  /// This keeps background sync + list rendering fast, but still shows the full doc
+  /// when the user selects it.
+  func ensureInboxItemContentLoaded(docId: String) {
+    guard let repoURL else { return }
+    guard let idx = inboxItems.firstIndex(where: { $0.id == docId }) else { return }
+    guard inboxItems[idx].contentIsTruncated else { return }
+
+    let relativePath = inboxItems[idx].relativePath
+    let expectedModifiedAt = inboxItems[idx].modifiedAt
+
+    Task.detached(priority: .userInitiated) { [weak self] in
+      guard let self else { return }
+      let fileURL = repoURL.appendingPathComponent(relativePath)
+      let full = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
+      await MainActor.run {
+        guard let liveIdx = self.inboxItems.firstIndex(where: { $0.id == docId }) else { return }
+        // Avoid overwriting if the item changed (e.g. sync pulled a newer version).
+        guard self.inboxItems[liveIdx].modifiedAt == expectedModifiedAt else { return }
+        self.inboxItems[liveIdx].content = full
+        self.inboxItems[liveIdx].contentIsTruncated = false
+      }
+    }
+  }
+
   /// Total unread inbox count.
   /// Includes unread docs AND docs with unread follow-up thread messages.
   var unreadInboxCount: Int {

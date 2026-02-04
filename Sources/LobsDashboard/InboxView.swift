@@ -204,6 +204,7 @@ struct InboxView: View {
                   onSelect: {
                     selectedItem = item
                     vm.markInboxItemRead(item)
+                    vm.ensureInboxItemContentLoaded(docId: item.id)
                   }
                 )
               }
@@ -244,6 +245,7 @@ struct InboxView: View {
          let item = vm.inboxItems.first(where: { $0.id == targetId }) {
         selectedItem = item
         vm.markInboxItemRead(item)
+        vm.ensureInboxItemContentLoaded(docId: item.id)
         didApplyInitialSelection = true
       }
     }
@@ -259,12 +261,14 @@ struct InboxView: View {
       if newIdx >= 0 && newIdx < items.count {
         selectedItem = items[newIdx]
         vm.markInboxItemRead(items[newIdx])
+        vm.ensureInboxItemContentLoaded(docId: items[newIdx].id)
       }
     } else {
       // Nothing selected — select first or last depending on direction
       let item = direction > 0 ? items.first! : items.last!
       selectedItem = item
       vm.markInboxItemRead(item)
+      vm.ensureInboxItemContentLoaded(docId: item.id)
     }
   }
 }

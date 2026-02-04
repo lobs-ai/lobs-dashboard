@@ -417,7 +417,11 @@ struct InboxItem: Identifiable, Hashable {
   var title: String       // derived from filename or first heading
   var filename: String
   var relativePath: String
+  /// Content for the document. This may initially be a short preview for performance.
   var content: String
+  /// True when `content` is only a preview/truncated snapshot and the full document
+  /// should be loaded on-demand (e.g. when selected).
+  var contentIsTruncated: Bool
   var modifiedAt: Date
   var isRead: Bool        // tracked locally
   var summary: String     // first ~200 chars or first paragraph
