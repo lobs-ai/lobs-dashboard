@@ -403,14 +403,24 @@ struct OverviewView: View {
                 .padding(.vertical, 20)
                 .frame(maxWidth: .infinity)
             } else {
-              ForEach(Array(activeTasksList.enumerated()), id: \.element.id) { idx, task in
+              let snapshotLimit = 5
+              let visible = Array(activeTasksList.prefix(snapshotLimit))
+              ForEach(Array(visible.enumerated()), id: \.element.id) { idx, task in
                 OverviewTaskRow(task: task, projectName: vm.projects.first(where: { $0.id == (task.projectId ?? "default") })?.title, onTap: {
                   vm.selectTask(task)
                   detailTask = task
                 })
-                if idx < activeTasksList.count - 1 {
+                if idx < visible.count - 1 {
                   Divider().padding(.leading, 32)
                 }
+              }
+              if activeTasksList.count > snapshotLimit {
+                Divider().padding(.leading, 32)
+                Text("View all \(activeTasksList.count) active tasks →")
+                  .font(.footnote)
+                  .foregroundStyle(.orange)
+                  .frame(maxWidth: .infinity, alignment: .center)
+                  .padding(.vertical, 8)
               }
             }
           }
@@ -429,13 +439,23 @@ struct OverviewView: View {
                 .padding(.vertical, 20)
                 .frame(maxWidth: .infinity)
             } else {
-              ForEach(Array(openResearchRequestsList.enumerated()), id: \.element.id) { idx, req in
+              let snapshotLimit = 5
+              let visible = Array(openResearchRequestsList.prefix(snapshotLimit))
+              ForEach(Array(visible.enumerated()), id: \.element.id) { idx, req in
                 OverviewResearchRow(request: req, projectName: vm.projects.first(where: { $0.id == req.projectId })?.title, onTap: {
                   onSelectProject(req.projectId)
                 })
-                if idx < openResearchRequestsList.count - 1 {
+                if idx < visible.count - 1 {
                   Divider().padding(.leading, 32)
                 }
+              }
+              if openResearchRequestsList.count > snapshotLimit {
+                Divider().padding(.leading, 32)
+                Text("View all \(openResearchRequestsList.count) requests →")
+                  .font(.footnote)
+                  .foregroundStyle(.purple)
+                  .frame(maxWidth: .infinity, alignment: .center)
+                  .padding(.vertical, 8)
               }
             }
           }
@@ -454,14 +474,24 @@ struct OverviewView: View {
                 .padding(.vertical, 20)
                 .frame(maxWidth: .infinity)
             } else {
-              ForEach(Array(completedThisWeekTasks.enumerated()), id: \.element.id) { idx, task in
+              let snapshotLimit = 5
+              let visible = Array(completedThisWeekTasks.prefix(snapshotLimit))
+              ForEach(Array(visible.enumerated()), id: \.element.id) { idx, task in
                 OverviewTaskRow(task: task, projectName: vm.projects.first(where: { $0.id == (task.projectId ?? "default") })?.title, showTimestamp: true, onTap: {
                   vm.selectTask(task)
                   detailTask = task
                 })
-                if idx < completedThisWeekTasks.count - 1 {
+                if idx < visible.count - 1 {
                   Divider().padding(.leading, 32)
                 }
+              }
+              if completedThisWeekTasks.count > snapshotLimit {
+                Divider().padding(.leading, 32)
+                Text("View all \(completedThisWeekTasks.count) completed →")
+                  .font(.footnote)
+                  .foregroundStyle(.green)
+                  .frame(maxWidth: .infinity, alignment: .center)
+                  .padding(.vertical, 8)
               }
             }
           }
@@ -503,16 +533,31 @@ struct OverviewView: View {
                     if aNeeds != bNeeds { return aNeeds }
                     return a.modifiedAt > b.modifiedAt
                   }
-                  ForEach(Array(sortedItems.prefix(10).enumerated()), id: \.element.id) { idx, item in
+                  let snapshotLimit = 5
+                  let visible = Array(sortedItems.prefix(snapshotLimit))
+                  ForEach(Array(visible.enumerated()), id: \.element.id) { idx, item in
                     InboxRow(item: item, unreadFollowups: vm.unreadFollowupCount(docId: item.id), onTap: {
                       vm.markInboxItemRead(item)
                       if let onOpenInbox {
                         onOpenInbox(item.id)
                       }
                     })
-                    if idx < min(sortedItems.count, 10) - 1 {
+                    if idx < visible.count - 1 {
                       Divider().padding(.leading, 36)
                     }
+                  }
+                  if sortedItems.count > snapshotLimit {
+                    Divider().padding(.leading, 36)
+                    Button {
+                      if let onOpenInbox { onOpenInbox(nil) }
+                    } label: {
+                      Text("View all \(sortedItems.count) inbox items →")
+                        .font(.footnote)
+                        .foregroundStyle(.blue)
+                    }
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 8)
                   }
                 }
               }
