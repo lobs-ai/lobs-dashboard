@@ -722,7 +722,7 @@ private struct DocumentTileBlock: View {
         .stroke(isSelected ? RTheme.accent.opacity(0.3) : Color.clear, lineWidth: 1)
     )
     .contentShape(Rectangle())
-    .onTapGesture { onTap() }
+    .simultaneousGesture(TapGesture().onEnded { onTap() })
     .onHover { h in isHovering = h }
   }
 }
