@@ -386,7 +386,6 @@ struct ResearchDocView: View {
 
   @State private var selectedDeliverable: ResearchDeliverable? = nil
   @State private var showCombinedDocs: Bool = false
-  @State private var combinedDocsHeight: CGFloat = 800
 
   /// All deliverable docs combined into one markdown string, separated by horizontal rules.
   ///
@@ -606,11 +605,10 @@ struct ResearchDocView: View {
             .padding(.top, 16)
             .padding(.bottom, 8)
 
-            MarkdownWebView(markdown: combinedDocsContent, onContentHeightChanged: { height in
-              combinedDocsHeight = max(height, 400)
-            })
-              .frame(maxWidth: .infinity, minHeight: combinedDocsHeight)
+            NativeMarkdownBody(markdown: combinedDocsContent)
+              .frame(maxWidth: .infinity, alignment: .leading)
               .padding(.horizontal, 8)
+              .textSelection(.enabled)
           }
         }
       } else if let deliverable = selectedDeliverable {
@@ -1406,12 +1404,251 @@ private struct AskLobsResearchSheet: View {
 
 // MARK: - Edit Request Sheet (Doc View)
 
+// MARK: - Native Markdown Body
+
+/// Renders markdown using native SwiftUI views, avoiding WKWebView scroll issues.
+/// Handles block-level elements (headings, lists, code blocks, HRs, blockquotes, tables)
+/// with inline markdown handled by AttributedString.
+private struct NativeMarkdownBody: View {
+  let markdown: String
+
+  private enum Block: Identifiable {
+    case text(String)
+    case heading(Int, String)
+    case code(String)
+    case hr
+    case listItem(String)
+    case orderedItem(Int, String)
+    case blockquote(String)
+    case tableRow([String], isHeader: Bool)
+    case tableSeparator
+
+    var id: String {
+      switch self {
+      case .text(let s): return "t:\(s.prefix(60).hashValue)"
+      case .heading(let l, let s): return "h\(l):\(s.prefix(60).hashValue)"
+      case .code(let s): return "c:\(s.prefix(60).hashValue)"
+      case .hr: return "hr:\(UUID().uuidString)"
+      case .listItem(let s): return "li:\(s.prefix(60).hashValue)"
+      case .orderedItem(let n, let s): return "ol\(n):\(s.prefix(60).hashValue)"
+      case .blockquote(let s): return "bq:\(s.prefix(60).hashValue)"
+      case .tableRow(let cells, _): return "tr:\(cells.joined().prefix(60).hashValue)"
+      case .tableSeparator: return "ts:\(UUID().uuidString)"
+      }
+    }
+  }
+
+  private var blocks: [Block] {
+    var result: [Block] = []
+    let lines = markdown.components(separatedBy: "\n")
+    var i = 0
+    var textBuffer: [String] = []
+
+    func flushText() {
+      let joined = textBuffer.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+      if !joined.isEmpty { result.append(.text(joined)) }
+      textBuffer = []
+    }
+
+    while i < lines.count {
+      let line = lines[i]
+      let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+      // Fenced code block
+      if trimmed.hasPrefix("```") {
+        flushText()
+        var codeLines: [String] = []
+        i += 1
+        while i < lines.count && !lines[i].trimmingCharacters(in: .whitespaces).hasPrefix("```") {
+          codeLines.append(lines[i])
+          i += 1
+        }
+        result.append(.code(codeLines.joined(separator: "\n")))
+        i += 1
+        continue
+      }
+
+      // Horizontal rule
+      if trimmed.range(of: #"^(---+|\*\*\*+|___+)$"#, options: .regularExpression) != nil {
+        flushText()
+        result.append(.hr)
+        i += 1
+        continue
+      }
+
+      // Headings
+      if trimmed.range(of: #"^#{1,6}\s+"#, options: .regularExpression) != nil {
+        flushText()
+        let hashes = trimmed.prefix(while: { $0 == "#" })
+        let text = String(trimmed.dropFirst(hashes.count).trimmingCharacters(in: .whitespaces))
+        result.append(.heading(hashes.count, text))
+        i += 1
+        continue
+      }
+
+      // Blockquote
+      if trimmed.hasPrefix("> ") || trimmed == ">" {
+        flushText()
+        var bqLines: [String] = []
+        while i < lines.count {
+          let bqLine = lines[i].trimmingCharacters(in: .whitespaces)
+          if bqLine.hasPrefix("> ") {
+            bqLines.append(String(bqLine.dropFirst(2)))
+          } else if bqLine == ">" {
+            bqLines.append("")
+          } else {
+            break
+          }
+          i += 1
+        }
+        result.append(.blockquote(bqLines.joined(separator: "\n")))
+        continue
+      }
+
+      // Table row
+      if trimmed.hasPrefix("|") && trimmed.hasSuffix("|") && trimmed.count > 1 {
+        flushText()
+        // Check if this is a separator row (|---|---|)
+        if trimmed.range(of: #"^\|[\s:|-]+\|$"#, options: .regularExpression) != nil {
+          result.append(.tableSeparator)
+        } else {
+          let cells = trimmed.dropFirst().dropLast()
+            .components(separatedBy: "|")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+          // First table row after start or after separator is header
+          let isHeader = result.isEmpty || {
+            if case .tableSeparator = result.last { return false }
+            // Check if next line is separator
+            if i + 1 < lines.count {
+              let next = lines[i + 1].trimmingCharacters(in: .whitespaces)
+              return next.range(of: #"^\|[\s:|-]+\|$"#, options: .regularExpression) != nil
+            }
+            return false
+          }()
+          result.append(.tableRow(cells, isHeader: isHeader))
+        }
+        i += 1
+        continue
+      }
+
+      // Unordered list
+      if trimmed.range(of: #"^[-*+]\s+"#, options: .regularExpression) != nil {
+        flushText()
+        let content = String(trimmed.drop(while: { $0 == "-" || $0 == "*" || $0 == "+" || $0 == " " }))
+        result.append(.listItem(content))
+        i += 1
+        continue
+      }
+
+      // Ordered list
+      if trimmed.range(of: #"^\d+\.\s+"#, options: .regularExpression) != nil {
+        flushText()
+        let numStr = String(trimmed.prefix(while: { $0.isNumber }))
+        let num = Int(numStr) ?? 1
+        let content = String(trimmed.drop(while: { $0.isNumber || $0 == "." || $0 == " " }))
+        result.append(.orderedItem(num, content))
+        i += 1
+        continue
+      }
+
+      // Empty line
+      if trimmed.isEmpty {
+        flushText()
+        i += 1
+        continue
+      }
+
+      textBuffer.append(line)
+      i += 1
+    }
+    flushText()
+    return result
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+        switch block {
+        case .text(let str):
+          inlineMarkdown(str)
+            .font(.body)
+
+        case .heading(let level, let str):
+          inlineMarkdown(str)
+            .font(level == 1 ? .title : (level == 2 ? .title2 : (level == 3 ? .title3 : .headline)))
+            .fontWeight(.bold)
+            .padding(.top, level <= 2 ? 12 : 6)
+
+        case .code(let str):
+          Text(str)
+            .font(.system(size: 12, design: .monospaced))
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(DocTheme.subtle)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+
+        case .hr:
+          Divider().padding(.vertical, 6)
+
+        case .listItem(let str):
+          HStack(alignment: .top, spacing: 6) {
+            Text("•").foregroundStyle(.secondary)
+            inlineMarkdown(str).font(.body)
+          }
+          .padding(.leading, 4)
+
+        case .orderedItem(let num, let str):
+          HStack(alignment: .top, spacing: 6) {
+            Text("\(num).").foregroundStyle(.secondary).font(.body.monospacedDigit())
+            inlineMarkdown(str).font(.body)
+          }
+          .padding(.leading, 4)
+
+        case .blockquote(let str):
+          HStack(spacing: 0) {
+            Rectangle()
+              .fill(Color.secondary.opacity(0.3))
+              .frame(width: 3)
+            inlineMarkdown(str)
+              .font(.body)
+              .foregroundStyle(.secondary)
+              .padding(.leading, 10)
+              .padding(.vertical, 4)
+          }
+
+        case .tableRow(let cells, let isHeader):
+          HStack(spacing: 1) {
+            ForEach(Array(cells.enumerated()), id: \.offset) { _, cell in
+              inlineMarkdown(cell)
+                .font(isHeader ? .footnote.bold() : .footnote)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(isHeader ? DocTheme.subtle : Color.clear)
+            }
+          }
+
+        case .tableSeparator:
+          Divider()
+        }
+      }
+    }
+  }
+
+  @ViewBuilder
+  private func inlineMarkdown(_ text: String) -> some View {
+    if let attr = try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+      Text(attr)
+    } else {
+      Text(text)
+    }
+  }
+}
+
 // MARK: - Deliverable Viewer
 
 private struct DeliverableInlineViewer: View {
   let deliverable: ResearchDeliverable
-
-  @State private var contentHeight: CGFloat = 800
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -1451,11 +1688,10 @@ private struct DeliverableInlineViewer: View {
       Divider()
 
       ScrollView {
-        MarkdownWebView(markdown: deliverable.content, onContentHeightChanged: { height in
-          contentHeight = max(height, 400)
-        })
-          .frame(maxWidth: .infinity, minHeight: contentHeight)
+        NativeMarkdownBody(markdown: deliverable.content)
           .padding(20)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .textSelection(.enabled)
       }
     }
     .frame(maxHeight: .infinity)
