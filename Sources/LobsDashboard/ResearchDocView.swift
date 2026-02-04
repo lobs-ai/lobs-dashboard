@@ -606,6 +606,7 @@ struct ResearchDocView: View {
             .padding(.bottom, 8)
 
             MarkdownWebView(markdown: combinedDocsContent)
+              .frame(maxWidth: .infinity, minHeight: 400)
               .padding(.horizontal, 8)
           }
         }
