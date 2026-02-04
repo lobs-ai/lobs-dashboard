@@ -43,6 +43,7 @@ struct OverviewView: View {
   @State private var showTimeline: Bool = false
   @State private var draggingProjectId: String? = nil
   @State private var showCreateProject: Bool = false
+  @State private var showAllCompletedThisWeek: Bool = false
 
   private var allTasks: [DashboardTask] { vm.tasks }
 
@@ -475,7 +476,10 @@ struct OverviewView: View {
                 .frame(maxWidth: .infinity)
             } else {
               let snapshotLimit = 5
-              let visible = Array(completedThisWeekTasks.prefix(snapshotLimit))
+              let visible = showAllCompletedThisWeek
+                ? completedThisWeekTasks
+                : Array(completedThisWeekTasks.prefix(snapshotLimit))
+
               ForEach(Array(visible.enumerated()), id: \.element.id) { idx, task in
                 OverviewTaskRow(task: task, projectName: vm.projects.first(where: { $0.id == (task.projectId ?? "default") })?.title, showTimestamp: true, onTap: {
                   vm.selectTask(task)
@@ -485,13 +489,23 @@ struct OverviewView: View {
                   Divider().padding(.leading, 32)
                 }
               }
+
               if completedThisWeekTasks.count > snapshotLimit {
                 Divider().padding(.leading, 32)
-                Text("View all \(completedThisWeekTasks.count) completed →")
-                  .font(.footnote)
-                  .foregroundStyle(.green)
-                  .frame(maxWidth: .infinity, alignment: .center)
-                  .padding(.vertical, 8)
+                Button {
+                  withAnimation(.easeInOut(duration: 0.2)) {
+                    showAllCompletedThisWeek.toggle()
+                  }
+                } label: {
+                  Text(showAllCompletedThisWeek
+                       ? "Show less"
+                       : "View all \(completedThisWeekTasks.count) completed →")
+                    .font(.footnote)
+                    .foregroundStyle(showAllCompletedThisWeek ? .secondary : .green)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 8)
+                }
+                .buttonStyle(.plain)
               }
             }
           }
