@@ -22,6 +22,7 @@ struct ResearchDocView: View {
   @State private var followUpSheetContext: FollowUpContext? = nil
   @State private var isEditing = false
   @State private var isCondensed = false
+  @State private var previewAsPlainText = false
   @State private var editContent: String = ""
   @State private var saveTimer: Timer? = nil
   @State private var docSearchText: String = ""
@@ -526,7 +527,7 @@ struct ResearchDocView: View {
         .pickerStyle(.segmented)
         .frame(width: 160)
 
-        // Condensed view toggle (preview mode only)
+        // Preview-mode controls
         if !isEditing {
           Button {
             isCondensed.toggle()
@@ -540,6 +541,19 @@ struct ResearchDocView: View {
           }
           .buttonStyle(.plain)
           .help(isCondensed ? "Show full document" : "Condensed view (headings + summaries)")
+
+          Button {
+            previewAsPlainText.toggle()
+          } label: {
+            Image(systemName: previewAsPlainText ? "doc.plaintext" : "text.magnifyingglass")
+              .font(.body)
+              .foregroundStyle(previewAsPlainText ? .blue : .secondary)
+              .padding(4)
+              .background(previewAsPlainText ? Color.blue.opacity(0.12) : Color.clear)
+              .clipShape(RoundedRectangle(cornerRadius: 6))
+          }
+          .buttonStyle(.plain)
+          .help(previewAsPlainText ? "Rendered preview" : "Plain text (better for selecting/copying across sections)")
         }
 
         Spacer()
@@ -671,32 +685,38 @@ struct ResearchDocView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       } else {
-        // Preview (rendered markdown with collapsible sections)
-        ScrollViewReader { proxy in
-          ScrollView {
-            SectionedMarkdownPreview(
-              content: editContent,
-              sources: vm.researchSources,
-              isCondensed: isCondensed,
-              collapsedSections: $collapsedSections,
-              searchText: docSearchText,
-              onAskFollowUp: { sectionHeading in
-                followUpSheetContext = FollowUpContext(sectionHeading: sectionHeading)
+        if previewAsPlainText {
+          // Plain text preview (better for selecting/copying across many SwiftUI subviews)
+          SpellCheckingTextEditor(text: $editContent, isEditable: false)
+            .padding(16)
+        } else {
+          // Preview (rendered markdown with collapsible sections)
+          ScrollViewReader { proxy in
+            ScrollView {
+              SectionedMarkdownPreview(
+                content: editContent,
+                sources: vm.researchSources,
+                isCondensed: isCondensed,
+                collapsedSections: $collapsedSections,
+                searchText: docSearchText,
+                onAskFollowUp: { sectionHeading in
+                  followUpSheetContext = FollowUpContext(sectionHeading: sectionHeading)
+                }
+              )
+              // Force a fresh render when content changes. Without this, SwiftUI can
+              // occasionally fail to update the preview until another interaction
+              // (e.g. clicking a sidebar document) triggers a view refresh.
+              .id(editContent.hashValue)
+              .padding(20)
+              .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .onChange(of: scrollToHeadingId) { target in
+              if let target {
+                withAnimation {
+                  proxy.scrollTo("section-\(target)", anchor: .top)
+                }
+                scrollToHeadingId = nil
               }
-            )
-            // Force a fresh render when content changes. Without this, SwiftUI can
-            // occasionally fail to update the preview until another interaction
-            // (e.g. clicking a sidebar document) triggers a view refresh.
-            .id(editContent.hashValue)
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
-          }
-          .onChange(of: scrollToHeadingId) { target in
-            if let target {
-              withAnimation {
-                proxy.scrollTo("section-\(target)", anchor: .top)
-              }
-              scrollToHeadingId = nil
             }
           }
         }
