@@ -8,7 +8,7 @@ import Charts
 struct VelocityChartView: View {
   let tasks: [DashboardTask]
 
-  @State private var selectedPeriod: Period = .twoWeeks
+  @State private var selectedPeriod: Period = .week
 
   enum Period: String, CaseIterable {
     case week = "7d"
