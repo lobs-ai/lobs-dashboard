@@ -1352,9 +1352,16 @@ private struct OverviewTaskDetailSheet: View {
             Text("Notes")
               .font(.footnote)
               .foregroundStyle(.secondary)
-            TextField("Add notes…", text: $editNotes, axis: .vertical)
-              .textFieldStyle(.roundedBorder)
-              .lineLimit(6, reservesSpace: true)
+            SpellCheckingTextEditor(text: $editNotes, onSubmit: {
+              vm.editTask(taskId: task.id, title: editTitle, notes: editNotes.isEmpty ? nil : editNotes, autoPush: true)
+              dismiss()
+            })
+              .frame(minHeight: 90, maxHeight: 160)
+              .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                  .stroke(OTheme.border, lineWidth: 0.5)
+              )
+              .help("Enter to save, Shift+Enter for newline")
           }
 
           // Project info
