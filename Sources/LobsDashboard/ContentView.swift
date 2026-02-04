@@ -1124,29 +1124,29 @@ private struct InboxToolbarButton: View {
 
   var body: some View {
     Button(action: action) {
-      ZStack(alignment: .topTrailing) {
-        Image(systemName: "tray.full")
-          .font(.body)
-          .padding(6)
-          .background(isHovering ? Color.primary.opacity(0.08) : Theme.subtle)
-          .clipShape(RoundedRectangle(cornerRadius: 8))
-          .overlay(
-            RoundedRectangle(cornerRadius: 8)
-              .stroke(Color.primary.opacity(isHovering ? 0.12 : 0), lineWidth: 1)
-          )
-          .scaleEffect(isHovering ? 1.06 : 1.0)
-          .animation(.easeOut(duration: 0.15), value: isHovering)
-        if vm.unreadInboxCount > 0 {
-          Text("\(vm.unreadInboxCount)")
-            .font(.system(size: 11, weight: .bold))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 1)
-            .background(Color.red)
-            .clipShape(Capsule())
-            .offset(x: 4, y: -4)
+      Image(systemName: "tray.full")
+        .font(.body)
+        .padding(6)
+        .background(isHovering ? Color.primary.opacity(0.08) : Theme.subtle)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+          RoundedRectangle(cornerRadius: 8)
+            .stroke(Color.primary.opacity(isHovering ? 0.12 : 0), lineWidth: 1)
+        )
+        .overlay(alignment: .topTrailing) {
+          if vm.unreadInboxCount > 0 {
+            Text("\(vm.unreadInboxCount)")
+              .font(.system(size: 11, weight: .bold))
+              .foregroundStyle(.white)
+              .padding(.horizontal, 4)
+              .padding(.vertical, 1)
+              .background(Color.red)
+              .clipShape(Capsule())
+              .offset(x: 4, y: -4)
+          }
         }
-      }
+        .scaleEffect(isHovering ? 1.06 : 1.0)
+        .animation(.easeOut(duration: 0.15), value: isHovering)
     }
     .buttonStyle(.plain)
     .onHover { h in isHovering = h }
