@@ -419,9 +419,22 @@ final class AppViewModel: ObservableObject {
     return hash.isEmpty || hash == "unknown" ? "" : hash
   }
 
+  /// Last time we checked for lobs-dashboard updates.
+  /// Throttled to avoid frequent background fetches that can burn energy.
+  private var lastDashboardUpdateCheckAt: Date? = nil
+
   /// Check if lobs-dashboard has new commits on origin/main that haven't been built.
   func checkForDashboardUpdate() {
     guard let dashURL = dashboardRepoURL else { return }
+
+    // Throttle update checks (git fetch) — this can be surprisingly expensive.
+    let minInterval: TimeInterval = 60 * 30 // 30 minutes
+    if let last = lastDashboardUpdateCheckAt,
+       Date().timeIntervalSince(last) < minInterval {
+      return
+    }
+    lastDashboardUpdateCheckAt = Date()
+
     Task {
       do {
         // Fetch latest from remote
