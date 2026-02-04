@@ -768,17 +768,9 @@ private struct ToolbarArea: View {
       }
 
       // Home button
-      Button {
+      HoverIconButton(icon: "house.fill", tooltip: "Home — Overview", activeBg: vm.showOverview ? Color.accentColor.opacity(0.15) : nil) {
         vm.showOverview = true
-      } label: {
-        Image(systemName: "house.fill")
-          .font(.body)
-          .padding(6)
-          .background(vm.showOverview ? Color.accentColor.opacity(0.15) : Theme.subtle)
-          .clipShape(RoundedRectangle(cornerRadius: 8))
       }
-      .buttonStyle(.plain)
-      .help("Home — Overview")
 
       // Project
       Menu {
@@ -925,29 +917,9 @@ private struct ToolbarArea: View {
       .menuStyle(.borderlessButton)
 
       // Inbox button
-      Button {
+      InboxToolbarButton(vm: vm) {
         withAnimation(.easeInOut(duration: 0.25)) { showInbox = true }
-      } label: {
-        ZStack(alignment: .topTrailing) {
-          Image(systemName: "tray.full")
-            .font(.body)
-            .padding(6)
-            .background(Theme.subtle)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-          if vm.unreadInboxCount > 0 {
-            Text("\(vm.unreadInboxCount)")
-              .font(.system(size: 11, weight: .bold))
-              .foregroundStyle(.white)
-              .padding(.horizontal, 4)
-              .padding(.vertical, 1)
-              .background(Color.red)
-              .clipShape(Capsule())
-              .offset(x: 4, y: -4)
-          }
-        }
       }
-      .buttonStyle(.plain)
-      .help("Inbox — Design Docs & Artifacts")
 
       // Templates button
       if !vm.templates.isEmpty {
@@ -999,30 +971,13 @@ private struct ToolbarArea: View {
       }
 
       // Text dump button — paste bulk text for task breakdown
-      Button {
+      TextDumpToolbarButton {
         showTextDump = true
-      } label: {
-        Image(systemName: "doc.plaintext")
-          .font(.body)
-          .padding(6)
-          .background(Theme.subtle)
-          .clipShape(RoundedRectangle(cornerRadius: 8))
-          .overlay(alignment: .topTrailing) {
-            let count = vm.unreviewedCompletedDumps.count
-            if count > 0 {
-              Text("\(count)")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundColor(.white)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 1)
-                .background(Color.orange)
-                .clipShape(Capsule())
-                .offset(x: 4, y: -4)
-            }
-          }
+      } badgeCount: {
+        vm.unreviewedCompletedDumps.count
+      } tooltip: {
+        vm.unreviewedCompletedDumps.isEmpty ? "Paste Text → Tasks" : "Paste Text → Tasks (\(vm.unreviewedCompletedDumps.count) ready to review)"
       }
-      .buttonStyle(.plain)
-      .help(vm.unreviewedCompletedDumps.isEmpty ? "Paste Text → Tasks" : "Paste Text → Tasks (\(vm.unreviewedCompletedDumps.count) ready to review)")
       .contextMenu {
         if !vm.unreviewedCompletedDumps.isEmpty {
           Button("Review Processed Results…") {
@@ -1035,29 +990,14 @@ private struct ToolbarArea: View {
       }
 
       // Help button (⌘/)
-      Button {
+      HoverIconButton(icon: "questionmark.circle", tooltip: "Help & Shortcuts (⌘/)") {
         withAnimation(.easeInOut(duration: 0.25)) { showHelp = true }
-      } label: {
-        Image(systemName: "questionmark.circle")
-          .font(.body)
-          .padding(6)
-          .background(Theme.subtle)
-          .clipShape(RoundedRectangle(cornerRadius: 8))
       }
-      .buttonStyle(.plain)
-      .help("Help & Shortcuts (⌘/)")
 
       // Settings gear (Task #47AC08C2 — repo sync & auto-push in settings popover)
-      Button {
+      HoverIconButton(icon: "gearshape", tooltip: "Settings") {
         showSettings.toggle()
-      } label: {
-        Image(systemName: "gearshape")
-          .font(.body)
-          .padding(6)
-          .background(Theme.subtle)
-          .clipShape(RoundedRectangle(cornerRadius: 8))
       }
-      .buttonStyle(.plain)
       .popover(isPresented: $showSettings, arrowEdge: .bottom) {
         SettingsPopover(
           vm: vm,
@@ -1079,16 +1019,138 @@ private struct ToolbarButton: View {
   let shortcut: String
   let action: () -> Void
 
+  @State private var isHovering = false
+
   var body: some View {
     Button(action: action) {
       Image(systemName: icon)
         .font(.body)
         .padding(6)
-        .background(Theme.subtle)
+        .background(isHovering ? Theme.subtle.opacity(1.5) : Theme.subtle)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+          RoundedRectangle(cornerRadius: 8)
+            .stroke(Color.primary.opacity(isHovering ? 0.15 : 0), lineWidth: 1)
+        )
+        .scaleEffect(isHovering ? 1.05 : 1.0)
+        .animation(.easeOut(duration: 0.15), value: isHovering)
     }
     .buttonStyle(.plain)
+    .onHover { h in isHovering = h }
     .help("\(label) (\(shortcut))")
+  }
+}
+
+// MARK: - Hover Icon Button
+
+/// A toolbar icon button with hover highlight and tooltip.
+private struct HoverIconButton: View {
+  let icon: String
+  let tooltip: String
+  var activeBg: Color? = nil
+  let action: () -> Void
+
+  @State private var isHovering = false
+
+  var body: some View {
+    Button(action: action) {
+      Image(systemName: icon)
+        .font(.body)
+        .padding(6)
+        .background(activeBg ?? (isHovering ? Color.primary.opacity(0.08) : Theme.subtle))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+          RoundedRectangle(cornerRadius: 8)
+            .stroke(Color.primary.opacity(isHovering ? 0.12 : 0), lineWidth: 1)
+        )
+        .scaleEffect(isHovering ? 1.06 : 1.0)
+        .animation(.easeOut(duration: 0.15), value: isHovering)
+    }
+    .buttonStyle(.plain)
+    .onHover { h in isHovering = h }
+    .help(tooltip)
+  }
+}
+
+// MARK: - Text Dump Toolbar Button
+
+private struct TextDumpToolbarButton: View {
+  let action: () -> Void
+  let badgeCount: () -> Int
+  let tooltip: () -> String
+
+  @State private var isHovering = false
+
+  var body: some View {
+    let count = badgeCount()
+    Button(action: action) {
+      Image(systemName: "doc.plaintext")
+        .font(.body)
+        .padding(6)
+        .background(isHovering ? Color.primary.opacity(0.08) : Theme.subtle)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+          RoundedRectangle(cornerRadius: 8)
+            .stroke(Color.primary.opacity(isHovering ? 0.12 : 0), lineWidth: 1)
+        )
+        .overlay(alignment: .topTrailing) {
+          if count > 0 {
+            Text("\(count)")
+              .font(.system(size: 9, weight: .bold))
+              .foregroundColor(.white)
+              .padding(.horizontal, 4)
+              .padding(.vertical, 1)
+              .background(Color.orange)
+              .clipShape(Capsule())
+              .offset(x: 4, y: -4)
+          }
+        }
+        .scaleEffect(isHovering ? 1.06 : 1.0)
+        .animation(.easeOut(duration: 0.15), value: isHovering)
+    }
+    .buttonStyle(.plain)
+    .onHover { h in isHovering = h }
+    .help(tooltip())
+  }
+}
+
+// MARK: - Inbox Toolbar Button
+
+private struct InboxToolbarButton: View {
+  @ObservedObject var vm: AppViewModel
+  let action: () -> Void
+
+  @State private var isHovering = false
+
+  var body: some View {
+    Button(action: action) {
+      ZStack(alignment: .topTrailing) {
+        Image(systemName: "tray.full")
+          .font(.body)
+          .padding(6)
+          .background(isHovering ? Color.primary.opacity(0.08) : Theme.subtle)
+          .clipShape(RoundedRectangle(cornerRadius: 8))
+          .overlay(
+            RoundedRectangle(cornerRadius: 8)
+              .stroke(Color.primary.opacity(isHovering ? 0.12 : 0), lineWidth: 1)
+          )
+          .scaleEffect(isHovering ? 1.06 : 1.0)
+          .animation(.easeOut(duration: 0.15), value: isHovering)
+        if vm.unreadInboxCount > 0 {
+          Text("\(vm.unreadInboxCount)")
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(Color.red)
+            .clipShape(Capsule())
+            .offset(x: 4, y: -4)
+        }
+      }
+    }
+    .buttonStyle(.plain)
+    .onHover { h in isHovering = h }
+    .help("Inbox — Design Docs & Artifacts (⌘I)")
   }
 }
 
