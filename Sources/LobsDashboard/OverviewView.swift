@@ -129,6 +129,38 @@ struct OverviewView: View {
     vm.unreadInboxCount
   }
 
+  // MARK: - Section Data (Active / Research / Done This Week)
+
+  /// All active tasks across all projects, sorted by most recently updated.
+  private var activeTasksList: [DashboardTask] {
+    allTasks.filter { $0.status == .active }
+      .sorted { $0.updatedAt > $1.updatedAt }
+  }
+
+  /// All open research requests across all research projects.
+  private var openResearchRequestsList: [ResearchRequest] {
+    guard let repoURL = vm.repoURL else { return [] }
+    let store = LobsControlStore(repoRoot: repoURL)
+    var result: [ResearchRequest] = []
+    for project in activeProjects where project.resolvedType == .research {
+      if let requests = try? store.loadRequests(projectId: project.id) {
+        result.append(contentsOf: requests.filter { $0.status == .open || $0.status == .inProgress })
+      }
+    }
+    return result.sorted { $0.createdAt > $1.createdAt }
+  }
+
+  /// Tasks completed this week.
+  private var completedThisWeekTasks: [DashboardTask] {
+    let calendar = Calendar.current
+    var comps = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())
+    comps.weekday = 2 // Monday
+    let weekStart = calendar.date(from: comps) ?? Date()
+    let weekEnd = calendar.date(byAdding: .day, value: 7, to: weekStart) ?? Date()
+    return allTasks.filter { $0.status == .completed && $0.updatedAt >= weekStart && $0.updatedAt < weekEnd }
+      .sorted { $0.updatedAt > $1.updatedAt }
+  }
+
   // MARK: - Activity Feed
 
   fileprivate enum ActivityEvent: Identifiable {
@@ -355,53 +387,88 @@ struct OverviewView: View {
           }
         }
 
-        // Two-column layout: Recent Activity + Inbox
-        HStack(alignment: .top, spacing: 24) {
-          // Activity feed
-          VStack(alignment: .leading, spacing: 12) {
-            Text("Recent Activity")
-              .font(.headline)
-              .fontWeight(.bold)
-
-            if activityFeed.isEmpty {
-              Text("No recent activity")
+        // Three-column layout: Active / Research / Done This Week
+        HStack(alignment: .top, spacing: 16) {
+          // Active tasks column
+          OverviewSectionColumn(
+            title: "Active",
+            icon: "flame.fill",
+            color: .orange,
+            badgeCount: activeTasksList.count
+          ) {
+            if activeTasksList.isEmpty {
+              Text("No active tasks")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .padding(.vertical, 20)
                 .frame(maxWidth: .infinity)
             } else {
-              ScrollView {
-                VStack(spacing: 0) {
-                  ForEach(Array(activityFeed.enumerated()), id: \.element.id) { idx, ev in
-                    ActivityEventRow(
-                      vm: vm,
-                      event: ev,
-                      onOpenTask: { task in
-                        vm.selectTask(task)
-                        detailTask = task
-                      },
-                      onOpenInbox: { id in
-                        onOpenInbox?(id)
-                      }
-                    )
-                    if idx < activityFeed.count - 1 {
-                      Divider().padding(.leading, 36)
-                    }
-                  }
+              ForEach(Array(activeTasksList.enumerated()), id: \.element.id) { idx, task in
+                OverviewTaskRow(task: task, projectName: vm.projects.first(where: { $0.id == (task.projectId ?? "default") })?.title, onTap: {
+                  vm.selectTask(task)
+                  detailTask = task
+                })
+                if idx < activeTasksList.count - 1 {
+                  Divider().padding(.leading, 32)
                 }
               }
-              .frame(maxHeight: 400)
-              .background(OTheme.cardBg)
-              .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
-              .overlay(
-                RoundedRectangle(cornerRadius: OTheme.cardRadius)
-                  .stroke(OTheme.border, lineWidth: 0.5)
-              )
             }
           }
-          .frame(minWidth: 0, maxWidth: .infinity)
 
-          // Inbox items
+          // Research requests column
+          OverviewSectionColumn(
+            title: "Research",
+            icon: "magnifyingglass",
+            color: .purple,
+            badgeCount: openResearchRequestsList.count
+          ) {
+            if openResearchRequestsList.isEmpty {
+              Text("No open research requests")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(.vertical, 20)
+                .frame(maxWidth: .infinity)
+            } else {
+              ForEach(Array(openResearchRequestsList.enumerated()), id: \.element.id) { idx, req in
+                OverviewResearchRow(request: req, projectName: vm.projects.first(where: { $0.id == req.projectId })?.title, onTap: {
+                  onSelectProject(req.projectId)
+                })
+                if idx < openResearchRequestsList.count - 1 {
+                  Divider().padding(.leading, 32)
+                }
+              }
+            }
+          }
+
+          // Done this week column
+          OverviewSectionColumn(
+            title: "Done This Week",
+            icon: "checkmark.circle.fill",
+            color: .green,
+            badgeCount: completedThisWeekTasks.count
+          ) {
+            if completedThisWeekTasks.isEmpty {
+              Text("Nothing completed this week")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(.vertical, 20)
+                .frame(maxWidth: .infinity)
+            } else {
+              ForEach(Array(completedThisWeekTasks.enumerated()), id: \.element.id) { idx, task in
+                OverviewTaskRow(task: task, projectName: vm.projects.first(where: { $0.id == (task.projectId ?? "default") })?.title, showTimestamp: true, onTap: {
+                  vm.selectTask(task)
+                  detailTask = task
+                })
+                if idx < completedThisWeekTasks.count - 1 {
+                  Divider().padding(.leading, 32)
+                }
+              }
+            }
+          }
+        }
+
+        // Inbox row (kept below the three columns)
+        if !vm.inboxItems.isEmpty || vm.unreadInboxCount > 0 {
           VStack(alignment: .leading, spacing: 12) {
             HStack {
               Text("Inbox")
@@ -419,52 +486,32 @@ struct OverviewView: View {
               }
             }
 
-            if vm.inboxItems.isEmpty {
-              Text("No inbox items")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .padding(.vertical, 20)
-                .frame(maxWidth: .infinity)
-                .frame(maxHeight: 400)
-                .background(OTheme.cardBg)
-                .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
-                .overlay(
-                  RoundedRectangle(cornerRadius: OTheme.cardRadius)
-                    .stroke(OTheme.border, lineWidth: 0.5)
-                )
-            } else {
-              ScrollView {
-                VStack(spacing: 0) {
-                  // Sort: items needing attention first, then by modified date
-                  let sortedItems = vm.inboxItems.sorted { a, b in
-                    let aNeeds = !a.isRead || vm.unreadFollowupCount(docId: a.id) > 0
-                    let bNeeds = !b.isRead || vm.unreadFollowupCount(docId: b.id) > 0
-                    if aNeeds != bNeeds { return aNeeds }
-                    return a.modifiedAt > b.modifiedAt
-                  }
-                  ForEach(Array(sortedItems.prefix(8).enumerated()), id: \.element.id) { idx, item in
-                    InboxRow(item: item, unreadFollowups: vm.unreadFollowupCount(docId: item.id), onTap: {
-                      vm.markInboxItemRead(item)
-                      if let onOpenInbox {
-                        onOpenInbox(item.id)
-                      }
-                    })
-                    if idx < min(sortedItems.count, 8) - 1 {
-                      Divider().padding(.leading, 36)
+            ScrollView(.horizontal, showsIndicators: false) {
+              HStack(spacing: 12) {
+                let sortedItems = vm.inboxItems.sorted { a, b in
+                  let aNeeds = !a.isRead || vm.unreadFollowupCount(docId: a.id) > 0
+                  let bNeeds = !b.isRead || vm.unreadFollowupCount(docId: b.id) > 0
+                  if aNeeds != bNeeds { return aNeeds }
+                  return a.modifiedAt > b.modifiedAt
+                }
+                ForEach(sortedItems.prefix(10)) { item in
+                  InboxRow(item: item, unreadFollowups: vm.unreadFollowupCount(docId: item.id), onTap: {
+                    vm.markInboxItemRead(item)
+                    if let onOpenInbox {
+                      onOpenInbox(item.id)
                     }
-                  }
+                  })
+                  .frame(width: 300)
+                  .background(OTheme.cardBg)
+                  .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
+                  .overlay(
+                    RoundedRectangle(cornerRadius: OTheme.cardRadius)
+                      .stroke(OTheme.border, lineWidth: 0.5)
+                  )
                 }
               }
-              .frame(maxHeight: 400)
-              .background(OTheme.cardBg)
-              .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
-              .overlay(
-                RoundedRectangle(cornerRadius: OTheme.cardRadius)
-                  .stroke(OTheme.border, lineWidth: 0.5)
-              )
             }
           }
-          .frame(minWidth: 0, maxWidth: .infinity)
         }
       }
       .padding(24)
@@ -1042,6 +1089,179 @@ private struct InboxRow: View {
         Spacer()
 
         Text(relativeTime(item.modifiedAt))
+          .font(.system(size: 11))
+          .foregroundStyle(.tertiary)
+      }
+      .padding(.horizontal, 12)
+      .padding(.vertical, 8)
+      .background(isHovering ? OTheme.subtle : Color.clear)
+    }
+    .buttonStyle(.plain)
+    .onHover { h in isHovering = h }
+  }
+}
+
+// MARK: - Overview Section Column
+
+/// A scrollable column with a header for the three-section overview layout.
+private struct OverviewSectionColumn<Content: View>: View {
+  let title: String
+  let icon: String
+  let color: Color
+  var badgeCount: Int = 0
+  @ViewBuilder let content: () -> Content
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack(spacing: 6) {
+        Image(systemName: icon)
+          .font(.footnote)
+          .foregroundStyle(color)
+        Text(title)
+          .font(.headline)
+          .fontWeight(.bold)
+        if badgeCount > 0 {
+          Text("\(badgeCount)")
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(color.opacity(0.12))
+            .clipShape(Capsule())
+        }
+      }
+
+      ScrollView {
+        VStack(spacing: 0) {
+          content()
+        }
+      }
+      .frame(maxHeight: 500)
+      .background(OTheme.cardBg)
+      .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
+      .overlay(
+        RoundedRectangle(cornerRadius: OTheme.cardRadius)
+          .stroke(OTheme.border, lineWidth: 0.5)
+      )
+    }
+    .frame(minWidth: 0, maxWidth: .infinity)
+  }
+}
+
+// MARK: - Overview Task Row
+
+/// A compact task row for the overview sections (active / done this week).
+private struct OverviewTaskRow: View {
+  let task: DashboardTask
+  var projectName: String? = nil
+  var showTimestamp: Bool = false
+  let onTap: () -> Void
+
+  @State private var isHovering = false
+
+  var body: some View {
+    Button(action: onTap) {
+      HStack(spacing: 10) {
+        // Status indicator
+        Circle()
+          .fill(task.status == .completed ? Color.green : Color.orange)
+          .frame(width: 8, height: 8)
+
+        VStack(alignment: .leading, spacing: 2) {
+          Text(task.title)
+            .font(.footnote)
+            .fontWeight(.medium)
+            .lineLimit(1)
+
+          HStack(spacing: 6) {
+            if let name = projectName {
+              Text(name)
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+            }
+            if let ws = task.workState, ws == .blocked {
+              Text("blocked")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.red)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(Color.red.opacity(0.1))
+                .clipShape(Capsule())
+            }
+          }
+        }
+
+        Spacer()
+
+        if showTimestamp {
+          Text(relativeTime(task.updatedAt))
+            .font(.system(size: 11))
+            .foregroundStyle(.tertiary)
+        }
+      }
+      .padding(.horizontal, 12)
+      .padding(.vertical, 8)
+      .background(isHovering ? OTheme.subtle : Color.clear)
+    }
+    .buttonStyle(.plain)
+    .onHover { h in isHovering = h }
+  }
+}
+
+// MARK: - Overview Research Row
+
+/// A compact research request row for the overview research section.
+private struct OverviewResearchRow: View {
+  let request: ResearchRequest
+  var projectName: String? = nil
+  let onTap: () -> Void
+
+  @State private var isHovering = false
+
+  var body: some View {
+    Button(action: onTap) {
+      HStack(spacing: 10) {
+        // Status indicator
+        Circle()
+          .fill(request.status == .inProgress ? Color.blue : Color.purple)
+          .frame(width: 8, height: 8)
+
+        VStack(alignment: .leading, spacing: 2) {
+          Text(request.prompt)
+            .font(.footnote)
+            .fontWeight(.medium)
+            .lineLimit(2)
+
+          HStack(spacing: 6) {
+            if let name = projectName {
+              Text(name)
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+            }
+            Text(request.status == .inProgress ? "in progress" : "open")
+              .font(.system(size: 10, weight: .medium))
+              .foregroundStyle(request.status == .inProgress ? Color.blue : Color.purple)
+              .padding(.horizontal, 4)
+              .padding(.vertical, 1)
+              .background((request.status == .inProgress ? Color.blue : Color.purple).opacity(0.1))
+              .clipShape(Capsule())
+            if let priority = request.priority, priority == .high || priority == .urgent {
+              Text(priority.rawValue)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.red)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(Color.red.opacity(0.1))
+                .clipShape(Capsule())
+            }
+          }
+        }
+
+        Spacer()
+
+        Text(relativeTime(request.createdAt))
           .font(.system(size: 11))
           .foregroundStyle(.tertiary)
       }
