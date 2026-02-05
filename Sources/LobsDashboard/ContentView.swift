@@ -966,12 +966,8 @@ private struct ToolbarArea: View {
         showAddTask = true
       }
 
-      ToolbarButton(icon: "arrow.down.circle", label: "Pull latest", shortcut: "⌘R") {
+      ToolbarButton(icon: "arrow.clockwise", label: "Refresh / sync", shortcut: "⌘R") {
         vm.reload()
-      }
-
-      HoverIconButton(icon: "arrow.up.circle", tooltip: "Push") {
-        vm.pushNow()
       }
 
       // Text dump button — paste bulk text for task breakdown
