@@ -430,7 +430,7 @@ final class AppViewModel: ObservableObject {
     // Throttle update checks (git fetch) — this can be surprisingly expensive.
     // Manual refreshes can bypass throttling.
     if !force {
-      let minInterval: TimeInterval = 60 * 30 // 30 minutes
+      let minInterval: TimeInterval = 60 * 5 // 5 minutes
       if let last = lastDashboardUpdateCheckAt,
          Date().timeIntervalSince(last) < minInterval {
         return
