@@ -17,8 +17,9 @@ struct LobsDashboardApp: App {
           NSApp.activate(ignoringOtherApps: true)
           // Request notification permissions for worker event alerts
           vm.requestNotificationPermissions()
-          // Set app icon from bundled resource
-          if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "png"),
+          // Set app icon from bundled resource.
+          // NOTE: This project is SwiftPM-based, so resources are accessed via `Bundle.module`.
+          if let url = Bundle.module.url(forResource: "AppIcon", withExtension: "png"),
              let img = NSImage(contentsOf: url) {
             NSApplication.shared.applicationIconImage = img
           }
