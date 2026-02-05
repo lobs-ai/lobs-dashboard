@@ -2078,7 +2078,7 @@ struct WorkerStatusCard: View {
   @State private var showHistory = false
   @State private var showLiveDetails = false
   @State private var showUsageDetail = false
-  @State private var selectedUsagePeriod: UsagePeriod = .allTime
+  @State private var selectedUsagePeriod: UsagePeriod = .today
 
   enum UsagePeriod: String, CaseIterable {
     case today = "Today"
