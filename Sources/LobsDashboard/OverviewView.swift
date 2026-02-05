@@ -228,363 +228,14 @@ struct OverviewView: View {
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 24) {
-        // Header
-        HStack(spacing: 10) {
-          Image(systemName: "house.fill")
-            .font(.title2)
-            .foregroundStyle(.linearGradient(
-              colors: [.blue, .purple],
-              startPoint: .topLeading,
-              endPoint: .bottomTrailing
-            ))
-          Text("Overview")
-            .font(.title2)
-            .fontWeight(.bold)
-          Spacer()
-        }
-        .padding(.bottom, 4)
-
-        // Quick stats
-        HStack(alignment: .top) {
-          StatsRow(
-            activeTasks: activeTasks,
-            completedThisWeek: completedThisWeek,
-            openResearchRequests: openResearchRequests,
-            blockedTasks: blockedTasks,
-            inboxTasks: inboxTasks,
-            staleTasks: staleTasks,
-            inboxNeedsAttentionCount: inboxNeedsAttentionCount,
-            workerHistory: vm.workerHistory,
-            mainSessionUsage: vm.mainSessionUsage
-          )
-          Spacer()
-          Button {
-            onOpenAIUsage?()
-          } label: {
-            HStack(spacing: 4) {
-              Image(systemName: "chart.line.uptrend.xyaxis")
-                .font(.footnote)
-              Text("AI Usage")
-                .font(.footnote)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(OTheme.subtle)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-          }
-          .buttonStyle(.plain)
-
-          Button {
-            showTimeline = true
-          } label: {
-            HStack(spacing: 4) {
-              Image(systemName: "calendar")
-                .font(.footnote)
-              Text("Timeline")
-                .font(.footnote)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(OTheme.subtle)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-          }
-          .buttonStyle(.plain)
-
-          Button {
-            withAnimation(.easeInOut(duration: 0.2)) {
-              showDetailedStats.toggle()
-            }
-          } label: {
-            HStack(spacing: 4) {
-              Image(systemName: showDetailedStats ? "chart.bar.fill" : "chart.bar")
-                .font(.footnote)
-              Text(showDetailedStats ? "Hide Stats" : "Detailed Stats")
-                .font(.footnote)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(showDetailedStats ? Color.accentColor.opacity(0.15) : OTheme.subtle)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-          }
-          .buttonStyle(.plain)
-        }
-
-        // Productivity velocity chart
-        VelocityChartView(tasks: allTasks)
-
-        if showDetailedStats {
-          DetailedStatsView(tasks: allTasks, projects: activeProjects, researchRequestCountsByProject: researchRequestCountsByProject)
-            .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .top)))
-            .clipped()
-        }
-
-        // Worker status
-        if let ws = vm.workerStatus {
-          WorkerStatusCard(
-            status: ws,
-            history: vm.workerHistory,
-            canRequestWorker: !ws.active && !vm.workerRequestPending,
-            workerRequested: vm.workerRequestPending,
-            onRequestWorker: { vm.requestWorker() }
-          )
-        }
-
-        // Project cards
-        VStack(alignment: .leading, spacing: 12) {
-          Text("Projects")
-            .font(.headline)
-            .fontWeight(.bold)
-
-          LazyVGrid(columns: [
-            GridItem(.flexible(minimum: 280, maximum: .infinity), spacing: 16),
-            GridItem(.flexible(minimum: 280, maximum: .infinity), spacing: 16),
-            GridItem(.flexible(minimum: 280, maximum: .infinity), spacing: 16)
-          ], spacing: 16) {
-            ForEach(activeProjects) { project in
-              ProjectCard(
-                project: project,
-                tasks: allTasks.filter { ($0.projectId ?? "default") == project.id },
-                lastCommitAt: vm.projectLastCommitAt[project.id],
-                researchRequestCount: researchRequestCountsByProject[project.id] ?? 0,
-                totalResearchRequestCount: totalResearchRequestCountsByProject[project.id] ?? 0,
-                researchDeliverableCount: researchDeliverableCountsByProject[project.id] ?? 0,
-                wipLimit: vm.wipLimitActive,
-                onTap: { onSelectProject(project.id) }
-              )
-              .onDrag {
-                draggingProjectId = project.id
-                return NSItemProvider(object: project.id as NSString)
-              }
-              .onDrop(of: [.text], delegate: ProjectDropDelegate(
-                targetId: project.id,
-                draggingId: $draggingProjectId,
-                vm: vm
-              ))
-            }
-
-            // New Project button card
-            Button { showCreateProject = true } label: {
-              VStack(spacing: 8) {
-                Image(systemName: "plus.circle")
-                  .font(.system(size: 24))
-                  .foregroundStyle(.secondary)
-                Text("New Project")
-                  .font(.callout)
-                  .fontWeight(.medium)
-                  .foregroundStyle(.secondary)
-              }
-              .frame(maxWidth: .infinity, minHeight: 160, maxHeight: 160)
-              .contentShape(Rectangle())
-              .background(
-                RoundedRectangle(cornerRadius: OTheme.cardRadius)
-                  .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
-                  .foregroundStyle(Color.secondary.opacity(0.3))
-              )
-            }
-            .buttonStyle(.plain)
-          }
-          .sheet(isPresented: $showCreateProject) {
-            CreateProjectSheet(vm: vm)
-          }
-        }
-
-        // Three-column layout: Active / Research / Done This Week
-        HStack(alignment: .top, spacing: 16) {
-          // Active tasks column
-          OverviewSectionColumn(
-            title: "Active",
-            icon: "flame.fill",
-            color: .orange,
-            badgeCount: activeTasksList.count
-          ) {
-            if activeTasksList.isEmpty {
-              Text("No active tasks")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .padding(.vertical, 20)
-                .frame(maxWidth: .infinity)
-            } else {
-              let snapshotLimit = 5
-              let visible = Array(activeTasksList.prefix(snapshotLimit))
-              ForEach(Array(visible.enumerated()), id: \.element.id) { idx, task in
-                OverviewTaskRow(task: task, projectName: vm.projects.first(where: { $0.id == (task.projectId ?? "default") })?.title, onTap: {
-                  vm.selectTask(task)
-                  detailTask = task
-                })
-                if idx < visible.count - 1 {
-                  Divider().padding(.leading, 32)
-                }
-              }
-              if activeTasksList.count > snapshotLimit {
-                Divider().padding(.leading, 32)
-                Text("View all \(activeTasksList.count) active tasks →")
-                  .font(.footnote)
-                  .foregroundStyle(.orange)
-                  .frame(maxWidth: .infinity, alignment: .center)
-                  .padding(.vertical, 8)
-              }
-            }
-          }
-
-          // Research requests column
-          OverviewSectionColumn(
-            title: "Research",
-            icon: "magnifyingglass",
-            color: .purple,
-            badgeCount: openResearchRequestsList.count
-          ) {
-            if openResearchRequestsList.isEmpty {
-              Text("No open research requests")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .padding(.vertical, 20)
-                .frame(maxWidth: .infinity)
-            } else {
-              let snapshotLimit = 5
-              let visible = Array(openResearchRequestsList.prefix(snapshotLimit))
-              ForEach(Array(visible.enumerated()), id: \.element.id) { idx, req in
-                OverviewResearchRow(request: req, projectName: vm.projects.first(where: { $0.id == req.projectId })?.title, onTap: {
-                  onSelectProject(req.projectId)
-                })
-                if idx < visible.count - 1 {
-                  Divider().padding(.leading, 32)
-                }
-              }
-              if openResearchRequestsList.count > snapshotLimit {
-                Divider().padding(.leading, 32)
-                Text("View all \(openResearchRequestsList.count) requests →")
-                  .font(.footnote)
-                  .foregroundStyle(.purple)
-                  .frame(maxWidth: .infinity, alignment: .center)
-                  .padding(.vertical, 8)
-              }
-            }
-          }
-
-          // Done this week column
-          OverviewSectionColumn(
-            title: "Done This Week",
-            icon: "checkmark.circle.fill",
-            color: .green,
-            badgeCount: completedThisWeekTasks.count
-          ) {
-            if completedThisWeekTasks.isEmpty {
-              Text("Nothing completed this week")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .padding(.vertical, 20)
-                .frame(maxWidth: .infinity)
-            } else {
-              let snapshotLimit = 5
-              let visible = showAllCompletedThisWeek
-                ? completedThisWeekTasks
-                : Array(completedThisWeekTasks.prefix(snapshotLimit))
-
-              ForEach(Array(visible.enumerated()), id: \.element.id) { idx, task in
-                OverviewTaskRow(task: task, projectName: vm.projects.first(where: { $0.id == (task.projectId ?? "default") })?.title, showTimestamp: true, onTap: {
-                  vm.selectTask(task)
-                  detailTask = task
-                })
-                if idx < visible.count - 1 {
-                  Divider().padding(.leading, 32)
-                }
-              }
-
-              if completedThisWeekTasks.count > snapshotLimit {
-                Divider().padding(.leading, 32)
-                Button {
-                  withAnimation(.easeInOut(duration: 0.2)) {
-                    showAllCompletedThisWeek.toggle()
-                  }
-                } label: {
-                  Text(showAllCompletedThisWeek
-                       ? "Show less"
-                       : "View all \(completedThisWeekTasks.count) completed →")
-                    .font(.footnote)
-                    .foregroundStyle(showAllCompletedThisWeek ? .secondary : .green)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 8)
-                }
-                .buttonStyle(.plain)
-              }
-            }
-          }
-        }
-
-        // Inbox (vertical scrolling list, same style as the columns above)
-        if !vm.inboxItems.isEmpty || vm.unreadInboxCount > 0 {
-          VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 6) {
-              Image(systemName: "tray.full.fill")
-                .font(.footnote)
-                .foregroundStyle(.blue)
-              Text("Inbox")
-                .font(.headline)
-                .fontWeight(.bold)
-              if vm.unreadInboxCount > 0 {
-                Text("\(vm.unreadInboxCount)")
-                  .font(.system(size: 11, weight: .bold))
-                  .foregroundStyle(.white)
-                  .padding(.horizontal, 6)
-                  .padding(.vertical, 2)
-                  .background(Color.red)
-                  .clipShape(Capsule())
-              }
-            }
-
-            if vm.inboxItems.isEmpty {
-              Text("No inbox items")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .padding(.vertical, 20)
-                .frame(maxWidth: .infinity)
-            } else {
-              ScrollView {
-                VStack(spacing: 0) {
-                  let sortedItems = vm.inboxItems.sorted { a, b in
-                    let aNeeds = !a.isRead || vm.unreadFollowupCount(docId: a.id) > 0
-                    let bNeeds = !b.isRead || vm.unreadFollowupCount(docId: b.id) > 0
-                    if aNeeds != bNeeds { return aNeeds }
-                    return a.modifiedAt > b.modifiedAt
-                  }
-                  let snapshotLimit = 5
-                  let visible = Array(sortedItems.prefix(snapshotLimit))
-                  ForEach(Array(visible.enumerated()), id: \.element.id) { idx, item in
-                    InboxRow(item: item, unreadFollowups: vm.unreadFollowupCount(docId: item.id), onTap: {
-                      vm.markInboxItemRead(item)
-                      if let onOpenInbox {
-                        onOpenInbox(item.id)
-                      }
-                    })
-                    if idx < visible.count - 1 {
-                      Divider().padding(.leading, 36)
-                    }
-                  }
-                  if sortedItems.count > snapshotLimit {
-                    Divider().padding(.leading, 36)
-                    Button {
-                      if let onOpenInbox { onOpenInbox(nil) }
-                    } label: {
-                      Text("View all \(sortedItems.count) inbox items →")
-                        .font(.footnote)
-                        .foregroundStyle(.blue)
-                    }
-                    .buttonStyle(.plain)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 8)
-                  }
-                }
-              }
-              .frame(maxHeight: 400)
-              .background(OTheme.cardBg)
-              .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
-              .overlay(
-                RoundedRectangle(cornerRadius: OTheme.cardRadius)
-                  .stroke(OTheme.border, lineWidth: 0.5)
-              )
-            }
-          }
-        }
+        headerSection
+        statsSection
+        velocitySection
+        detailedStatsSection
+        workerStatusSection
+        projectCardsSection
+        columnsSection
+        inboxSection
       }
       .padding(24)
     }
@@ -596,6 +247,392 @@ struct OverviewView: View {
     .sheet(isPresented: $showTimeline) {
       TimelineSheetView(tasks: vm.tasks, projects: vm.projects)
         .frame(minWidth: 900, minHeight: 600)
+    }
+  }
+
+  private var headerSection: some View {
+    HStack(spacing: 10) {
+      Image(systemName: "house.fill")
+        .font(.title2)
+        .foregroundStyle(.linearGradient(
+          colors: [.blue, .purple],
+          startPoint: .topLeading,
+          endPoint: .bottomTrailing
+        ))
+      Text("Overview")
+        .font(.title2)
+        .fontWeight(.bold)
+      Spacer()
+    }
+    .padding(.bottom, 4)
+  }
+
+  private var statsSection: some View {
+    HStack(alignment: .top) {
+      StatsRow(
+        activeTasks: activeTasks,
+        completedThisWeek: completedThisWeek,
+        openResearchRequests: openResearchRequests,
+        blockedTasks: blockedTasks,
+        inboxTasks: inboxTasks,
+        staleTasks: staleTasks,
+        inboxNeedsAttentionCount: inboxNeedsAttentionCount,
+        workerHistory: vm.workerHistory,
+        mainSessionUsage: vm.mainSessionUsage
+      )
+      Spacer()
+      aiUsageButton
+      timelineButton
+      detailedStatsButton
+    }
+  }
+
+  private var aiUsageButton: some View {
+    Button {
+      onOpenAIUsage?()
+    } label: {
+      HStack(spacing: 4) {
+        Image(systemName: "chart.line.uptrend.xyaxis")
+          .font(.footnote)
+        Text("AI Usage")
+          .font(.footnote)
+      }
+      .padding(.horizontal, 10)
+      .padding(.vertical, 6)
+      .background(OTheme.subtle)
+      .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+    .buttonStyle(.plain)
+  }
+
+  private var timelineButton: some View {
+    Button {
+      showTimeline = true
+    } label: {
+      HStack(spacing: 4) {
+        Image(systemName: "calendar")
+          .font(.footnote)
+        Text("Timeline")
+          .font(.footnote)
+      }
+      .padding(.horizontal, 10)
+      .padding(.vertical, 6)
+      .background(OTheme.subtle)
+      .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+    .buttonStyle(.plain)
+  }
+
+  private var detailedStatsButton: some View {
+    Button {
+      withAnimation(.easeInOut(duration: 0.2)) {
+        showDetailedStats.toggle()
+      }
+    } label: {
+      HStack(spacing: 4) {
+        Image(systemName: showDetailedStats ? "chart.bar.fill" : "chart.bar")
+          .font(.footnote)
+        Text(showDetailedStats ? "Hide Stats" : "Detailed Stats")
+          .font(.footnote)
+      }
+      .padding(.horizontal, 10)
+      .padding(.vertical, 6)
+      .background(showDetailedStats ? Color.accentColor.opacity(0.15) : OTheme.subtle)
+      .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+    .buttonStyle(.plain)
+  }
+
+  private var velocitySection: some View {
+    VelocityChartView(tasks: allTasks)
+  }
+
+  @ViewBuilder
+  private var detailedStatsSection: some View {
+    if showDetailedStats {
+      DetailedStatsView(tasks: allTasks, projects: activeProjects, researchRequestCountsByProject: researchRequestCountsByProject)
+        .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .top)))
+        .clipped()
+    }
+  }
+
+  @ViewBuilder
+  private var workerStatusSection: some View {
+    if let ws = vm.workerStatus {
+      WorkerStatusCard(
+        status: ws,
+        history: vm.workerHistory,
+        canRequestWorker: !ws.active && !vm.workerRequestPending,
+        workerRequested: vm.workerRequestPending,
+        onRequestWorker: { vm.requestWorker() }
+      )
+    }
+  }
+
+  private var projectCardsSection: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Text("Projects")
+        .font(.headline)
+        .fontWeight(.bold)
+
+      LazyVGrid(columns: [
+        GridItem(.flexible(minimum: 280, maximum: .infinity), spacing: 16),
+        GridItem(.flexible(minimum: 280, maximum: .infinity), spacing: 16),
+        GridItem(.flexible(minimum: 280, maximum: .infinity), spacing: 16)
+      ], spacing: 16) {
+        ForEach(activeProjects) { project in
+          ProjectCard(
+            project: project,
+            tasks: allTasks.filter { ($0.projectId ?? "default") == project.id },
+            lastCommitAt: vm.projectLastCommitAt[project.id],
+            researchRequestCount: researchRequestCountsByProject[project.id] ?? 0,
+            totalResearchRequestCount: totalResearchRequestCountsByProject[project.id] ?? 0,
+            researchDeliverableCount: researchDeliverableCountsByProject[project.id] ?? 0,
+            wipLimit: vm.wipLimitActive,
+            onTap: { onSelectProject(project.id) }
+          )
+          .onDrag {
+            draggingProjectId = project.id
+            return NSItemProvider(object: project.id as NSString)
+          }
+          .onDrop(of: [.text], delegate: ProjectDropDelegate(
+            targetId: project.id,
+            draggingId: $draggingProjectId,
+            vm: vm
+          ))
+        }
+
+        Button { showCreateProject = true } label: {
+          VStack(spacing: 8) {
+            Image(systemName: "plus.circle")
+              .font(.system(size: 24))
+              .foregroundStyle(.secondary)
+            Text("New Project")
+              .font(.callout)
+              .fontWeight(.medium)
+              .foregroundStyle(.secondary)
+          }
+          .frame(maxWidth: .infinity, minHeight: 160, maxHeight: 160)
+          .contentShape(Rectangle())
+          .background(
+            RoundedRectangle(cornerRadius: OTheme.cardRadius)
+              .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
+              .foregroundStyle(Color.secondary.opacity(0.3))
+          )
+        }
+        .buttonStyle(.plain)
+      }
+      .sheet(isPresented: $showCreateProject) {
+        CreateProjectSheet(vm: vm)
+      }
+    }
+  }
+
+  private var columnsSection: some View {
+    HStack(alignment: .top, spacing: 16) {
+      activeTasksColumn
+      researchRequestsColumn
+      completedThisWeekColumn
+    }
+  }
+
+  private var activeTasksColumn: some View {
+    OverviewSectionColumn(
+      title: "Active",
+      icon: "flame.fill",
+      color: .orange,
+      badgeCount: activeTasksList.count
+    ) {
+      if activeTasksList.isEmpty {
+        Text("No active tasks")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+          .padding(.vertical, 20)
+          .frame(maxWidth: .infinity)
+      } else {
+        let snapshotLimit = 5
+        let visible = Array(activeTasksList.prefix(snapshotLimit))
+        ForEach(Array(visible.enumerated()), id: \.element.id) { idx, task in
+          OverviewTaskRow(task: task, projectName: vm.projects.first(where: { $0.id == (task.projectId ?? "default") })?.title, onTap: {
+            vm.selectTask(task)
+            detailTask = task
+          })
+          if idx < visible.count - 1 {
+            Divider().padding(.leading, 32)
+          }
+        }
+        if activeTasksList.count > snapshotLimit {
+          Divider().padding(.leading, 32)
+          Text("View all \(activeTasksList.count) active tasks →")
+            .font(.footnote)
+            .foregroundStyle(.orange)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.vertical, 8)
+        }
+      }
+    }
+  }
+
+  private var researchRequestsColumn: some View {
+    OverviewSectionColumn(
+      title: "Research",
+      icon: "magnifyingglass",
+      color: .purple,
+      badgeCount: openResearchRequestsList.count
+    ) {
+      if openResearchRequestsList.isEmpty {
+        Text("No open research requests")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+          .padding(.vertical, 20)
+          .frame(maxWidth: .infinity)
+      } else {
+        let snapshotLimit = 5
+        let visible = Array(openResearchRequestsList.prefix(snapshotLimit))
+        ForEach(Array(visible.enumerated()), id: \.element.id) { idx, req in
+          OverviewResearchRow(request: req, projectName: vm.projects.first(where: { $0.id == req.projectId })?.title, onTap: {
+            onSelectProject(req.projectId)
+          })
+          if idx < visible.count - 1 {
+            Divider().padding(.leading, 32)
+          }
+        }
+        if openResearchRequestsList.count > snapshotLimit {
+          Divider().padding(.leading, 32)
+          Text("View all \(openResearchRequestsList.count) requests →")
+            .font(.footnote)
+            .foregroundStyle(.purple)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.vertical, 8)
+        }
+      }
+    }
+  }
+
+  private var completedThisWeekColumn: some View {
+    OverviewSectionColumn(
+      title: "Done This Week",
+      icon: "checkmark.circle.fill",
+      color: .green,
+      badgeCount: completedThisWeekTasks.count
+    ) {
+      if completedThisWeekTasks.isEmpty {
+        Text("Nothing completed this week")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+          .padding(.vertical, 20)
+          .frame(maxWidth: .infinity)
+      } else {
+        let snapshotLimit = 5
+        let visible = showAllCompletedThisWeek
+          ? completedThisWeekTasks
+          : Array(completedThisWeekTasks.prefix(snapshotLimit))
+
+        ForEach(Array(visible.enumerated()), id: \.element.id) { idx, task in
+          OverviewTaskRow(task: task, projectName: vm.projects.first(where: { $0.id == (task.projectId ?? "default") })?.title, showTimestamp: true, onTap: {
+            vm.selectTask(task)
+            detailTask = task
+          })
+          if idx < visible.count - 1 {
+            Divider().padding(.leading, 32)
+          }
+        }
+
+        if completedThisWeekTasks.count > snapshotLimit {
+          Divider().padding(.leading, 32)
+          Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+              showAllCompletedThisWeek.toggle()
+            }
+          } label: {
+            Text(showAllCompletedThisWeek
+                 ? "Show less"
+                 : "View all \(completedThisWeekTasks.count) completed →")
+              .font(.footnote)
+              .foregroundStyle(showAllCompletedThisWeek ? Color.secondary : Color.green)
+              .frame(maxWidth: .infinity, alignment: .center)
+              .padding(.vertical, 8)
+          }
+          .buttonStyle(.plain)
+        }
+      }
+    }
+  }
+
+  @ViewBuilder
+  private var inboxSection: some View {
+    if !vm.inboxItems.isEmpty || vm.unreadInboxCount > 0 {
+      VStack(alignment: .leading, spacing: 12) {
+        HStack(spacing: 6) {
+          Image(systemName: "tray.full.fill")
+            .font(.footnote)
+            .foregroundStyle(.blue)
+          Text("Inbox")
+            .font(.headline)
+            .fontWeight(.bold)
+          if vm.unreadInboxCount > 0 {
+            Text("\(vm.unreadInboxCount)")
+              .font(.system(size: 11, weight: .bold))
+              .foregroundStyle(.white)
+              .padding(.horizontal, 6)
+              .padding(.vertical, 2)
+              .background(Color.red)
+              .clipShape(Capsule())
+          }
+        }
+
+        if vm.inboxItems.isEmpty {
+          Text("No inbox items")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .padding(.vertical, 20)
+            .frame(maxWidth: .infinity)
+        } else {
+          ScrollView {
+            VStack(spacing: 0) {
+              let sortedItems = vm.inboxItems.sorted { a, b in
+                let aNeeds = !a.isRead || vm.unreadFollowupCount(docId: a.id) > 0
+                let bNeeds = !b.isRead || vm.unreadFollowupCount(docId: b.id) > 0
+                if aNeeds != bNeeds { return aNeeds }
+                return a.modifiedAt > b.modifiedAt
+              }
+              let snapshotLimit = 5
+              let visible = Array(sortedItems.prefix(snapshotLimit))
+              ForEach(Array(visible.enumerated()), id: \.element.id) { idx, item in
+                InboxRow(item: item, unreadFollowups: vm.unreadFollowupCount(docId: item.id), onTap: {
+                  vm.markInboxItemRead(item)
+                  if let onOpenInbox {
+                    onOpenInbox(item.id)
+                  }
+                })
+                if idx < visible.count - 1 {
+                  Divider().padding(.leading, 36)
+                }
+              }
+              if sortedItems.count > snapshotLimit {
+                Divider().padding(.leading, 36)
+                Button {
+                  if let onOpenInbox { onOpenInbox(nil) }
+                } label: {
+                  Text("View all \(sortedItems.count) inbox items →")
+                    .font(.footnote)
+                    .foregroundStyle(.blue)
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 8)
+              }
+            }
+          }
+          .frame(maxHeight: 400)
+          .background(OTheme.cardBg)
+          .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
+          .overlay(
+            RoundedRectangle(cornerRadius: OTheme.cardRadius)
+              .stroke(OTheme.border, lineWidth: 0.5)
+          )
+        }
+      }
     }
   }
 }
