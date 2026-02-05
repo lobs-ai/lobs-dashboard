@@ -112,6 +112,14 @@ final class AppViewModel: ObservableObject {
   /// Whether sync is blocked because the local repo has uncommitted changes.
   @Published var syncBlockedByUncommitted: Bool = false
 
+  // Git push visibility
+  /// Timestamp of the last successful push to origin (best-effort; set when dashboard pushes).
+  @Published var lastSuccessfulPushAt: Date? = nil
+  /// Timestamp of the last push attempt (best-effort).
+  @Published var lastPushAttemptAt: Date? = nil
+  /// Last push error message (if any). When set, UI should treat remote-derived state as potentially stale.
+  @Published var lastPushError: String? = nil
+
   // Dashboard update indicator
   /// True when origin/main of the lobs-dashboard repo is ahead of the local HEAD.
   @Published var dashboardUpdateAvailable: Bool = false
@@ -730,6 +738,9 @@ final class AppViewModel: ObservableObject {
     isGitBusy = true
     Task {
       do {
+        await MainActor.run {
+          self.lastPushAttemptAt = Date()
+        }
         // If there are uncommitted changes, commit them first so push includes everything.
         let status = try await Git.runAsync(["status", "--porcelain"], cwd: repoURL)
         let hasLocalChanges = status.ok && !status.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -743,7 +754,8 @@ final class AppViewModel: ObservableObject {
           let pull = try await Git.runAsync(["pull", "--rebase"], cwd: repoURL)
           if !pull.ok {
             await MainActor.run {
-              self.flashError("Push failed (pull --rebase also failed): \(pull.stderr)")
+              self.lastPushError = "Push failed (pull --rebase also failed): \(pull.stderr)"
+              self.flashError(self.lastPushError ?? "Push failed")
               self.isGitBusy = false
             }
             return
@@ -752,7 +764,8 @@ final class AppViewModel: ObservableObject {
           let retry = try await Git.runAsync(["push"], cwd: repoURL)
           if !retry.ok {
             await MainActor.run {
-              self.flashError("Push failed: \(retry.stderr)")
+              self.lastPushError = "Push failed: \(retry.stderr)"
+              self.flashError(self.lastPushError ?? "Push failed")
               self.isGitBusy = false
             }
             return
@@ -760,12 +773,15 @@ final class AppViewModel: ObservableObject {
         }
 
         await MainActor.run {
+          self.lastSuccessfulPushAt = Date()
+          self.lastPushError = nil
           self.flashSuccess("Pushed to origin")
           self.isGitBusy = false
         }
       } catch {
         await MainActor.run {
-          self.flashError("Push failed: \(error.localizedDescription)")
+          self.lastPushError = "Push failed: \(error.localizedDescription)"
+          self.flashError(self.lastPushError ?? "Push failed")
           self.isGitBusy = false
         }
       }
@@ -3188,19 +3204,36 @@ final class AppViewModel: ObservableObject {
     }
 
     if autoPush {
+      await MainActor.run {
+        self.lastPushAttemptAt = Date()
+      }
+
       let push = try await Git.runAsync(["push"], cwd: repoURL)
       if push.exitCode != 0 {
         // Push failed — pull --rebase and retry once.
         let pull = try await Git.runAsync(["pull", "--rebase"], cwd: repoURL)
         if pull.exitCode != 0 {
+          let msg = "Pull --rebase failed: \(pull.stderr)"
+          await MainActor.run {
+            self.lastPushError = msg
+          }
           throw NSError(domain: "Git", code: Int(pull.exitCode),
-                        userInfo: [NSLocalizedDescriptionKey: "Pull --rebase failed: \(pull.stderr)"])
+                        userInfo: [NSLocalizedDescriptionKey: msg])
         }
         let retry = try await Git.runAsync(["push"], cwd: repoURL)
         if retry.exitCode != 0 {
+          let msg = retry.stderr
+          await MainActor.run {
+            self.lastPushError = msg
+          }
           throw NSError(domain: "Git", code: Int(retry.exitCode),
-                        userInfo: [NSLocalizedDescriptionKey: retry.stderr])
+                        userInfo: [NSLocalizedDescriptionKey: msg])
         }
+      }
+
+      await MainActor.run {
+        self.lastSuccessfulPushAt = Date()
+        self.lastPushError = nil
       }
     }
   }

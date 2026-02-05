@@ -168,6 +168,37 @@ struct ContentView: View {
         .padding(.top, 52)
       }
 
+      // Push failure warning — local commits not published
+      if let err = vm.lastPushError {
+        HStack(spacing: 8) {
+          Image(systemName: "icloud.slash")
+            .foregroundStyle(.red)
+          Text("Push failed — local changes not published")
+            .font(.footnote.weight(.medium))
+          Spacer()
+          Button("Push Now") {
+            vm.pushNow()
+          }
+          .buttonStyle(.plain)
+          .font(.footnote)
+          Button("Dismiss") {
+            vm.lastPushError = nil
+          }
+          .buttonStyle(.plain)
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.red.opacity(0.15))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 16)
+        .transition(.move(edge: .top).combined(with: .opacity))
+        .zIndex(98)
+        .padding(.top, 52)
+        .help(err)
+      }
+
       // Git busy indicator
       if vm.isGitBusy {
         HStack(spacing: 6) {
