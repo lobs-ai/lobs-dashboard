@@ -2145,20 +2145,28 @@ struct WorkerStatusCard: View {
 
   private var isActive: Bool {
     guard status.active else { return false }
+    // Defensive: if the status file claims "active" but we also have an endedAt,
+    // treat it as inactive.
+    if status.endedAt != nil { return false }
+
     // If the last heartbeat is stale, treat the worker as not running.
     // This prevents the dashboard from showing a phantom worker when a worker
     // crashes or fails to write an end marker.
+    let cutoff: TimeInterval = 10 * 60
     if let hb = status.lastHeartbeat {
-      return Date().timeIntervalSince(hb) <= 5 * 60
+      return Date().timeIntervalSince(hb) <= cutoff
+    }
+    if let started = status.startedAt {
+      return Date().timeIntervalSince(started) <= cutoff
     }
     return false
   }
 
   private var isStale: Bool {
-    guard status.active else { return false }
-    guard let hb = status.lastHeartbeat else { return true }
-    return Date().timeIntervalSince(hb) > 5 * 60
+    status.active && !isActive
   }
+
+  // isStale is derived from the effective active state (see above).
 
   private var runningDuration: String? {
     guard let started = status.startedAt else { return nil }
