@@ -628,7 +628,8 @@ final class LobsControlStore {
       if let legacy = try? decoder().decode(InboxResponse.self, from: data),
          !legacy.response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
         let msg = InboxThreadMessage(
-          id: UUID().uuidString,
+          // Use a stable id so migration doesn't churn + cause rebase conflicts.
+          id: legacy.id,
           author: "rafe",
           text: legacy.response,
           createdAt: legacy.createdAt
@@ -649,7 +650,8 @@ final class LobsControlStore {
     if let legacy = try loadInboxResponse(docId: docId),
        !legacy.response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       let msg = InboxThreadMessage(
-        id: UUID().uuidString,
+        // Use a stable id so migration doesn't churn + cause rebase conflicts.
+        id: legacy.id,
         author: "rafe",
         text: legacy.response,
         createdAt: legacy.createdAt
@@ -700,10 +702,10 @@ final class LobsControlStore {
 
       // Thread format (legacy safeId).
       if let thread = try? decoder().decode(InboxThread.self, from: data) {
-        // Migrate to preferred path.
-        try? saveInboxThread(thread)
-        // Only fill in if we don't already have a preferred thread.
+        // Only migrate if we *don't* already have a preferred thread.
+        // Otherwise we'd keep rewriting the preferred file during every scan.
         if result[thread.docId] == nil {
+          try? saveInboxThread(thread)
           result[thread.docId] = thread
         }
         continue
@@ -712,8 +714,13 @@ final class LobsControlStore {
       // Legacy single-response format.
       if let legacy = try? decoder().decode(InboxResponse.self, from: data),
          !legacy.response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        // If we already have a preferred thread for this docId, do NOT regenerate.
+        // Regenerating creates a new UUID for the message and causes constant file churn.
+        if result[legacy.docId] != nil { continue }
+
         let msg = InboxThreadMessage(
-          id: UUID().uuidString,
+          // Use a stable id so migration doesn't churn + cause rebase conflicts.
+          id: legacy.id,
           author: "rafe",
           text: legacy.response,
           createdAt: legacy.createdAt
@@ -726,9 +733,7 @@ final class LobsControlStore {
           updatedAt: legacy.updatedAt
         )
         try? saveInboxThread(thread)
-        if result[thread.docId] == nil {
-          result[thread.docId] = thread
-        }
+        result[thread.docId] = thread
       }
     }
 
