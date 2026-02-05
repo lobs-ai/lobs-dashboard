@@ -3417,6 +3417,7 @@ private struct CommandPaletteView: View {
   @Binding var isPresented: Bool
   @State private var query: String = ""
   @State private var selectedIndex: Int = 0
+  @FocusState private var searchFocused: Bool
 
   private var results: [(task: DashboardTask, project: Project?)] {
     let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -3455,6 +3456,7 @@ private struct CommandPaletteView: View {
           .foregroundStyle(.secondary)
 
         TextField("Search all tasks…", text: $query)
+          .focused($searchFocused)
           .textFieldStyle(.plain)
           .font(.title3)
           .onSubmit {
@@ -3536,6 +3538,10 @@ private struct CommandPaletteView: View {
     )
     .onChange(of: query) { _ in
       selectedIndex = 0
+    }
+    .onAppear {
+      // Ensure typing goes straight into the search field.
+      DispatchQueue.main.async { searchFocused = true }
     }
   }
 }
