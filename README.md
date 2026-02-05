@@ -1,20 +1,25 @@
 # lobs-dashboard
 
-Local macOS SwiftUI app for operating `lobs-control` tasks.
+Native macOS SwiftUI app for operating **Lobs** via a shared git state repo (**`lobs-control`**).
 
-- No networking.
-- Reads/writes `lobs-control/state/*.json`.
-- Runs `git` under the hood to commit (and optionally push) changes.
+- No server required.
+- Reads/writes JSON state under your local `lobs-control/` checkout.
+- Runs `git` under the hood to pull/commit/push changes.
 
-## Run (macOS)
+## Prereqs
+- macOS (SwiftUI)
+- `git`
+
+## Setup (required)
+You need a local checkout of `lobs-control`.
 
 ```bash
-cd ~/lobs-dashboard
-./bin/build
-swift run lobs-dashboard
+git clone git@github.com:RafeSymonds/lobs-control.git ~/lobs-control
 ```
 
-## Build + open the app bundle (recommended)
+If you clone `lobs-dashboard` but **don’t** have `lobs-control` set up yet, the app will simply show the onboarding/“choose repo” UI and you won’t be able to view/edit tasks until you select a valid `lobs-control` folder.
+
+## Run (macOS)
 
 ```bash
 cd ~/lobs-dashboard
@@ -22,15 +27,17 @@ cd ~/lobs-dashboard
 ./bin/run
 ```
 
-## First-run usage
-- Click **Choose lobs-control…** and select your `lobs-control` folder.
-- Select a task to view its artifact (if `artifactPath` is set).
-- Use ✅ Approve / ❌ Reject to update status (writes `state/tasks.json`).
-- The app will run `git add -A`, `git commit`, and (if enabled) `git push`.
+## First run
+- Click **Choose lobs-control…** and select your `~/lobs-control` folder.
+- The dashboard will load state from the repo and (optionally) auto-sync via git.
 
-## Notes for Codex
-- Repo path is configurable via `@AppStorage("repoPath")`.
+## Data layout (in `lobs-control/`)
+- `state/projects.json` — project definitions
+- `state/tasks/*.json` — one JSON file per task
+- `state/research/<projectId>/...` — research docs + requests
+- `inbox/` and `artifacts/` — async writeups and threads
+
+## Notes for devs/agents
+- Repo path is stored in UserDefaults under key `repoPath`.
 - Git is executed via `Process` calling `/usr/bin/env git`.
-- Task store format: `state/tasks.json` (schemaVersion=2).
-- Task fields: `id`, `title`, `status`, `owner`, `createdAt`, `updatedAt`, `artifactPath?`, `notes?`.
-- Unknown/new statuses are displayed under **Other** so the UI stays resilient.
+- The app is designed to be resilient to new/unknown task statuses.
