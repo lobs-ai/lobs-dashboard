@@ -400,14 +400,29 @@ struct OverviewView: View {
   @ViewBuilder
   private var workerStatusSection: some View {
     if let ws = vm.workerStatus {
+      let stale = isWorkerStatusStale(ws)
       WorkerStatusCard(
         status: ws,
         history: vm.workerHistory,
-        canRequestWorker: !ws.active && !vm.workerRequestPending,
+        canRequestWorker: (!ws.active || stale) && !vm.workerRequestPending,
         workerRequested: vm.workerRequestPending,
         onRequestWorker: { vm.requestWorker() }
       )
     }
+  }
+
+  private func isWorkerStatusStale(_ status: WorkerStatus) -> Bool {
+    // If the worker looks active but hasn't emitted a heartbeat recently, treat the status as stale.
+    // This prevents the UI from getting stuck in "running" when the worker crashed or was killed.
+    guard status.active else { return false }
+    let cutoff: TimeInterval = 10 * 60
+    if let hb = status.lastHeartbeat {
+      return Date().timeIntervalSince(hb) > cutoff
+    }
+    if let started = status.startedAt {
+      return Date().timeIntervalSince(started) > cutoff
+    }
+    return false
   }
 
   private var projectCardsSection: some View {
@@ -2128,7 +2143,22 @@ struct WorkerStatusCard: View {
     }
   }
 
-  private var isActive: Bool { status.active }
+  private var isActive: Bool {
+    guard status.active else { return false }
+    // If the last heartbeat is stale, treat the worker as not running.
+    // This prevents the dashboard from showing a phantom worker when a worker
+    // crashes or fails to write an end marker.
+    if let hb = status.lastHeartbeat {
+      return Date().timeIntervalSince(hb) <= 5 * 60
+    }
+    return false
+  }
+
+  private var isStale: Bool {
+    guard status.active else { return false }
+    guard let hb = status.lastHeartbeat else { return true }
+    return Date().timeIntervalSince(hb) > 5 * 60
+  }
 
   private var runningDuration: String? {
     guard let started = status.startedAt else { return nil }
@@ -2145,11 +2175,11 @@ struct WorkerStatusCard: View {
       // Status indicator
       ZStack {
         Circle()
-          .fill(isActive ? Color.green.opacity(0.15) : Color.gray.opacity(0.1))
+          .fill(isStale ? Color.orange.opacity(0.15) : (isActive ? Color.green.opacity(0.15) : Color.gray.opacity(0.1)))
           .frame(width: 40, height: 40)
-        Image(systemName: isActive ? "bolt.fill" : "moon.zzz.fill")
+        Image(systemName: isStale ? "exclamationmark.triangle.fill" : (isActive ? "bolt.fill" : "moon.zzz.fill"))
           .font(.system(size: 18))
-          .foregroundStyle(isActive ? .green : .secondary)
+          .foregroundStyle(isStale ? .orange : (isActive ? .green : .secondary))
       }
 
       VStack(alignment: .leading, spacing: 4) {
@@ -2159,12 +2189,20 @@ struct WorkerStatusCard: View {
             .fontWeight(.semibold)
 
           // Status pill
-          Text(isActive ? "Active" : "Idle")
+          Text(isStale ? "Stale" : (isActive ? "Active" : "Idle"))
             .font(.system(size: 11, weight: .semibold))
             .padding(.horizontal, 8)
             .padding(.vertical, 2)
-            .background(isActive ? Color.green.opacity(0.15) : Color.gray.opacity(0.1))
-            .foregroundStyle(isActive ? .green : .secondary)
+            .background(
+              isStale
+                ? Color.orange.opacity(0.15)
+                : (isActive ? Color.green.opacity(0.15) : Color.gray.opacity(0.1))
+            )
+            .foregroundStyle(
+              isStale
+                ? .orange
+                : (isActive ? .green : .secondary)
+            )
             .clipShape(Capsule())
         }
 
