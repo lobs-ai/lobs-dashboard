@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 final class LobsControlStore {
@@ -450,6 +451,17 @@ final class LobsControlStore {
     repoRoot.appendingPathComponent("state").appendingPathComponent("inbox-responses")
   }
 
+  private var inboxThreadsDirURL: URL {
+    inboxResponsesDirURL.appendingPathComponent("threads")
+  }
+
+  private func inboxThreadURL(docId: String) -> URL {
+    // Use a hash-based filename to avoid collisions from naive sanitization.
+    let digest = SHA256.hash(data: Data(docId.utf8))
+    let hex = digest.compactMap { String(format: "%02x", $0) }.joined()
+    return inboxThreadsDirURL.appendingPathComponent(hex).appendingPathExtension("json")
+  }
+
   func loadInboxItems() throws -> [InboxItem] {
     var items: [InboxItem] = []
     let fm = FileManager.default
@@ -588,62 +600,31 @@ final class LobsControlStore {
   // MARK: - Inbox Threads (threaded conversations)
 
   func loadInboxThread(docId: String) throws -> InboxThread? {
-    // Sanitize docId for filesystem (replace / with _)
-    let safeId = docId.replacingOccurrences(of: "/", with: "_")
-    let url = inboxResponsesDirURL
-      .appendingPathComponent(safeId)
-      .appendingPathExtension("json")
-    guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-    let data = try Data(contentsOf: url)
+    let fm = FileManager.default
 
-    // Try loading as InboxThread first, fall back to legacy InboxResponse
-    if let thread = try? decoder().decode(InboxThread.self, from: data) {
-      return thread
-    }
-
-    // Migrate legacy InboxResponse to thread format
-    if let legacy = try? decoder().decode(InboxResponse.self, from: data),
-       !legacy.response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-      let msg = InboxThreadMessage(
-        id: UUID().uuidString,
-        author: "rafe",
-        text: legacy.response,
-        createdAt: legacy.createdAt
-      )
-      let thread = InboxThread(
-        id: legacy.id,
-        docId: legacy.docId,
-        messages: [msg],
-        createdAt: legacy.createdAt,
-        updatedAt: legacy.updatedAt
-      )
-      // Save migrated thread
-      try saveInboxThread(thread)
-      return thread
-    }
-
-    return nil
-  }
-
-  func loadAllInboxThreads() throws -> [String: InboxThread] {
-    guard FileManager.default.fileExists(atPath: inboxResponsesDirURL.path) else { return [:] }
-    var result: [String: InboxThread] = [:]
-
-    guard let e = FileManager.default.enumerator(at: inboxResponsesDirURL, includingPropertiesForKeys: nil) else {
-      return [:]
-    }
-
-    for case let url as URL in e {
-      guard url.pathExtension.lowercased() == "json" else { continue }
-      let data = try Data(contentsOf: url)
-
-      // Try thread format first
+    // Preferred location (hash-based)
+    let preferredURL = inboxThreadURL(docId: docId)
+    if fm.fileExists(atPath: preferredURL.path) {
+      let data = try Data(contentsOf: preferredURL)
       if let thread = try? decoder().decode(InboxThread.self, from: data) {
-        result[thread.docId] = thread
-        continue
+        return thread
+      }
+    }
+
+    // Back-compat: previous thread storage used a naive safeId ("/" → "_") which can collide.
+    let legacySafeId = docId.replacingOccurrences(of: "/", with: "_")
+    let legacyThreadURL = inboxResponsesDirURL
+      .appendingPathComponent(legacySafeId)
+      .appendingPathExtension("json")
+    if fm.fileExists(atPath: legacyThreadURL.path) {
+      let data = try Data(contentsOf: legacyThreadURL)
+      if let thread = try? decoder().decode(InboxThread.self, from: data) {
+        // Migrate to preferred location
+        try? saveInboxThread(thread)
+        return thread
       }
 
-      // Migrate legacy
+      // Migrate legacy InboxResponse to thread format
       if let legacy = try? decoder().decode(InboxResponse.self, from: data),
          !legacy.response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
         let msg = InboxThreadMessage(
@@ -659,7 +640,95 @@ final class LobsControlStore {
           createdAt: legacy.createdAt,
           updatedAt: legacy.updatedAt
         )
-        result[thread.docId] = thread
+        try saveInboxThread(thread)
+        return thread
+      }
+    }
+
+    // Back-compat: legacy InboxResponse stored at path matching docId (may contain subdirs).
+    if let legacy = try loadInboxResponse(docId: docId),
+       !legacy.response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      let msg = InboxThreadMessage(
+        id: UUID().uuidString,
+        author: "rafe",
+        text: legacy.response,
+        createdAt: legacy.createdAt
+      )
+      let thread = InboxThread(
+        id: legacy.id,
+        docId: legacy.docId,
+        messages: [msg],
+        createdAt: legacy.createdAt,
+        updatedAt: legacy.updatedAt
+      )
+      try saveInboxThread(thread)
+      return thread
+    }
+
+    return nil
+  }
+
+  func loadAllInboxThreads() throws -> [String: InboxThread] {
+    let fm = FileManager.default
+    guard fm.fileExists(atPath: inboxResponsesDirURL.path) else { return [:] }
+
+    var result: [String: InboxThread] = [:]
+
+    // 1) Load preferred (hash-based) threads first.
+    if fm.fileExists(atPath: inboxThreadsDirURL.path),
+       let e = fm.enumerator(at: inboxThreadsDirURL, includingPropertiesForKeys: nil) {
+      for case let url as URL in e {
+        guard url.pathExtension.lowercased() == "json" else { continue }
+        let data = try Data(contentsOf: url)
+        if let thread = try? decoder().decode(InboxThread.self, from: data) {
+          result[thread.docId] = thread
+        }
+      }
+    }
+
+    // 2) Back-compat: scan remaining inbox-responses for legacy threads/responses and migrate.
+    guard let e = fm.enumerator(at: inboxResponsesDirURL, includingPropertiesForKeys: nil) else {
+      return result
+    }
+
+    for case let url as URL in e {
+      // Skip preferred threads directory to avoid double-loading.
+      if url.path.hasPrefix(inboxThreadsDirURL.path + "/") { continue }
+      guard url.pathExtension.lowercased() == "json" else { continue }
+
+      let data = try Data(contentsOf: url)
+
+      // Thread format (legacy safeId).
+      if let thread = try? decoder().decode(InboxThread.self, from: data) {
+        // Migrate to preferred path.
+        try? saveInboxThread(thread)
+        // Only fill in if we don't already have a preferred thread.
+        if result[thread.docId] == nil {
+          result[thread.docId] = thread
+        }
+        continue
+      }
+
+      // Legacy single-response format.
+      if let legacy = try? decoder().decode(InboxResponse.self, from: data),
+         !legacy.response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        let msg = InboxThreadMessage(
+          id: UUID().uuidString,
+          author: "rafe",
+          text: legacy.response,
+          createdAt: legacy.createdAt
+        )
+        let thread = InboxThread(
+          id: legacy.id,
+          docId: legacy.docId,
+          messages: [msg],
+          createdAt: legacy.createdAt,
+          updatedAt: legacy.updatedAt
+        )
+        try? saveInboxThread(thread)
+        if result[thread.docId] == nil {
+          result[thread.docId] = thread
+        }
       }
     }
 
@@ -667,13 +736,10 @@ final class LobsControlStore {
   }
 
   func saveInboxThread(_ thread: InboxThread) throws {
-    let safeId = thread.docId.replacingOccurrences(of: "/", with: "_")
-    let url = inboxResponsesDirURL
-      .appendingPathComponent(safeId)
-      .appendingPathExtension("json")
+    let url = inboxThreadURL(docId: thread.docId)
 
     try FileManager.default.createDirectory(
-      at: url.deletingLastPathComponent(),
+      at: inboxThreadsDirURL,
       withIntermediateDirectories: true,
       attributes: nil
     )
