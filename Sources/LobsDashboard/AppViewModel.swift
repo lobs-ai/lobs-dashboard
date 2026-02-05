@@ -712,6 +712,60 @@ final class AppViewModel: ObservableObject {
     }
   }
 
+  /// Manually push local commits to origin.
+  /// Useful when Auto-push is disabled or when a previous push failed.
+  func pushNow() {
+    guard let repoURL else {
+      flashError("Repo path not set")
+      return
+    }
+    guard !isGitBusy else { return }
+
+    isGitBusy = true
+    Task {
+      do {
+        // If there are uncommitted changes, commit them first so push includes everything.
+        let status = try await Git.runAsync(["status", "--porcelain"], cwd: repoURL)
+        let hasLocalChanges = status.ok && !status.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if hasLocalChanges {
+          try await autoCommitLocalChangesAsync(repoURL: repoURL)
+        }
+
+        let push = try await Git.runAsync(["push"], cwd: repoURL)
+        if !push.ok {
+          // Retry once after pulling with rebase.
+          let pull = try await Git.runAsync(["pull", "--rebase"], cwd: repoURL)
+          if !pull.ok {
+            await MainActor.run {
+              self.flashError("Push failed (pull --rebase also failed): \(pull.stderr)")
+              self.isGitBusy = false
+            }
+            return
+          }
+
+          let retry = try await Git.runAsync(["push"], cwd: repoURL)
+          if !retry.ok {
+            await MainActor.run {
+              self.flashError("Push failed: \(retry.stderr)")
+              self.isGitBusy = false
+            }
+            return
+          }
+        }
+
+        await MainActor.run {
+          self.flashSuccess("Pushed to origin")
+          self.isGitBusy = false
+        }
+      } catch {
+        await MainActor.run {
+          self.flashError("Push failed: \(error.localizedDescription)")
+          self.isGitBusy = false
+        }
+      }
+    }
+  }
+
   /// Refresh per-project last git commit times by querying the lobs-control git history for
   /// files that belong to each project (project folder + its task JSON files).
   func refreshProjectLastCommitAt() {
