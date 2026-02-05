@@ -45,6 +45,7 @@ struct OverviewView: View {
   @State private var showCreateProject: Bool = false
   @State private var showAllCompletedThisWeek: Bool = false
   @State private var showAllActiveTasks: Bool = false
+  @State private var showAllUpdates: Bool = false
 
   private var allTasks: [DashboardTask] { vm.tasks }
 
@@ -231,6 +232,7 @@ struct OverviewView: View {
       VStack(alignment: .leading, spacing: 24) {
         headerSection
         statsSection
+        updateLogSection
         velocitySection
         detailedStatsSection
         workerStatusSection
@@ -342,6 +344,83 @@ struct OverviewView: View {
       .clipShape(RoundedRectangle(cornerRadius: 8))
     }
     .buttonStyle(.plain)
+  }
+
+  private var updateLogSection: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack(spacing: 6) {
+        Image(systemName: "clock.arrow.circlepath")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+        Text("Updates")
+          .font(.headline)
+          .fontWeight(.bold)
+
+        if !activityFeed.isEmpty {
+          Text("\(activityFeed.count)")
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(OTheme.subtle)
+            .clipShape(Capsule())
+        }
+
+        Spacer()
+
+        if activityFeed.count > 8 {
+          Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+              showAllUpdates.toggle()
+            }
+          } label: {
+            Text(showAllUpdates ? "Show less" : "View all")
+              .font(.footnote)
+              .foregroundStyle(.secondary)
+          }
+          .buttonStyle(.plain)
+        }
+      }
+
+      if activityFeed.isEmpty {
+        Text("No recent updates")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+          .padding(.vertical, 16)
+          .frame(maxWidth: .infinity)
+      } else {
+        let snapshotLimit = 8
+        let visible = showAllUpdates ? activityFeed : Array(activityFeed.prefix(snapshotLimit))
+
+        ScrollView {
+          VStack(spacing: 0) {
+            ForEach(Array(visible.enumerated()), id: \.element.id) { idx, ev in
+              ActivityEventRow(
+                vm: vm,
+                event: ev,
+                onOpenTask: { task in
+                  vm.selectTask(task)
+                  detailTask = task
+                },
+                onOpenInbox: { id in
+                  onOpenInbox?(id)
+                }
+              )
+              if idx < visible.count - 1 {
+                Divider().padding(.leading, 44)
+              }
+            }
+          }
+        }
+        .frame(maxHeight: showAllUpdates ? 460 : 320)
+        .background(OTheme.cardBg)
+        .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
+        .overlay(
+          RoundedRectangle(cornerRadius: OTheme.cardRadius)
+            .stroke(OTheme.border, lineWidth: 0.5)
+        )
+      }
+    }
   }
 
   private var velocitySection: some View {
