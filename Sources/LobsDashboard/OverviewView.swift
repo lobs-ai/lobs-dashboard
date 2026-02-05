@@ -237,7 +237,7 @@ struct OverviewView: View {
         workerStatusSection
         projectCardsSection
         columnsSection
-        inboxSection
+        inboxColumnsSection
       }
       .padding(24)
     }
@@ -605,88 +605,65 @@ struct OverviewView: View {
   }
 
   @ViewBuilder
-  private var inboxSection: some View {
+  private var inboxColumnsSection: some View {
     if !vm.inboxItems.isEmpty || vm.unreadInboxCount > 0 {
-      VStack(alignment: .leading, spacing: 12) {
-        HStack(spacing: 6) {
-          Image(systemName: "tray.full.fill")
-            .font(.footnote)
-            .foregroundStyle(.blue)
-          Text("Inbox")
-            .font(.headline)
-            .fontWeight(.bold)
-          if vm.unreadInboxCount > 0 {
-            Text("\(vm.unreadInboxCount)")
-              .font(.system(size: 11, weight: .bold))
-              .foregroundStyle(.white)
-              .padding(.horizontal, 6)
-              .padding(.vertical, 2)
-              .background(Color.red)
-              .clipShape(Capsule())
+      HStack(alignment: .top, spacing: 16) {
+        inboxColumn
+        Color.clear.frame(maxWidth: .infinity)
+        Color.clear.frame(maxWidth: .infinity)
+      }
+    }
+  }
+
+  private var inboxColumn: some View {
+    OverviewSectionColumn(
+      title: "Inbox",
+      icon: "tray.full.fill",
+      color: .blue,
+      badgeCount: vm.unreadInboxCount
+    ) {
+      if vm.inboxItems.isEmpty {
+        Text("No inbox items")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+          .padding(.vertical, 20)
+          .frame(maxWidth: .infinity)
+      } else {
+        let sortedItems = vm.inboxItems.sorted { a, b in
+          let aNeeds = !a.isRead || vm.unreadFollowupCount(docId: a.id) > 0
+          let bNeeds = !b.isRead || vm.unreadFollowupCount(docId: b.id) > 0
+          if aNeeds != bNeeds { return aNeeds }
+          return a.modifiedAt > b.modifiedAt
+        }
+        let snapshotLimit = 5
+        let visible = Array(sortedItems.prefix(snapshotLimit))
+
+        ForEach(Array(visible.enumerated()), id: \.element.id) { idx, item in
+          InboxRow(item: item, unreadFollowups: vm.unreadFollowupCount(docId: item.id), onTap: {
+            vm.markInboxItemRead(item)
+            if let onOpenInbox {
+              onOpenInbox(item.id)
+            }
+          })
+          if idx < visible.count - 1 {
+            Divider().padding(.leading, 36)
           }
         }
 
-        if vm.inboxItems.isEmpty {
-          Text("No inbox items")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .padding(.vertical, 20)
-            .frame(maxWidth: .infinity)
-        } else {
-          ScrollView {
-            VStack(spacing: 0) {
-              let sortedItems = vm.inboxItems.sorted { a, b in
-                let aNeeds = !a.isRead || vm.unreadFollowupCount(docId: a.id) > 0
-                let bNeeds = !b.isRead || vm.unreadFollowupCount(docId: b.id) > 0
-                if aNeeds != bNeeds { return aNeeds }
-                return a.modifiedAt > b.modifiedAt
-              }
-              let snapshotLimit = 5
-              let visible = Array(sortedItems.prefix(snapshotLimit))
-              ForEach(Array(visible.enumerated()), id: \.element.id) { idx, item in
-                InboxRow(item: item, unreadFollowups: vm.unreadFollowupCount(docId: item.id), onTap: {
-                  vm.markInboxItemRead(item)
-                  if let onOpenInbox {
-                    onOpenInbox(item.id)
-                  }
-                })
-                if idx < visible.count - 1 {
-                  Divider().padding(.leading, 36)
-                }
-              }
-              if sortedItems.count > snapshotLimit {
-                Divider().padding(.leading, 36)
-                Button {
-                  if let onOpenInbox { onOpenInbox(nil) }
-                } label: {
-                  Text("View all \(sortedItems.count) inbox items →")
-                    .font(.footnote)
-                    .foregroundStyle(.blue)
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.vertical, 8)
-              }
-            }
+        if sortedItems.count > snapshotLimit {
+          Divider().padding(.leading, 36)
+          Button {
+            if let onOpenInbox { onOpenInbox(nil) }
+          } label: {
+            Text("View all \(sortedItems.count) inbox items →")
+              .font(.footnote)
+              .foregroundStyle(.blue)
+              .frame(maxWidth: .infinity, alignment: .center)
+              .padding(.vertical, 8)
           }
-          .frame(maxHeight: 400)
-          .background(OTheme.cardBg)
-          .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
-          .overlay(
-            RoundedRectangle(cornerRadius: OTheme.cardRadius)
-              .stroke(OTheme.border, lineWidth: 0.5)
-          )
+          .buttonStyle(.plain)
         }
       }
-      .padding(14)
-      .background(
-        RoundedRectangle(cornerRadius: OTheme.cardRadius)
-          .fill(OTheme.cardBg)
-      )
-      .overlay(
-        RoundedRectangle(cornerRadius: OTheme.cardRadius)
-          .stroke(OTheme.border, lineWidth: 0.5)
-      )
     }
   }
 }
