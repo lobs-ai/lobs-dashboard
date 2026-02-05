@@ -19,7 +19,10 @@ struct LobsDashboardApp: App {
           vm.requestNotificationPermissions()
           // Set app icon from bundled resource.
           // NOTE: This project is SwiftPM-based, so resources are accessed via `Bundle.module`.
-          if let url = Bundle.module.url(forResource: "AppIcon", withExtension: "png"),
+          // Prefer the rounded variant so the Dock icon matches typical macOS icon shape.
+          let iconUrl = Bundle.module.url(forResource: "AppIconRounded", withExtension: "png")
+            ?? Bundle.module.url(forResource: "AppIcon", withExtension: "png")
+          if let url = iconUrl,
              let img = NSImage(contentsOf: url) {
             NSApplication.shared.applicationIconImage = img
           }
