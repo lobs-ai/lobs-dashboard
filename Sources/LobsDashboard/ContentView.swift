@@ -3520,7 +3520,12 @@ private struct CommandPaletteView: View {
             .padding(6)
           }
           .onChange(of: selectedIndex) { idx in
-            withAnimation { proxy.scrollTo(idx, anchor: .center) }
+            // Avoid scroll lag when moving selection quickly via arrow keys.
+            var tx = Transaction()
+            tx.disablesAnimations = true
+            withTransaction(tx) {
+              proxy.scrollTo(idx, anchor: .center)
+            }
           }
         }
       }
