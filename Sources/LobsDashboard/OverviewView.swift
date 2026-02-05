@@ -43,8 +43,9 @@ struct OverviewView: View {
   @State private var showTimeline: Bool = false
   @State private var draggingProjectId: String? = nil
   @State private var showCreateProject: Bool = false
-  @State private var showAllCompletedThisWeek: Bool = false
-  @State private var showAllActiveTasks: Bool = false
+  @State private var showAllCompletedThisWeekSheet: Bool = false
+  @State private var showAllActiveTasksSheet: Bool = false
+  @State private var showAllResearchRequestsSheet: Bool = false
 
   private var allTasks: [DashboardTask] { vm.tasks }
 
@@ -249,6 +250,45 @@ struct OverviewView: View {
       TimelineSheetView(tasks: vm.tasks, projects: vm.projects)
         .frame(minWidth: 900, minHeight: 600)
     }
+    .sheet(isPresented: $showAllActiveTasksSheet) {
+      OverviewTaskListSheet(
+        title: "Active Tasks",
+        subtitle: "All active tasks across projects",
+        tasks: activeTasksList,
+        vm: vm,
+        showTimestamp: false,
+        onTapTask: { task in
+          vm.selectTask(task)
+          detailTask = task
+        }
+      )
+      .frame(minWidth: 560, minHeight: 620)
+    }
+    .sheet(isPresented: $showAllCompletedThisWeekSheet) {
+      OverviewTaskListSheet(
+        title: "Done This Week",
+        subtitle: "Completed tasks updated this week",
+        tasks: completedThisWeekTasks,
+        vm: vm,
+        showTimestamp: true,
+        onTapTask: { task in
+          vm.selectTask(task)
+          detailTask = task
+        }
+      )
+      .frame(minWidth: 560, minHeight: 620)
+    }
+    .sheet(isPresented: $showAllResearchRequestsSheet) {
+      OverviewResearchRequestListSheet(
+        title: "Open Research Requests",
+        requests: openResearchRequestsList,
+        projects: vm.projects,
+        onSelectProject: { projectId in
+          onSelectProject(projectId)
+        }
+      )
+      .frame(minWidth: 600, minHeight: 620)
+    }
   }
 
   private var headerSection: some View {
@@ -452,9 +492,7 @@ struct OverviewView: View {
           .frame(maxWidth: .infinity)
       } else {
         let snapshotLimit = 5
-        let visible = showAllActiveTasks
-          ? activeTasksList
-          : Array(activeTasksList.prefix(snapshotLimit))
+        let visible = Array(activeTasksList.prefix(snapshotLimit))
         ForEach(Array(visible.enumerated()), id: \.element.id) { idx, task in
           OverviewTaskRow(task: task, projectName: vm.projects.first(where: { $0.id == (task.projectId ?? "default") })?.title, onTap: {
             vm.selectTask(task)
@@ -467,15 +505,11 @@ struct OverviewView: View {
         if activeTasksList.count > snapshotLimit {
           Divider().padding(.leading, 32)
           Button {
-            withAnimation(.easeInOut(duration: 0.2)) {
-              showAllActiveTasks.toggle()
-            }
+            showAllActiveTasksSheet = true
           } label: {
-            Text(showAllActiveTasks
-                 ? "Show less"
-                 : "View all \(activeTasksList.count) active tasks →")
+            Text("View all \(activeTasksList.count) active tasks →")
               .font(.footnote)
-              .foregroundStyle(showAllActiveTasks ? Color.secondary : Color.orange)
+              .foregroundStyle(Color.orange)
               .frame(maxWidth: .infinity, alignment: .center)
               .padding(.vertical, 8)
           }
@@ -511,11 +545,16 @@ struct OverviewView: View {
         }
         if openResearchRequestsList.count > snapshotLimit {
           Divider().padding(.leading, 32)
-          Text("View all \(openResearchRequestsList.count) requests →")
-            .font(.footnote)
-            .foregroundStyle(.purple)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.vertical, 8)
+          Button {
+            showAllResearchRequestsSheet = true
+          } label: {
+            Text("View all \(openResearchRequestsList.count) requests →")
+              .font(.footnote)
+              .foregroundStyle(.purple)
+              .frame(maxWidth: .infinity, alignment: .center)
+              .padding(.vertical, 8)
+          }
+          .buttonStyle(.plain)
         }
       }
     }
@@ -536,9 +575,7 @@ struct OverviewView: View {
           .frame(maxWidth: .infinity)
       } else {
         let snapshotLimit = 5
-        let visible = showAllCompletedThisWeek
-          ? completedThisWeekTasks
-          : Array(completedThisWeekTasks.prefix(snapshotLimit))
+        let visible = Array(completedThisWeekTasks.prefix(snapshotLimit))
 
         ForEach(Array(visible.enumerated()), id: \.element.id) { idx, task in
           OverviewTaskRow(task: task, projectName: vm.projects.first(where: { $0.id == (task.projectId ?? "default") })?.title, showTimestamp: true, onTap: {
@@ -553,15 +590,11 @@ struct OverviewView: View {
         if completedThisWeekTasks.count > snapshotLimit {
           Divider().padding(.leading, 32)
           Button {
-            withAnimation(.easeInOut(duration: 0.2)) {
-              showAllCompletedThisWeek.toggle()
-            }
+            showAllCompletedThisWeekSheet = true
           } label: {
-            Text(showAllCompletedThisWeek
-                 ? "Show less"
-                 : "View all \(completedThisWeekTasks.count) completed →")
+            Text("View all \(completedThisWeekTasks.count) completed →")
               .font(.footnote)
-              .foregroundStyle(showAllCompletedThisWeek ? Color.secondary : Color.green)
+              .foregroundStyle(Color.green)
               .frame(maxWidth: .infinity, alignment: .center)
               .padding(.vertical, 8)
           }
@@ -2814,6 +2847,125 @@ private struct TimelineLegendItem: View {
         .font(.system(size: 11))
         .foregroundStyle(.secondary)
     }
+  }
+}
+
+// MARK: - Overview "View All" Sheets
+
+private struct OverviewTaskListSheet: View {
+  let title: String
+  let subtitle: String?
+  let tasks: [DashboardTask]
+  @ObservedObject var vm: AppViewModel
+  let showTimestamp: Bool
+  let onTapTask: (DashboardTask) -> Void
+
+  @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      HStack(alignment: .top) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text(title)
+            .font(.title3)
+            .fontWeight(.bold)
+          if let subtitle {
+            Text(subtitle)
+              .font(.footnote)
+              .foregroundStyle(.secondary)
+          }
+        }
+        Spacer()
+        Button { dismiss() } label: {
+          Image(systemName: "xmark.circle.fill")
+            .font(.title3)
+            .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+      }
+      .padding(20)
+
+      Divider()
+
+      ScrollView {
+        VStack(spacing: 0) {
+          ForEach(Array(tasks.enumerated()), id: \.element.id) { idx, task in
+            OverviewTaskRow(
+              task: task,
+              projectName: vm.projects.first(where: { $0.id == (task.projectId ?? "default") })?.title,
+              showTimestamp: showTimestamp,
+              onTap: {
+                dismiss()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                  onTapTask(task)
+                }
+              }
+            )
+            if idx < tasks.count - 1 {
+              Divider().padding(.leading, 32)
+            }
+          }
+        }
+        .padding(.vertical, 6)
+      }
+    }
+    .background(OTheme.boardBg)
+  }
+}
+
+private struct OverviewResearchRequestListSheet: View {
+  let title: String
+  let requests: [ResearchRequest]
+  let projects: [Project]
+  let onSelectProject: (String) -> Void
+
+  @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      HStack(alignment: .top) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text(title)
+            .font(.title3)
+            .fontWeight(.bold)
+          Text("\(requests.count) open")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
+        Spacer()
+        Button { dismiss() } label: {
+          Image(systemName: "xmark.circle.fill")
+            .font(.title3)
+            .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+      }
+      .padding(20)
+
+      Divider()
+
+      ScrollView {
+        VStack(spacing: 0) {
+          ForEach(Array(requests.enumerated()), id: \.element.id) { idx, req in
+            OverviewResearchRow(
+              request: req,
+              projectName: projects.first(where: { $0.id == req.projectId })?.title,
+              onTap: {
+                dismiss()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                  onSelectProject(req.projectId)
+                }
+              }
+            )
+            if idx < requests.count - 1 {
+              Divider().padding(.leading, 32)
+            }
+          }
+        }
+        .padding(.vertical, 6)
+      }
+    }
+    .background(OTheme.boardBg)
   }
 }
 
