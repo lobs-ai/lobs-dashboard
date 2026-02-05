@@ -3162,7 +3162,16 @@ final class AppViewModel: ObservableObject {
     syncBlockedByUncommitted = false
 
     _ = try Git.run(["fetch", "origin"], cwd: repoURL)
-    if hasLocalChanges {
+
+    // Decide whether to rebase vs hard-reset.
+    // If local HEAD is ahead of origin/main (even with a clean working tree), we must rebase,
+    // not reset, or we'd discard local commits.
+    let aheadRes = try Git.run(["rev-list", "--count", "origin/main..HEAD"], cwd: repoURL)
+    let behindRes = try Git.run(["rev-list", "--count", "HEAD..origin/main"], cwd: repoURL)
+    let aheadCount = Int(aheadRes.stdout.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+    let behindCount = Int(behindRes.stdout.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+
+    if hasLocalChanges || aheadCount > 0 {
       // Rebase local commits on top of remote to preserve them.
       let rebase = try Git.run(["rebase", "origin/main"], cwd: repoURL)
       if rebase.exitCode != 0 {
@@ -3170,7 +3179,7 @@ final class AppViewModel: ObservableObject {
         syncBlockedByUncommitted = true
         return
       }
-    } else {
+    } else if behindCount > 0 {
       _ = try Git.run(["reset", "--hard", "origin/main"], cwd: repoURL)
       _ = try Git.run(["clean", "-fd"], cwd: repoURL)
     }
@@ -3198,7 +3207,16 @@ final class AppViewModel: ObservableObject {
       print("[sync] git fetch failed (exit \(fetch.exitCode)): \(fetch.stderr)")
       return
     }
-    if hasLocalChanges {
+
+    // Decide whether to rebase vs hard-reset.
+    // If local HEAD is ahead of origin/main (even with a clean working tree), we must rebase,
+    // not reset, or we'd discard local commits.
+    let aheadRes = try await Git.runAsync(["rev-list", "--count", "origin/main..HEAD"], cwd: repoURL)
+    let behindRes = try await Git.runAsync(["rev-list", "--count", "HEAD..origin/main"], cwd: repoURL)
+    let aheadCount = Int(aheadRes.stdout.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+    let behindCount = Int(behindRes.stdout.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+
+    if hasLocalChanges || aheadCount > 0 {
       let rebase = try await Git.runAsync(["rebase", "origin/main"], cwd: repoURL)
       if !rebase.ok {
         _ = try await Git.runAsync(["rebase", "--abort"], cwd: repoURL)
@@ -3206,7 +3224,7 @@ final class AppViewModel: ObservableObject {
         print("[sync] rebase conflict — sync blocked, user intervention needed")
         return
       }
-    } else {
+    } else if behindCount > 0 {
       let reset = try await Git.runAsync(["reset", "--hard", "origin/main"], cwd: repoURL)
       if !reset.ok {
         print("[sync] git reset failed (exit \(reset.exitCode)): \(reset.stderr)")
