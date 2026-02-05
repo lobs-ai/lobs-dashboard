@@ -678,6 +678,15 @@ struct OverviewView: View {
           )
         }
       }
+      .padding(14)
+      .background(
+        RoundedRectangle(cornerRadius: OTheme.cardRadius)
+          .fill(OTheme.cardBg)
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: OTheme.cardRadius)
+          .stroke(OTheme.border, lineWidth: 0.5)
+      )
     }
   }
 }
