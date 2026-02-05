@@ -683,12 +683,20 @@ private struct StatsRow: View {
 
   private var weeklyRuns: [WorkerHistoryRun] {
     guard let history = workerHistory else { return [] }
-    let calendar = Calendar.current
-    let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: Date())?.start ?? Date()
+    let startOfWeek = mondayStartOfWeek()
     return history.runs.filter { run in
-      guard let ended = run.endedAt else { return false }
-      return ended >= startOfWeek
+      let d = run.endedAt ?? run.startedAt
+      guard let d else { return false }
+      return d >= startOfWeek
     }
+  }
+
+  private func mondayStartOfWeek() -> Date {
+    // Keep week boundaries consistent with the Overview "Done This Week" section (Monday–Sunday).
+    let calendar = Calendar.current
+    var comps = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())
+    comps.weekday = 2 // Monday
+    return calendar.date(from: comps) ?? Date()
   }
 
   private var weeklyWorkerSpend: Double {
@@ -707,8 +715,7 @@ private struct StatsRow: View {
   /// Main session usage for the current week from daily summaries.
   private var weeklyMainSpend: Double {
     guard let usage = mainSessionUsage else { return 0 }
-    let calendar = Calendar.current
-    let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: Date())?.start ?? Date()
+    let startOfWeek = mondayStartOfWeek()
     let df = DateFormatter()
     df.dateFormat = "yyyy-MM-dd"
     return usage.dailySummaries.filter { key, _ in
@@ -719,8 +726,7 @@ private struct StatsRow: View {
 
   private var weeklyMainTokens: Int {
     guard let usage = mainSessionUsage else { return 0 }
-    let calendar = Calendar.current
-    let startOfWeek = calendar.dateInterval(of: .weekOfYear, for: Date())?.start ?? Date()
+    let startOfWeek = mondayStartOfWeek()
     let df = DateFormatter()
     df.dateFormat = "yyyy-MM-dd"
     return usage.dailySummaries.filter { key, _ in

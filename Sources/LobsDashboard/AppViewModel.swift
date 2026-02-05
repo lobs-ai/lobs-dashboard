@@ -1366,12 +1366,12 @@ final class AppViewModel: ObservableObject {
     do {
       workerHistory = try s.loadWorkerHistory()
     } catch {
-      workerHistory = nil
+      // Keep last known history on transient decode/read errors.
     }
     do {
       mainSessionUsage = try s.loadMainSessionUsage()
     } catch {
-      mainSessionUsage = nil
+      // Keep last known usage on transient decode/read errors.
     }
 
     // Detect worker state changes and send macOS notifications
