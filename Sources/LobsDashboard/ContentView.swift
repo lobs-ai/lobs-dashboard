@@ -649,20 +649,37 @@ private struct ToolbarArea: View {
                   .foregroundStyle(.red)
               }
 
-              Button {
-                vm.performSelfUpdate()
-              } label: {
-                HStack(spacing: 6) {
-                  Image(systemName: "arrow.triangle.2.circlepath")
-                  Text("Update now")
+              HStack(spacing: 8) {
+                Button {
+                  vm.performSelfUpdate()
+                } label: {
+                  HStack(spacing: 6) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                    Text("Update now")
+                  }
+                  .font(.system(size: 11, weight: .semibold))
+                  .padding(.horizontal, 10)
+                  .padding(.vertical, 6)
+                  .background(Color.accentColor.opacity(0.15))
+                  .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
-                .font(.system(size: 11, weight: .semibold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Color.accentColor.opacity(0.15))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .buttonStyle(.plain)
+
+                Button {
+                  vm.checkForDashboardUpdate(force: true)
+                } label: {
+                  HStack(spacing: 6) {
+                    Image(systemName: "arrow.clockwise")
+                    Text("Refresh")
+                  }
+                  .font(.system(size: 11, weight: .semibold))
+                  .padding(.horizontal, 10)
+                  .padding(.vertical, 6)
+                  .background(Theme.subtle)
+                  .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
               }
-              .buttonStyle(.plain)
 
               Text(vm.dashboardNeedsRebuild
                 ? "Will rebuild and relaunch this app."
