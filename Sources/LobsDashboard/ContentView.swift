@@ -571,7 +571,7 @@ private struct ToolbarArea: View {
       if vm.dashboardUpdateAvailable {
         Button {
           showUpdatePopover.toggle()
-          vm.checkForDashboardUpdate() // Refresh data when opened
+          vm.checkForDashboardUpdate(force: true) // Refresh data when opened
         } label: {
           HStack(spacing: 4) {
             Image(systemName: vm.dashboardNeedsRebuild ? "hammer.circle.fill" : "arrow.down.circle.fill")

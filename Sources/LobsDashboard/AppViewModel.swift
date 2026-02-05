@@ -424,14 +424,17 @@ final class AppViewModel: ObservableObject {
   private var lastDashboardUpdateCheckAt: Date? = nil
 
   /// Check if lobs-dashboard has new commits on origin/main that haven't been built.
-  func checkForDashboardUpdate() {
+  func checkForDashboardUpdate(force: Bool = false) {
     guard let dashURL = dashboardRepoURL else { return }
 
     // Throttle update checks (git fetch) — this can be surprisingly expensive.
-    let minInterval: TimeInterval = 60 * 30 // 30 minutes
-    if let last = lastDashboardUpdateCheckAt,
-       Date().timeIntervalSince(last) < minInterval {
-      return
+    // Manual refreshes can bypass throttling.
+    if !force {
+      let minInterval: TimeInterval = 60 * 30 // 30 minutes
+      if let last = lastDashboardUpdateCheckAt,
+         Date().timeIntervalSince(last) < minInterval {
+        return
+      }
     }
     lastDashboardUpdateCheckAt = Date()
 
@@ -704,6 +707,9 @@ final class AppViewModel: ObservableObject {
         refreshWorkerRequestPending()
 
         refreshProjectLastCommitAt()
+
+        // Manual refresh should also refresh the dashboard update indicator immediately.
+        checkForDashboardUpdate(force: true)
 
       } catch {
         lastError = String(describing: error)
