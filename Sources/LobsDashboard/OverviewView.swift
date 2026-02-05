@@ -44,6 +44,7 @@ struct OverviewView: View {
   @State private var draggingProjectId: String? = nil
   @State private var showCreateProject: Bool = false
   @State private var showAllCompletedThisWeek: Bool = false
+  @State private var showAllActiveTasks: Bool = false
 
   private var allTasks: [DashboardTask] { vm.tasks }
 
@@ -451,7 +452,9 @@ struct OverviewView: View {
           .frame(maxWidth: .infinity)
       } else {
         let snapshotLimit = 5
-        let visible = Array(activeTasksList.prefix(snapshotLimit))
+        let visible = showAllActiveTasks
+          ? activeTasksList
+          : Array(activeTasksList.prefix(snapshotLimit))
         ForEach(Array(visible.enumerated()), id: \.element.id) { idx, task in
           OverviewTaskRow(task: task, projectName: vm.projects.first(where: { $0.id == (task.projectId ?? "default") })?.title, onTap: {
             vm.selectTask(task)
@@ -463,11 +466,20 @@ struct OverviewView: View {
         }
         if activeTasksList.count > snapshotLimit {
           Divider().padding(.leading, 32)
-          Text("View all \(activeTasksList.count) active tasks →")
-            .font(.footnote)
-            .foregroundStyle(.orange)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.vertical, 8)
+          Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+              showAllActiveTasks.toggle()
+            }
+          } label: {
+            Text(showAllActiveTasks
+                 ? "Show less"
+                 : "View all \(activeTasksList.count) active tasks →")
+              .font(.footnote)
+              .foregroundStyle(showAllActiveTasks ? Color.secondary : Color.orange)
+              .frame(maxWidth: .infinity, alignment: .center)
+              .padding(.vertical, 8)
+          }
+          .buttonStyle(.plain)
         }
       }
     }
