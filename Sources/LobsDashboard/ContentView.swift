@@ -2182,6 +2182,19 @@ private struct TaskTile: View {
               inlineTitle = task.title
               isEditingTitle = true
             }
+
+          // GitHub issue number badge
+          if let issueNumber = task.githubIssueNumber {
+            Text("#\(issueNumber)")
+              .font(.system(size: 9, weight: .medium, design: .monospaced))
+              .foregroundStyle(.secondary)
+              .padding(.horizontal, 4)
+              .padding(.vertical, 2)
+              .background(Color.secondary.opacity(0.1))
+              .clipShape(RoundedRectangle(cornerRadius: 3))
+              .help("GitHub Issue #\(issueNumber)")
+          }
+
           Spacer()
           // Pin/star indicator + toggle
           if task.pinned == true || isHovering {
