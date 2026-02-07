@@ -1048,6 +1048,26 @@ private struct ToolbarArea: View {
         .clipShape(RoundedRectangle(cornerRadius: 6))
       }
 
+      // Push Now button when ahead>0
+      if vm.controlRepoAhead > 0 {
+        Button {
+          vm.pushNow()
+        } label: {
+          HStack(spacing: 4) {
+            Image(systemName: "arrow.up.to.line.circle.fill")
+            Text("Push Now")
+              .font(.system(size: 11, weight: .semibold))
+          }
+          .foregroundStyle(.white)
+          .padding(.horizontal, 10)
+          .padding(.vertical, 5)
+          .background(Color.orange)
+          .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .help("Push \(vm.controlRepoAhead) unpublished commit\(vm.controlRepoAhead == 1 ? "" : "s") to remote")
+      }
+
       // Text dump button — paste bulk text for task breakdown
       TextDumpToolbarButton {
         showTextDump = true
@@ -1411,6 +1431,23 @@ private struct StatsBar: View {
       Text("\(totalCount) tasks")
         .font(.footnote)
         .foregroundStyle(.tertiary)
+
+      // Stale data indicator when ahead>0
+      if vm.controlRepoAhead > 0 {
+        HStack(spacing: 4) {
+          Image(systemName: "exclamationmark.triangle.fill")
+            .font(.system(size: 10))
+            .foregroundStyle(.orange)
+          Text("Local only")
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(.orange)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(Color.orange.opacity(0.15))
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .help("Task counts may not reflect remote state. Push to publish changes.")
+      }
     }
     .padding(.horizontal, 16)
     .padding(.vertical, 6)
