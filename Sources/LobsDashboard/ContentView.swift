@@ -1151,6 +1151,18 @@ private struct ToolbarArea: View {
           }
           .help("GitHub sync error: \(error)")
         }
+
+        // Manual sync button for GitHub projects
+        Button {
+          vm.reload()
+        } label: {
+          Image(systemName: "arrow.triangle.2.circlepath")
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .disabled(vm.isGitHubSyncing || vm.isGitBusy)
+        .help("Sync with GitHub Issues now")
       }
 
       // Text dump button — paste bulk text for task breakdown
