@@ -228,6 +228,69 @@ final class LobsControlStore {
     return tasks
   }
 
+  /// Save a task to GitHub Issues (create new or update existing).
+  @discardableResult
+  func saveTaskToGitHub(task: DashboardTask, project: Project, token: String) async throws -> DashboardTask {
+    guard let config = project.githubConfig else {
+      throw StoreError.missingGitHubConfig
+    }
+
+    let service = GitHubService()
+
+    // Generate labels from task status and work state
+    var labels: [String] = []
+    labels.append("status:\(task.status.rawValue)")
+    if let workState = task.workState {
+      labels.append("work:\(workState.rawValue)")
+    }
+    if let syncLabels = config.syncLabels {
+      labels.append(contentsOf: syncLabels)
+    }
+
+    // Format body with task metadata
+    var bodyParts: [String] = []
+    if let notes = task.notes, !notes.isEmpty {
+      bodyParts.append(notes)
+    }
+    bodyParts.append("---")
+    bodyParts.append("**Task ID:** `\(task.id)`")
+    bodyParts.append("**Owner:** \(task.owner.rawValue)")
+    bodyParts.append("**Created:** \(task.createdAt.formatted())")
+    bodyParts.append("**Updated:** \(task.updatedAt.formatted())")
+    let body = bodyParts.joined(separator: "\n")
+
+    // Create or update based on githubIssueNumber
+    let issue: GitHubIssue
+    if let issueNumber = task.githubIssueNumber {
+      // Update existing issue
+      issue = try await service.updateIssue(
+        owner: config.owner,
+        repo: config.repo,
+        token: token,
+        issueNumber: issueNumber,
+        title: task.title,
+        body: body,
+        state: task.status == .completed ? "closed" : "open",
+        labels: labels
+      )
+    } else {
+      // Create new issue
+      issue = try await service.createIssue(
+        owner: config.owner,
+        repo: config.repo,
+        token: token,
+        title: task.title,
+        body: body,
+        labels: labels
+      )
+    }
+
+    // Update task with GitHub issue number
+    var updatedTask = task
+    updatedTask.githubIssueNumber = issue.number
+    return updatedTask
+  }
+
   /// Map a GitHub Issue to a DashboardTask.
   private func mapGitHubIssueToTask(issue: GitHubIssue, projectId: String) throws -> DashboardTask {
     // Parse status from labels (e.g., "status:active", "status:completed")
