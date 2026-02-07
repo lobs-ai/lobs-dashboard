@@ -133,7 +133,24 @@ final class LobsControlStore {
 
   // MARK: - Tasks
 
-  func loadTasks() throws -> TasksFile {
+  /// Load local tasks from JSON files (synchronous) wrapped in TasksFile for legacy methods.
+  private func loadLocalTasksFile() throws -> TasksFile {
+    let tasks = try loadLocalTasks()
+    // Apply stable ordering
+    var sortedTasks = tasks
+    sortedTasks.sort { (a, b) in
+      if a.status.rawValue != b.status.rawValue { return a.status.rawValue < b.status.rawValue }
+      let oa = a.sortOrder ?? Int.max
+      let ob = b.sortOrder ?? Int.max
+      if oa != ob { return oa < ob }
+      if a.createdAt != b.createdAt { return a.createdAt > b.createdAt }
+      return a.updatedAt > b.updatedAt
+    }
+    return TasksFile(schemaVersion: 0, generatedAt: Date(), tasks: sortedTasks)
+  }
+
+  /// Load local tasks from JSON files (synchronous).
+  func loadLocalTasks() throws -> [DashboardTask] {
     // Prefer per-task files if the directory exists.
     if FileManager.default.fileExists(atPath: tasksDirURL.path) {
       let items = try FileManager.default.contentsOfDirectory(
@@ -151,23 +168,70 @@ final class LobsControlStore {
         tasks.append(t)
       }
 
-      // Stable ordering (nice UX)
-      // Respect manual sortOrder first, then fall back to creation time.
-      tasks.sort { (a, b) in
-        if a.status.rawValue != b.status.rawValue { return a.status.rawValue < b.status.rawValue }
-        let oa = a.sortOrder ?? Int.max
-        let ob = b.sortOrder ?? Int.max
-        if oa != ob { return oa < ob }
-        if a.createdAt != b.createdAt { return a.createdAt > b.createdAt }
-        return a.updatedAt > b.updatedAt
-      }
-
-      return TasksFile(schemaVersion: 0, generatedAt: Date(), tasks: tasks)
+      return tasks
     }
 
     // Fallback: legacy single file.
     let data = try Data(contentsOf: tasksURL)
-    return try decoder().decode(TasksFile.self, from: data)
+    let file = try decoder().decode(TasksFile.self, from: data)
+    return file.tasks
+  }
+
+  /// Load tasks with dual-mode support (local + GitHub).
+  func loadTasks() async throws -> TasksFile {
+    // Load local tasks first
+    var allTasks = try loadLocalTasks()
+
+    // Load projects to check for GitHub sync mode
+    let projectsFile = try loadProjects()
+
+    // For each project with GitHub mode, load and merge tasks
+    for project in projectsFile.projects where project.syncMode == .github {
+      guard let token = project.githubConfig?.accessToken, !token.isEmpty else {
+        // Skip projects without a valid token
+        continue
+      }
+
+      do {
+        let githubTasks = try await loadTasksFromGitHub(project: project, token: token)
+
+        // Merge GitHub tasks with local tasks
+        // Strategy: match by githubIssueNumber; prefer local for conflicts; add unmatched GitHub tasks
+        let localTasksByIssueNumber = Dictionary(
+          uniqueKeysWithValues: allTasks.compactMap { task -> (Int, DashboardTask)? in
+            guard task.projectId == project.id, let issueNumber = task.githubIssueNumber else { return nil }
+            return (issueNumber, task)
+          }
+        )
+
+        for githubTask in githubTasks {
+          if let issueNumber = githubTask.githubIssueNumber,
+             localTasksByIssueNumber[issueNumber] != nil {
+            // Task exists locally - keep local version as source of truth
+            continue
+          } else {
+            // New task from GitHub - add it
+            allTasks.append(githubTask)
+          }
+        }
+      } catch {
+        // Log error but continue loading other projects
+        print("Warning: Failed to load GitHub tasks for project \(project.title): \(error)")
+      }
+    }
+
+    // Stable ordering (nice UX)
+    // Respect manual sortOrder first, then fall back to creation time.
+    allTasks.sort { (a, b) in
+      if a.status.rawValue != b.status.rawValue { return a.status.rawValue < b.status.rawValue }
+      let oa = a.sortOrder ?? Int.max
+      let ob = b.sortOrder ?? Int.max
+      if oa != ob { return oa < ob }
+      if a.createdAt != b.createdAt { return a.createdAt > b.createdAt }
+      return a.updatedAt > b.updatedAt
+    }
+
+    return TasksFile(schemaVersion: 0, generatedAt: Date(), tasks: allTasks)
   }
 
   func saveTasks(_ file: TasksFile) throws {
@@ -387,7 +451,7 @@ final class LobsControlStore {
       return
     }
 
-    var file = try loadTasks()
+    var file = try loadLocalTasksFile()
     guard let idx = file.tasks.firstIndex(where: { $0.id == taskId }) else { return }
     file.tasks[idx].status = status
     file.tasks[idx].updatedAt = Date()
@@ -407,7 +471,7 @@ final class LobsControlStore {
       return
     }
 
-    var file = try loadTasks()
+    var file = try loadLocalTasksFile()
     guard let idx = file.tasks.firstIndex(where: { $0.id == taskId }) else { return }
     file.tasks[idx].workState = workState
     file.tasks[idx].updatedAt = Date()
@@ -427,7 +491,7 @@ final class LobsControlStore {
       return
     }
 
-    var file = try loadTasks()
+    var file = try loadLocalTasksFile()
     guard let idx = file.tasks.firstIndex(where: { $0.id == taskId }) else { return }
     file.tasks[idx].reviewState = reviewState
     file.tasks[idx].updatedAt = Date()
@@ -482,7 +546,7 @@ final class LobsControlStore {
       return
     }
 
-    var file = try loadTasks()
+    var file = try loadLocalTasksFile()
     guard let idx = file.tasks.firstIndex(where: { $0.id == taskId }) else { return }
     if !cleanTitle.isEmpty { file.tasks[idx].title = cleanTitle }
     file.tasks[idx].notes = (cleanNotes?.isEmpty == true) ? nil : cleanNotes
@@ -522,7 +586,7 @@ final class LobsControlStore {
       return task
     }
 
-    var file = try loadTasks()
+    var file = try loadLocalTasksFile()
     file.tasks.append(task)
     try saveTasks(file)
     return task
@@ -536,7 +600,7 @@ final class LobsControlStore {
       return
     }
 
-    var file = try loadTasks()
+    var file = try loadLocalTasksFile()
     if let idx = file.tasks.firstIndex(where: { $0.id == task.id }) {
       file.tasks[idx] = task
     }
@@ -553,7 +617,7 @@ final class LobsControlStore {
     }
 
     // Legacy mode: remove from tasks.json
-    var file = try loadTasks()
+    var file = try loadLocalTasksFile()
     file.tasks.removeAll { $0.id == taskId }
     try saveTasks(file)
   }
@@ -586,7 +650,7 @@ final class LobsControlStore {
     }
 
     // Legacy mode: remove from tasks.json
-    var file = try loadTasks()
+    var file = try loadLocalTasksFile()
     file.tasks.removeAll { $0.id == taskId }
     try saveTasks(file)
   }

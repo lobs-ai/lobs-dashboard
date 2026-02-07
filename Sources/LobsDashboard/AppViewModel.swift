@@ -369,7 +369,7 @@ final class AppViewModel: ObservableObject {
         if autoArchiveCompleted {
           try store.archiveCompleted(olderThanDays: archiveCompletedAfterDays)
         }
-        let file = try store.loadTasks()
+        let file = try await store.loadTasks()
         // Only update if something changed (avoid UI flicker).
         if file.tasks.map({ $0.id }).sorted() != tasks.map({ $0.id }).sorted()
           || file.tasks.map({ $0.updatedAt }) != tasks.map({ $0.updatedAt })
@@ -731,7 +731,7 @@ final class AppViewModel: ObservableObject {
           try store.archiveCompleted(olderThanDays: archiveCompletedAfterDays)
         }
 
-        let file = try store.loadTasks()
+        let file = try await store.loadTasks()
         tasks = file.tasks
         lastError = nil
         try loadArtifactForSelected(store: store)
