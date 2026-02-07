@@ -120,6 +120,12 @@ final class AppViewModel: ObservableObject {
   /// Last push error message (if any). When set, UI should treat remote-derived state as potentially stale.
   @Published var lastPushError: String? = nil
 
+  // Control repo sync status
+  /// How many commits local HEAD is ahead of origin/main (unpublished changes).
+  @Published var controlRepoAhead: Int = 0
+  /// How many commits origin/main is ahead of local HEAD (need to pull).
+  @Published var controlRepoBehind: Int = 0
+
   // Dashboard update indicator
   /// True when origin/main of the lobs-dashboard repo is ahead of the local HEAD.
   @Published var dashboardUpdateAvailable: Bool = false
@@ -522,6 +528,30 @@ final class AppViewModel: ObservableObject {
     }
   }
 
+  /// Check how many commits local HEAD is ahead/behind origin/main for the control repo.
+  func checkControlRepoStatus() {
+    guard let repoURL else { return }
+
+    Task {
+      do {
+        // Get ahead count (local commits not pushed)
+        let aheadRes = try await Git.runAsync(["rev-list", "--count", "origin/main..HEAD"], cwd: repoURL)
+        let aheadCount = Int(aheadRes.stdout.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+
+        // Get behind count (remote commits not pulled)
+        let behindRes = try await Git.runAsync(["rev-list", "--count", "HEAD..origin/main"], cwd: repoURL)
+        let behindCount = Int(behindRes.stdout.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+
+        await MainActor.run {
+          self.controlRepoAhead = aheadCount
+          self.controlRepoBehind = behindCount
+        }
+      } catch {
+        print("[control-repo-status] failed: \(error)")
+      }
+    }
+  }
+
   /// Perform a self-update: git pull --rebase, ./bin/build, then relaunch the app.
   func performSelfUpdate() {
     guard let dashURL = dashboardRepoURL else {
@@ -718,6 +748,7 @@ final class AppViewModel: ObservableObject {
 
         // Manual refresh should also refresh the dashboard update indicator immediately.
         checkForDashboardUpdate(force: true)
+        checkControlRepoStatus()
 
       } catch {
         lastError = String(describing: error)

@@ -1018,6 +1018,36 @@ private struct ToolbarArea: View {
         vm.reload()
       }
 
+      // Ahead/behind indicator (show sync status prominently)
+      if vm.controlRepoAhead > 0 || vm.controlRepoBehind > 0 {
+        HStack(spacing: 4) {
+          if vm.controlRepoAhead > 0 {
+            HStack(spacing: 2) {
+              Image(systemName: "arrow.up.circle.fill")
+                .foregroundStyle(vm.controlRepoAhead > 0 ? .orange : .secondary)
+              Text("\(vm.controlRepoAhead)")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(vm.controlRepoAhead > 0 ? .orange : .secondary)
+            }
+            .help("Ahead by \(vm.controlRepoAhead) commit\(vm.controlRepoAhead == 1 ? "" : "s") — not published")
+          }
+          if vm.controlRepoBehind > 0 {
+            HStack(spacing: 2) {
+              Image(systemName: "arrow.down.circle.fill")
+                .foregroundStyle(.blue)
+              Text("\(vm.controlRepoBehind)")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.blue)
+            }
+            .help("Behind by \(vm.controlRepoBehind) commit\(vm.controlRepoBehind == 1 ? "" : "s")")
+          }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(vm.controlRepoAhead > 0 ? Color.orange.opacity(0.15) : Color.blue.opacity(0.15))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+      }
+
       // Text dump button — paste bulk text for task breakdown
       TextDumpToolbarButton {
         showTextDump = true
