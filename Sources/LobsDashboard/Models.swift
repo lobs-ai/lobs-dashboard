@@ -187,12 +187,29 @@ struct DashboardTask: Codable, Identifiable, Hashable {
 
   /// Work shape/type for filtering (deep work, shallow, creative, admin, waiting).
   var shape: TaskShape?
+
+  /// GitHub issue number (when project syncMode is .github).
+  var githubIssueNumber: Int?
 }
 
 enum ProjectType: String, Codable, CaseIterable, Hashable {
   case kanban
   case research
   case tracker
+}
+
+/// Sync mode for project task storage.
+enum SyncMode: String, Codable, CaseIterable, Hashable {
+  case local   // Tasks stored in local JSON files
+  case github  // Tasks synced with GitHub Issues
+}
+
+/// GitHub configuration for project sync.
+struct GitHubConfig: Codable, Hashable {
+  var owner: String           // GitHub repo owner/org
+  var repo: String            // GitHub repo name
+  var accessToken: String?    // Optional: GitHub personal access token (stored securely)
+  var syncLabels: [String]?   // Labels to apply to synced issues
 }
 
 struct Project: Codable, Identifiable, Hashable {
@@ -207,8 +224,17 @@ struct Project: Codable, Identifiable, Hashable {
   /// Manual sort order (lower = higher in list). Nil means unsorted (append to end).
   var sortOrder: Int?
 
+  /// Sync mode for task storage (local JSON or GitHub Issues). Defaults to local.
+  var syncMode: SyncMode?
+
+  /// GitHub configuration (required when syncMode is .github).
+  var githubConfig: GitHubConfig?
+
   /// Resolved type (defaults to kanban for backwards compatibility).
   var resolvedType: ProjectType { type ?? .kanban }
+
+  /// Resolved sync mode (defaults to local for backwards compatibility).
+  var resolvedSyncMode: SyncMode { syncMode ?? .local }
 }
 
 // MARK: - Research Tile Types
