@@ -390,6 +390,10 @@ struct ContentView: View {
           vm.requestWorker()
           vm.flashSuccess("Worker requested ⚡")
         },
+        onOverview: {
+          // ⌘⇧O → Overview
+          vm.showOverview = true
+        },
         onProjectSwitch: { index in
           let projects = vm.sortedActiveProjects
           if index == 0 {
@@ -427,6 +431,7 @@ private struct KeyboardShortcutReceiver: View {
   var onHelp: (() -> Void)? = nil
   var onInbox: (() -> Void)? = nil
   var onRequestWorker: (() -> Void)? = nil
+  var onOverview: (() -> Void)? = nil
   var onProjectSwitch: ((Int) -> Void)? = nil
   var onEscape: (() -> Bool)? = nil
 
@@ -454,6 +459,10 @@ private struct KeyboardShortcutReceiver: View {
 
       Button("") { onRequestWorker?() }
         .keyboardShortcut("w", modifiers: .command)
+        .opacity(0)
+
+      Button("") { onOverview?() }
+        .keyboardShortcut("o", modifiers: [.command, .shift])
         .opacity(0)
 
     }
@@ -515,6 +524,12 @@ private struct ArrowKeyMonitor: NSViewRepresentable {
         DispatchQueue.main.async { self.onDown() }
         return nil // consume
       case 126: // up arrow
+        DispatchQueue.main.async { self.onUp() }
+        return nil // consume
+      case 38: // j key (vim-style down)
+        DispatchQueue.main.async { self.onDown() }
+        return nil // consume
+      case 40: // k key (vim-style up)
         DispatchQueue.main.async { self.onUp() }
         return nil // consume
       case 124: // right arrow
