@@ -3133,59 +3133,154 @@ private struct EditProjectSheet: View {
 
   @State private var title: String = ""
   @State private var notes: String = ""
+  @State private var syncMode: SyncMode = .local
+  @State private var ghOwner: String = ""
+  @State private var ghRepo: String = ""
+  @State private var ghToken: String = ""
+  @State private var ghLabels: String = ""
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 16) {
-      HStack {
-        Image(systemName: "folder.badge.gear")
-          .font(.title2)
-          .foregroundStyle(.linearGradient(
-            colors: [.blue, .purple],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-          ))
-        Text("Edit project")
-          .font(.title3)
-          .fontWeight(.bold)
-        Spacer()
-      }
-
-      VStack(alignment: .leading, spacing: 10) {
-        TextField("Project name", text: $title)
-          .textFieldStyle(.roundedBorder)
-
-        TextField("Description (optional)", text: $notes, axis: .vertical)
-          .textFieldStyle(.roundedBorder)
-          .lineLimit(6, reservesSpace: true)
-      }
-
-      HStack {
-        Button("Cancel") { dismiss() }
-          .keyboardShortcut(.cancelAction)
-
-        Spacer()
-
-        Button("Save") {
-          let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-          if !trimmedTitle.isEmpty && trimmedTitle != project.title {
-            vm.renameProject(id: project.id, newTitle: trimmedTitle)
-          }
-          let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-          let oldNotes = project.notes?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-          if trimmedNotes != oldNotes {
-            vm.updateProjectNotes(id: project.id, notes: trimmedNotes.isEmpty ? nil : trimmedNotes)
-          }
-          dismiss()
+    ScrollView {
+      VStack(alignment: .leading, spacing: 16) {
+        HStack {
+          Image(systemName: "folder.badge.gear")
+            .font(.title2)
+            .foregroundStyle(.linearGradient(
+              colors: [.blue, .purple],
+              startPoint: .topLeading,
+              endPoint: .bottomTrailing
+            ))
+          Text("Edit project")
+            .font(.title3)
+            .fontWeight(.bold)
+          Spacer()
         }
-        .keyboardShortcut(.defaultAction)
-        .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+        VStack(alignment: .leading, spacing: 10) {
+          TextField("Project name", text: $title)
+            .textFieldStyle(.roundedBorder)
+
+          TextField("Description (optional)", text: $notes, axis: .vertical)
+            .textFieldStyle(.roundedBorder)
+            .lineLimit(6, reservesSpace: true)
+        }
+
+        Divider()
+
+        // Sync mode configuration
+        VStack(alignment: .leading, spacing: 12) {
+          Text("Sync Mode")
+            .font(.headline)
+
+          Picker("", selection: $syncMode) {
+            Text("Local (Personal)").tag(SyncMode.local)
+            Text("GitHub (Collaborative)").tag(SyncMode.github)
+          }
+          .pickerStyle(.segmented)
+
+          if syncMode == .local {
+            Text("Tasks stored locally in JSON files")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          } else {
+            Text("Tasks synced with GitHub Issues")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
+        }
+
+        // GitHub configuration (only shown when GitHub mode selected)
+        if syncMode == .github {
+          Divider()
+
+          VStack(alignment: .leading, spacing: 12) {
+            Text("GitHub Configuration")
+              .font(.headline)
+
+            VStack(alignment: .leading, spacing: 8) {
+              Text("Repository Owner")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+              TextField("e.g., RafeSymonds", text: $ghOwner)
+                .textFieldStyle(.roundedBorder)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+              Text("Repository Name")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+              TextField("e.g., my-project", text: $ghRepo)
+                .textFieldStyle(.roundedBorder)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+              Text("Access Token")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+              SecureField("GitHub Personal Access Token", text: $ghToken)
+                .textFieldStyle(.roundedBorder)
+              Text("Requires 'repo' scope. Keep this secure!")
+                .font(.caption2)
+                .foregroundStyle(.orange)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+              Text("Labels (Optional)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+              TextField("e.g., lobs, dashboard", text: $ghLabels)
+                .textFieldStyle(.roundedBorder)
+              Text("Comma-separated labels to add to all issues")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
+          }
+        }
+
+        HStack {
+          Button("Cancel") { dismiss() }
+            .keyboardShortcut(.cancelAction)
+
+          Spacer()
+
+          Button("Save") {
+            let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedTitle.isEmpty && trimmedTitle != project.title {
+              vm.renameProject(id: project.id, newTitle: trimmedTitle)
+            }
+            let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+            let oldNotes = project.notes?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if trimmedNotes != oldNotes {
+              vm.updateProjectNotes(id: project.id, notes: trimmedNotes.isEmpty ? nil : trimmedNotes)
+            }
+
+            // Update sync mode and GitHub config
+            vm.updateProjectSyncMode(id: project.id, syncMode: syncMode, githubConfig: syncMode == .github ? GitHubConfig(
+              owner: ghOwner.trimmingCharacters(in: .whitespacesAndNewlines),
+              repo: ghRepo.trimmingCharacters(in: .whitespacesAndNewlines),
+              accessToken: ghToken.isEmpty ? nil : ghToken,
+              syncLabels: ghLabels.isEmpty ? nil : ghLabels.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            ) : nil)
+
+            dismiss()
+          }
+          .keyboardShortcut(.defaultAction)
+          .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (syncMode == .github && (ghOwner.isEmpty || ghRepo.isEmpty)))
+        }
       }
+      .padding(20)
     }
-    .padding(20)
-    .frame(width: 420)
+    .frame(width: 480, height: 600)
     .onAppear {
       title = project.title
       notes = project.notes ?? ""
+      syncMode = project.syncMode ?? .local
+      if let config = project.githubConfig {
+        ghOwner = config.owner
+        ghRepo = config.repo
+        ghToken = config.accessToken ?? ""
+        ghLabels = config.syncLabels?.joined(separator: ", ") ?? ""
+      }
     }
   }
 }

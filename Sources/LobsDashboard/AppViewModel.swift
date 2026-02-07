@@ -2443,6 +2443,42 @@ final class AppViewModel: ObservableObject {
     }
   }
 
+  func updateProjectSyncMode(id: String, syncMode: SyncMode, githubConfig: GitHubConfig?) {
+    guard let repoURL else { return }
+
+    // Local update
+    if let idx = projects.firstIndex(where: { $0.id == id }) {
+      projects[idx].syncMode = syncMode
+      projects[idx].githubConfig = githubConfig
+      projects[idx].updatedAt = Date()
+    }
+
+    // Persist + git
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.updateProjectSyncMode(id: id, syncMode: syncMode, githubConfig: githubConfig)
+    } catch {
+      flashError("Failed to update project sync mode: \(error.localizedDescription)")
+      return
+    }
+
+    isGitBusy = true
+    Task {
+      do {
+        let modeStr = syncMode == .github ? "GitHub" : "local"
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: update project \(id) sync mode to \(modeStr)",
+          autoPush: true
+        )
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+        reload()
+      }
+      isGitBusy = false
+    }
+  }
+
   func deleteProject(id: String) {
     guard id != "default", let repoURL else { return }
 

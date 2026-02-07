@@ -117,6 +117,15 @@ final class LobsControlStore {
     try saveProjects(file)
   }
 
+  func updateProjectSyncMode(id: String, syncMode: SyncMode, githubConfig: GitHubConfig?) throws {
+    var file = try loadProjects()
+    guard let idx = file.projects.firstIndex(where: { $0.id == id }) else { return }
+    file.projects[idx].syncMode = syncMode
+    file.projects[idx].githubConfig = githubConfig
+    file.projects[idx].updatedAt = Date()
+    try saveProjects(file)
+  }
+
   func deleteProject(id: String) throws {
     var file = try loadProjects()
     file.projects.removeAll { $0.id == id }
