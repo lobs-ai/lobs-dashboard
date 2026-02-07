@@ -128,6 +128,14 @@ final class AppViewModel: ObservableObject {
   /// How many commits origin/main is ahead of local HEAD (need to pull).
   @Published var controlRepoBehind: Int = 0
 
+  // GitHub sync status (for collaborative projects)
+  /// Timestamp of the last successful GitHub sync.
+  @Published var lastGitHubSyncAt: Date? = nil
+  /// Last GitHub sync error message (if any).
+  @Published var lastGitHubSyncError: String? = nil
+  /// True when actively syncing with GitHub.
+  @Published var isGitHubSyncing: Bool = false
+
   // Dashboard update indicator
   /// True when origin/main of the lobs-dashboard repo is ahead of the local HEAD.
   @Published var dashboardUpdateAvailable: Bool = false
@@ -369,7 +377,22 @@ final class AppViewModel: ObservableObject {
         if autoArchiveCompleted {
           try store.archiveCompleted(olderThanDays: archiveCompletedAfterDays)
         }
+
+        // Track GitHub sync status if selected project uses GitHub mode
+        let hasGitHubProject = projects.contains { $0.syncMode == .github && $0.githubConfig?.accessToken != nil }
+        if hasGitHubProject {
+          isGitHubSyncing = true
+        }
+
         let file = try await store.loadTasks()
+
+        // Update GitHub sync status
+        if hasGitHubProject {
+          lastGitHubSyncAt = Date()
+          lastGitHubSyncError = nil
+          isGitHubSyncing = false
+        }
+
         // Only update if something changed (avoid UI flicker).
         if file.tasks.map({ $0.id }).sorted() != tasks.map({ $0.id }).sorted()
           || file.tasks.map({ $0.updatedAt }) != tasks.map({ $0.updatedAt })
@@ -388,6 +411,12 @@ final class AppViewModel: ObservableObject {
         checkForDashboardUpdate()
       } catch {
         // Silent — don't overwrite errors from user actions.
+        // But do capture GitHub sync errors if applicable
+        let hasGitHubProject = projects.contains { $0.syncMode == .github && $0.githubConfig?.accessToken != nil }
+        if hasGitHubProject {
+          lastGitHubSyncError = error.localizedDescription
+          isGitHubSyncing = false
+        }
       }
       isGitBusy = false
     }
@@ -731,7 +760,21 @@ final class AppViewModel: ObservableObject {
           try store.archiveCompleted(olderThanDays: archiveCompletedAfterDays)
         }
 
+        // Track GitHub sync status if any project uses GitHub mode
+        let hasGitHubProject = projects.contains { $0.syncMode == .github && $0.githubConfig?.accessToken != nil }
+        if hasGitHubProject {
+          isGitHubSyncing = true
+        }
+
         let file = try await store.loadTasks()
+
+        // Update GitHub sync status
+        if hasGitHubProject {
+          lastGitHubSyncAt = Date()
+          lastGitHubSyncError = nil
+          isGitHubSyncing = false
+        }
+
         tasks = file.tasks
         lastError = nil
         try loadArtifactForSelected(store: store)
@@ -754,6 +797,12 @@ final class AppViewModel: ObservableObject {
 
       } catch {
         lastError = String(describing: error)
+        // Capture GitHub sync errors if applicable
+        let hasGitHubProject = projects.contains { $0.syncMode == .github && $0.githubConfig?.accessToken != nil }
+        if hasGitHubProject {
+          lastGitHubSyncError = error.localizedDescription
+          isGitHubSyncing = false
+        }
       }
       isGitBusy = false
     }

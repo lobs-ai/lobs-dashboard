@@ -1113,6 +1113,46 @@ private struct ToolbarArea: View {
         .help("Push error: \(error)")
       }
 
+      // GitHub sync status (for collaborative projects)
+      if vm.selectedProject?.syncMode == .github {
+        if vm.isGitHubSyncing {
+          HStack(spacing: 4) {
+            ProgressView()
+              .scaleEffect(0.6)
+              .frame(width: 12, height: 12)
+            Text("Syncing GitHub…")
+              .font(.system(size: 10, weight: .medium))
+              .foregroundStyle(.secondary)
+          }
+          .help("Syncing with GitHub Issues")
+        } else if let lastSync = vm.lastGitHubSyncAt {
+          let elapsed = Date().timeIntervalSince(lastSync)
+          let timeAgo = elapsed < 60 ? "just now" :
+                        elapsed < 3600 ? "\(Int(elapsed/60))m ago" :
+                        elapsed < 86400 ? "\(Int(elapsed/3600))h ago" :
+                        "\(Int(elapsed/86400))d ago"
+          HStack(spacing: 4) {
+            Image(systemName: "checkmark.circle.fill")
+              .font(.system(size: 10))
+              .foregroundStyle(.green)
+            Text("GitHub \(timeAgo)")
+              .font(.system(size: 10, weight: .medium))
+              .foregroundStyle(.secondary)
+          }
+          .help("Last synced with GitHub Issues at \(lastSync.formatted(date: .abbreviated, time: .shortened))")
+        } else if let error = vm.lastGitHubSyncError {
+          HStack(spacing: 4) {
+            Image(systemName: "exclamationmark.triangle.fill")
+              .font(.system(size: 10))
+              .foregroundStyle(.orange)
+            Text("GitHub sync issue")
+              .font(.system(size: 10, weight: .medium))
+              .foregroundStyle(.orange)
+          }
+          .help("GitHub sync error: \(error)")
+        }
+      }
+
       // Text dump button — paste bulk text for task breakdown
       TextDumpToolbarButton {
         showTextDump = true
