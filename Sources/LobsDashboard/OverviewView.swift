@@ -936,6 +936,13 @@ private struct ProjectCard: View {
             .fontWeight(.bold)
             .lineLimit(1)
 
+          if project.syncMode == .github {
+            Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
+              .font(.caption)
+              .foregroundStyle(.blue)
+              .help("Synced with GitHub Issues")
+          }
+
           Spacer()
 
           // Health indicator

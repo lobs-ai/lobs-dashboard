@@ -849,6 +849,11 @@ private struct ToolbarArea: View {
               }
               Image(systemName: projectTypeIcon(p.resolvedType))
               Text(p.title)
+              if p.syncMode == .github {
+                Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
+                  .foregroundStyle(.blue)
+                  .help("Synced with GitHub Issues")
+              }
               if activeCount > 0 {
                 Text("(\(activeCount))")
                   .foregroundStyle(.secondary)
