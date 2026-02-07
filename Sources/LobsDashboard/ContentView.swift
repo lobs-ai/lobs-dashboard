@@ -3219,9 +3219,27 @@ private struct EditProjectSheet: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-              Text("Access Token")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+              HStack {
+                Text("Access Token")
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                  if let url = URL(string: "https://github.com/settings/tokens/new?description=Lobs%20Dashboard&scopes=repo") {
+                    #if os(macOS)
+                    NSWorkspace.shared.open(url)
+                    #endif
+                  }
+                } label: {
+                  HStack(spacing: 4) {
+                    Image(systemName: "link")
+                    Text("Create token")
+                  }
+                  .font(.caption2)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.blue)
+              }
               SecureField("GitHub Personal Access Token", text: $ghToken)
                 .textFieldStyle(.roundedBorder)
               Text("Requires 'repo' scope. Keep this secure!")
