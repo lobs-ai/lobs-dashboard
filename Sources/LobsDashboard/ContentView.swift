@@ -3239,6 +3239,18 @@ private struct EditProjectSheet: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             }
+
+            // Validation warning
+            if ghOwner.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || ghRepo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+              HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                  .foregroundStyle(.orange)
+                Text("Owner and repository are required for GitHub mode")
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+              }
+              .padding(.top, 4)
+            }
           }
         }
 
