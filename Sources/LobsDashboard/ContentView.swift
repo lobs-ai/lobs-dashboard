@@ -2366,23 +2366,25 @@ private struct TaskDetailPopover: View {
             }
 
             if showMarkdownPreview {
-              ScrollView {
-                if let md = try? AttributedString(markdown: editNotes, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
-                  Text(md)
-                    .font(.system(size: NSFont.smallSystemFontSize))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                  Text(editNotes)
-                    .font(.system(size: NSFont.smallSystemFontSize))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+              // Full markdown preview with support for headers, lists, code blocks, etc.
+              if editNotes.isEmpty {
+                Text("No notes")
+                  .font(.footnote)
+                  .foregroundStyle(.tertiary)
+                  .frame(maxWidth: .infinity, alignment: .leading)
+                  .frame(minHeight: 80)
+                  .padding(8)
+                  .background(Theme.subtle)
+                  .clipShape(RoundedRectangle(cornerRadius: 8))
+              } else {
+                ScrollView {
+                  SelfSizingMarkdownView(markdown: editNotes, minHeight: 60)
+                    .padding(8)
                 }
+                .frame(minHeight: 80, maxHeight: 300)
+                .background(Theme.subtle)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
               }
-              .frame(minHeight: 80, maxHeight: 160)
-              .padding(8)
-              .background(Theme.subtle)
-              .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
               SpellCheckingTextEditor(
                 text: $editNotes,
