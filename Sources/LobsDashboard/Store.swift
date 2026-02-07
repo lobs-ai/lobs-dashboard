@@ -1,6 +1,17 @@
 import CryptoKit
 import Foundation
 
+enum StoreError: Error, LocalizedError {
+  case missingGitHubConfig
+
+  var errorDescription: String? {
+    switch self {
+    case .missingGitHubConfig:
+      return "Project is configured for GitHub sync but missing GitHub configuration"
+    }
+  }
+}
+
 final class LobsControlStore {
   let repoRoot: URL
 
@@ -197,6 +208,102 @@ final class LobsControlStore {
     )
 
     try data.write(to: tasksURL, options: [.atomic])
+  }
+
+  /// Load tasks from GitHub Issues for a project.
+  func loadTasksFromGitHub(project: Project, token: String) async throws -> [DashboardTask] {
+    guard let config = project.githubConfig else {
+      throw StoreError.missingGitHubConfig
+    }
+
+    let service = GitHubService()
+    let issues = try await service.listIssues(owner: config.owner, repo: config.repo, token: token, state: "all")
+
+    var tasks: [DashboardTask] = []
+    for issue in issues {
+      let task = try mapGitHubIssueToTask(issue: issue, projectId: project.id)
+      tasks.append(task)
+    }
+
+    return tasks
+  }
+
+  /// Map a GitHub Issue to a DashboardTask.
+  private func mapGitHubIssueToTask(issue: GitHubIssue, projectId: String) throws -> DashboardTask {
+    // Parse status from labels (e.g., "status:active", "status:completed")
+    var status: TaskStatus = .active
+    var workState: WorkState? = nil
+
+    for label in issue.labels ?? [] {
+      let name = label.name.lowercased()
+      if name.hasPrefix("status:") {
+        let statusValue = String(name.dropFirst("status:".count))
+        status = parseTaskStatus(statusValue)
+      } else if name.hasPrefix("work:") {
+        let workValue = String(name.dropFirst("work:".count))
+        workState = parseWorkState(workValue)
+      }
+    }
+
+    // Default: open issues are active, closed issues are completed
+    if status == .active && issue.state == "closed" {
+      status = .completed
+    }
+
+    // Parse owner from assignees (first assignee becomes owner)
+    var owner: TaskOwner = .other("github")
+    if let assignee = issue.assignees?.first {
+      owner = parseTaskOwner(assignee.login)
+    }
+
+    return DashboardTask(
+      id: "github-\(issue.number)",
+      title: issue.title,
+      status: status,
+      owner: owner,
+      createdAt: issue.createdAt,
+      updatedAt: issue.updatedAt,
+      workState: workState,
+      reviewState: nil,
+      projectId: projectId,
+      artifactPath: nil,
+      notes: issue.body,
+      startedAt: nil,
+      finishedAt: issue.closedAt,
+      sortOrder: nil,
+      blockedBy: nil,
+      pinned: nil,
+      shape: nil,
+      githubIssueNumber: issue.number
+    )
+  }
+
+  private func parseTaskStatus(_ value: String) -> TaskStatus {
+    switch value {
+    case "inbox": return .inbox
+    case "active": return .active
+    case "completed": return .completed
+    case "rejected": return .rejected
+    case "waiting_on", "waiting-on": return .waitingOn
+    default: return .other(value)
+    }
+  }
+
+  private func parseWorkState(_ value: String) -> WorkState {
+    switch value {
+    case "not_started", "not-started": return .notStarted
+    case "in_progress", "in-progress": return .inProgress
+    case "blocked": return .blocked
+    default: return .other(value)
+    }
+  }
+
+  private func parseTaskOwner(_ login: String) -> TaskOwner {
+    switch login.lowercased() {
+    case "lobs": return .lobs
+    case "rafe", "rafesymonds": return .rafe
+    default: return .other(login)
+    }
   }
 
   func readArtifact(relativePath: String) throws -> String {
