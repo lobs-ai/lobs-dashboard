@@ -1068,6 +1068,47 @@ private struct ToolbarArea: View {
         .help("Push \(vm.controlRepoAhead) unpublished commit\(vm.controlRepoAhead == 1 ? "" : "s") to remote")
       }
 
+      // Last push status (show prominently)
+      if let lastPush = vm.lastSuccessfulPushAt {
+        let elapsed = Date().timeIntervalSince(lastPush)
+        let timeAgo = elapsed < 60 ? "just now" :
+                      elapsed < 3600 ? "\(Int(elapsed/60))m ago" :
+                      elapsed < 86400 ? "\(Int(elapsed/3600))h ago" :
+                      "\(Int(elapsed/86400))d ago"
+        HStack(spacing: 4) {
+          Image(systemName: "checkmark.circle.fill")
+            .font(.system(size: 10))
+            .foregroundStyle(.green)
+          Text("Pushed \(timeAgo)")
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(.secondary)
+          if let hash = vm.lastPushedCommitHash {
+            Text("(\(hash))")
+              .font(.system(size: 9, weight: .regular, design: .monospaced))
+              .foregroundStyle(.tertiary)
+          }
+        }
+        .help("Last successful push to origin at \(lastPush.formatted(date: .abbreviated, time: .shortened))")
+      } else if let error = vm.lastPushError {
+        HStack(spacing: 4) {
+          Image(systemName: "exclamationmark.triangle.fill")
+            .font(.system(size: 10))
+            .foregroundStyle(.red)
+          Text("Push failed")
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(.red)
+          Button {
+            vm.pushNow()
+          } label: {
+            Text("Retry")
+              .font(.system(size: 10, weight: .semibold))
+              .foregroundStyle(.red)
+          }
+          .buttonStyle(.plain)
+        }
+        .help("Push error: \(error)")
+      }
+
       // Text dump button — paste bulk text for task breakdown
       TextDumpToolbarButton {
         showTextDump = true

@@ -119,6 +119,8 @@ final class AppViewModel: ObservableObject {
   @Published var lastPushAttemptAt: Date? = nil
   /// Last push error message (if any). When set, UI should treat remote-derived state as potentially stale.
   @Published var lastPushError: String? = nil
+  /// Commit hash of last successful push.
+  @Published var lastPushedCommitHash: String? = nil
 
   // Control repo sync status
   /// How many commits local HEAD is ahead of origin/main (unpublished changes).
@@ -803,8 +805,13 @@ final class AppViewModel: ObservableObject {
           }
         }
 
+        // Get current commit hash for display
+        let hashResult = try await Git.runAsync(["rev-parse", "--short", "HEAD"], cwd: repoURL)
+        let commitHash = hashResult.ok ? hashResult.stdout.trimmingCharacters(in: .whitespacesAndNewlines) : nil
+
         await MainActor.run {
           self.lastSuccessfulPushAt = Date()
+          self.lastPushedCommitHash = commitHash
           self.lastPushError = nil
           self.flashSuccess("Pushed to origin")
           self.isGitBusy = false
@@ -3262,8 +3269,13 @@ final class AppViewModel: ObservableObject {
         }
       }
 
+      // Get current commit hash for display
+      let hashResult = try await Git.runAsync(["rev-parse", "--short", "HEAD"], cwd: repoURL)
+      let commitHash = hashResult.ok ? hashResult.stdout.trimmingCharacters(in: .whitespacesAndNewlines) : nil
+
       await MainActor.run {
         self.lastSuccessfulPushAt = Date()
+        self.lastPushedCommitHash = commitHash
         self.lastPushError = nil
       }
     }
