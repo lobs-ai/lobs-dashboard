@@ -1622,6 +1622,32 @@ final class AppViewModel: ObservableObject {
     isGitBusy = true
     Task {
       do {
+        // Check if project uses GitHub sync mode
+        let store = LobsControlStore(repoRoot: repoURL)
+        if let project = projects.first(where: { $0.id == selectedProjectId }),
+           project.syncMode == .github,
+           let token = project.githubConfig?.accessToken, !token.isEmpty {
+          // Create GitHub issues for all tasks
+          for i in 0..<newTasks.count {
+            do {
+              let updatedTask = try await store.saveTaskToGitHub(task: newTasks[i], project: project, token: token)
+              newTasks[i] = updatedTask
+
+              // Update local task with GitHub issue number
+              try store.saveExistingTask(updatedTask)
+
+              // Update UI with GitHub issue number
+              await MainActor.run {
+                if let idx = tasks.firstIndex(where: { $0.id == updatedTask.id }) {
+                  tasks[idx] = updatedTask
+                }
+              }
+            } catch {
+              print("Warning: Failed to create GitHub issue for task \(newTasks[i].id): \(error)")
+            }
+          }
+        }
+
         try await asyncCommitAndMaybePush(
           repoURL: repoURL,
           message: "Lobs: stamp template \(template.name) (\(newTasks.count) tasks)",
@@ -2026,7 +2052,7 @@ final class AppViewModel: ObservableObject {
 
     // UX: when Rafe creates a task, that means "start work" → goes straight to Active.
     let now = Date()
-    let newTask = DashboardTask(
+    var newTask = DashboardTask(
       id: UUID().uuidString,
       title: trimmedTitle,
       status: .active,
@@ -2072,6 +2098,26 @@ final class AppViewModel: ObservableObject {
     isGitBusy = true
     Task {
       do {
+        // Check if project uses GitHub sync mode
+        let store = LobsControlStore(repoRoot: repoURL)
+        if let project = projects.first(where: { $0.id == selectedProjectId }),
+           project.syncMode == .github,
+           let token = project.githubConfig?.accessToken, !token.isEmpty {
+          // Create GitHub issue
+          let updatedTask = try await store.saveTaskToGitHub(task: newTask, project: project, token: token)
+          newTask = updatedTask
+
+          // Update local task with GitHub issue number
+          try store.saveExistingTask(updatedTask)
+
+          // Update UI with GitHub issue number
+          await MainActor.run {
+            if let idx = tasks.firstIndex(where: { $0.id == updatedTask.id }) {
+              tasks[idx] = updatedTask
+            }
+          }
+        }
+
         try await asyncCommitAndMaybePush(
           repoURL: repoURL,
           message: "Lobs: submit task \(newTask.id)",
