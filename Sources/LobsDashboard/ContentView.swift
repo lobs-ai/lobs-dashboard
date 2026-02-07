@@ -1033,54 +1033,43 @@ private struct ToolbarArea: View {
         vm.reload()
       }
 
-      // Ahead/behind indicator (show sync status prominently)
+      // Ahead/behind indicator (clickable to push when ahead>0)
       if vm.controlRepoAhead > 0 || vm.controlRepoBehind > 0 {
-        HStack(spacing: 4) {
-          if vm.controlRepoAhead > 0 {
-            HStack(spacing: 2) {
-              Image(systemName: "arrow.up.circle.fill")
-                .foregroundStyle(vm.controlRepoAhead > 0 ? .orange : .secondary)
-              Text("\(vm.controlRepoAhead)")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(vm.controlRepoAhead > 0 ? .orange : .secondary)
-            }
-            .help("Ahead by \(vm.controlRepoAhead) commit\(vm.controlRepoAhead == 1 ? "" : "s") — not published")
-          }
-          if vm.controlRepoBehind > 0 {
-            HStack(spacing: 2) {
-              Image(systemName: "arrow.down.circle.fill")
-                .foregroundStyle(.blue)
-              Text("\(vm.controlRepoBehind)")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.blue)
-            }
-            .help("Behind by \(vm.controlRepoBehind) commit\(vm.controlRepoBehind == 1 ? "" : "s")")
-          }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(vm.controlRepoAhead > 0 ? Color.orange.opacity(0.15) : Color.blue.opacity(0.15))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-      }
-
-      // Push Now button when ahead>0
-      if vm.controlRepoAhead > 0 {
         Button {
-          vm.pushNow()
+          if vm.controlRepoAhead > 0 {
+            vm.pushNow()
+          }
         } label: {
           HStack(spacing: 4) {
-            Image(systemName: "arrow.up.to.line.circle.fill")
-            Text("Push Now")
-              .font(.system(size: 11, weight: .semibold))
+            if vm.controlRepoAhead > 0 {
+              HStack(spacing: 2) {
+                Image(systemName: "arrow.up.circle.fill")
+                  .foregroundStyle(.orange)
+                Text("\(vm.controlRepoAhead)")
+                  .font(.system(size: 11, weight: .medium))
+                  .foregroundStyle(.orange)
+              }
+            }
+            if vm.controlRepoBehind > 0 {
+              HStack(spacing: 2) {
+                Image(systemName: "arrow.down.circle.fill")
+                  .foregroundStyle(.blue)
+                Text("\(vm.controlRepoBehind)")
+                  .font(.system(size: 11, weight: .medium))
+                  .foregroundStyle(.blue)
+              }
+            }
           }
-          .foregroundStyle(.white)
-          .padding(.horizontal, 10)
-          .padding(.vertical, 5)
-          .background(Color.orange)
+          .padding(.horizontal, 8)
+          .padding(.vertical, 4)
+          .background(vm.controlRepoAhead > 0 ? Color.orange.opacity(0.15) : Color.blue.opacity(0.15))
           .clipShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
-        .help("Push \(vm.controlRepoAhead) unpublished commit\(vm.controlRepoAhead == 1 ? "" : "s") to remote")
+        .disabled(vm.controlRepoAhead == 0)
+        .help(vm.controlRepoAhead > 0 ?
+              "Click to push \(vm.controlRepoAhead) unpublished commit\(vm.controlRepoAhead == 1 ? "" : "s")" :
+              "Behind by \(vm.controlRepoBehind) commit\(vm.controlRepoBehind == 1 ? "" : "s")")
       }
 
       // Last push status (show prominently)
