@@ -2634,6 +2634,45 @@ private struct TaskDetailPopover: View {
               .clipShape(RoundedRectangle(cornerRadius: 8))
             }
             .buttonStyle(.plain)
+
+            // Timer control
+            Button {
+              if task.startedAt == nil {
+                vm.startTimer(taskId: task.id, autoPush: autoPush)
+              } else if task.finishedAt == nil {
+                vm.stopTimer(taskId: task.id, autoPush: autoPush)
+              } else {
+                vm.resetTimer(taskId: task.id, autoPush: autoPush)
+              }
+            } label: {
+              HStack(spacing: 4) {
+                if task.startedAt == nil {
+                  Image(systemName: "play.fill")
+                    .font(.footnote)
+                  Text("Start")
+                    .font(.footnote)
+                    .fontWeight(.medium)
+                } else if task.finishedAt == nil {
+                  Image(systemName: "stop.fill")
+                    .font(.footnote)
+                  Text("Stop")
+                    .font(.footnote)
+                    .fontWeight(.medium)
+                } else {
+                  Image(systemName: "arrow.counterclockwise")
+                    .font(.footnote)
+                  Text("Reset")
+                    .font(.footnote)
+                    .fontWeight(.medium)
+                }
+              }
+              .padding(.horizontal, 10)
+              .padding(.vertical, 5)
+              .background((task.startedAt != nil && task.finishedAt == nil ? Color.green : Color.blue).opacity(0.12))
+              .foregroundStyle(task.startedAt != nil && task.finishedAt == nil ? .green : .blue)
+              .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
           }
 
           switch task.status {

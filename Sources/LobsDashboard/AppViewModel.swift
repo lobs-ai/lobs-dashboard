@@ -2983,6 +2983,56 @@ final class AppViewModel: ObservableObject {
     }
   }
 
+  func startTimer(taskId: String, autoPush: Bool) {
+    optimisticUpdate(taskId: taskId, localMutation: {
+      $0.startedAt = Date()
+      $0.finishedAt = nil
+      $0.updatedAt = Date()
+    }) { repoURL in
+      let store = LobsControlStore(repoRoot: repoURL)
+      guard let task = self.tasks.first(where: { $0.id == taskId }) else { return }
+      try store.saveExistingTask(task)
+      try await self.asyncCommitAndMaybePush(
+        repoURL: repoURL,
+        message: "Lobs: start timer \(taskId)",
+        autoPush: autoPush
+      )
+    }
+  }
+
+  func stopTimer(taskId: String, autoPush: Bool) {
+    optimisticUpdate(taskId: taskId, localMutation: {
+      $0.finishedAt = Date()
+      $0.updatedAt = Date()
+    }) { repoURL in
+      let store = LobsControlStore(repoRoot: repoURL)
+      guard let task = self.tasks.first(where: { $0.id == taskId }) else { return }
+      try store.saveExistingTask(task)
+      try await self.asyncCommitAndMaybePush(
+        repoURL: repoURL,
+        message: "Lobs: stop timer \(taskId)",
+        autoPush: autoPush
+      )
+    }
+  }
+
+  func resetTimer(taskId: String, autoPush: Bool) {
+    optimisticUpdate(taskId: taskId, localMutation: {
+      $0.startedAt = nil
+      $0.finishedAt = nil
+      $0.updatedAt = Date()
+    }) { repoURL in
+      let store = LobsControlStore(repoRoot: repoURL)
+      guard let task = self.tasks.first(where: { $0.id == taskId }) else { return }
+      try store.saveExistingTask(task)
+      try await self.asyncCommitAndMaybePush(
+        repoURL: repoURL,
+        message: "Lobs: reset timer \(taskId)",
+        autoPush: autoPush
+      )
+    }
+  }
+
   func editTask(taskId: String, title: String, notes: String?, autoPush: Bool) {
     optimisticUpdate(taskId: taskId, localMutation: {
       let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
