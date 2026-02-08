@@ -864,6 +864,8 @@ final class LobsControlStore {
       if let thread = try? decoder().decode(InboxThread.self, from: data) {
         // Migrate to preferred location
         try? saveInboxThread(thread)
+        // Delete legacy file to prevent repeated migration
+        try? FileManager.default.removeItem(at: legacyThreadURL)
         return thread
       }
 
@@ -885,6 +887,8 @@ final class LobsControlStore {
           updatedAt: legacy.updatedAt
         )
         try saveInboxThread(thread)
+        // Delete legacy file to prevent repeated migration
+        try? FileManager.default.removeItem(at: legacyThreadURL)
         return thread
       }
     }
@@ -907,6 +911,11 @@ final class LobsControlStore {
         updatedAt: legacy.updatedAt
       )
       try saveInboxThread(thread)
+      // Delete legacy file to prevent repeated migration
+      let legacyURL = inboxResponsesDirURL
+        .appendingPathComponent(docId)
+        .appendingPathExtension("json")
+      try? FileManager.default.removeItem(at: legacyURL)
       return thread
     }
 
@@ -950,6 +959,8 @@ final class LobsControlStore {
         if result[thread.docId] == nil {
           try? saveInboxThread(thread)
           result[thread.docId] = thread
+          // Delete legacy file to prevent repeated migration
+          try? FileManager.default.removeItem(at: url)
         }
         continue
       }
@@ -977,6 +988,8 @@ final class LobsControlStore {
         )
         try? saveInboxThread(thread)
         result[thread.docId] = thread
+        // Delete legacy file to prevent repeated migration
+        try? FileManager.default.removeItem(at: url)
       }
     }
 
