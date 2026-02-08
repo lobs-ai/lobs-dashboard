@@ -112,6 +112,9 @@ final class AppViewModel: ObservableObject {
   /// Whether sync is blocked because the local repo has uncommitted changes.
   @Published var syncBlockedByUncommitted: Bool = false
 
+  /// Number of pending local changes not yet pushed.
+  @Published var pendingChangesCount: Int = 0
+
   // Git push visibility
   /// Timestamp of the last successful push to origin (best-effort; set when dashboard pushes).
   @Published var lastSuccessfulPushAt: Date? = nil
@@ -119,6 +122,12 @@ final class AppViewModel: ObservableObject {
   @Published var lastPushAttemptAt: Date? = nil
   /// Last push error message (if any). When set, UI should treat remote-derived state as potentially stale.
   @Published var lastPushError: String? = nil
+
+  // Notifications
+  @Published var notifications: [DashboardNotification] = []
+  @Published var notificationPreferences: NotificationPreferences = .default
+  private var batchedNotifications: [DashboardNotification] = []
+  private var batchTimer: Timer? = nil
   /// Commit hash of last successful push.
   @Published var lastPushedCommitHash: String? = nil
 
@@ -448,6 +457,9 @@ final class AppViewModel: ObservableObject {
 
         // Check for dashboard source updates on every sync
         checkForDashboardUpdate()
+
+        // Update pending changes count
+        updatePendingChangesCount()
       } catch {
         // Silent — don't overwrite errors from user actions.
         // But do capture GitHub sync errors if applicable
@@ -1896,6 +1908,61 @@ final class AppViewModel: ObservableObject {
     }
   }
 
+  func updateInboxThreadTriage(docId: String, status: InboxTriageStatus) {
+    guard let repoURL else { return }
+    guard var thread = inboxThreadsByDocId[docId] else { return }
+
+    thread.triageStatus = status
+    thread.updatedAt = Date()
+    inboxThreadsByDocId[docId] = thread
+
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.saveInboxThread(thread)
+    } catch {
+      flashError("Failed to save thread: \(error.localizedDescription)")
+      return
+    }
+
+    // Track as pending so auto-refresh won't overwrite it with stale data
+    pendingThreadWrites[docId] = thread
+
+    isGitBusy = true
+    Task {
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: update thread triage status to \(status.rawValue) on \(docId)",
+          autoPush: true
+        )
+        pendingThreadWrites.removeValue(forKey: docId)
+      } catch {
+        flashError("Git push failed: \(error.localizedDescription)")
+      }
+      isGitBusy = false
+    }
+  }
+
+  func quickReplyInboxThread(docId: String, reply: String, triageStatus: InboxTriageStatus) {
+    // Post the message
+    postInboxThreadMessage(docId: docId, author: "rafe", text: reply)
+
+    // Update triage status
+    guard var thread = inboxThreadsByDocId[docId] else { return }
+    thread.triageStatus = triageStatus
+    thread.updatedAt = Date()
+    inboxThreadsByDocId[docId] = thread
+
+    if let repoURL = repoURL {
+      do {
+        let store = LobsControlStore(repoRoot: repoURL)
+        try store.saveInboxThread(thread)
+      } catch {
+        flashError("Failed to save thread: \(error.localizedDescription)")
+      }
+    }
+  }
+
   func selectTask(_ task: DashboardTask) {
     selectedTaskId = task.id
     popoverTaskId = task.id
@@ -1918,6 +1985,79 @@ final class AppViewModel: ObservableObject {
     Task {
       try? await Task.sleep(nanoseconds: 3_000_000_000)
       if successBanner == message { successBanner = nil }
+    }
+  }
+
+  // MARK: - Notification Management
+
+  func postNotification(type: NotificationType, message: String) {
+    // Check if this notification type is enabled
+    guard notificationPreferences.enabledTypes.contains(type.rawValue) else { return }
+
+    let notification = DashboardNotification(type: type, message: message)
+
+    // High priority notifications show immediately
+    if type.priority == .high {
+      notifications.append(notification)
+      return
+    }
+
+    // Low/medium priority notifications get batched if batching is enabled
+    if notificationPreferences.batchLowPriority {
+      batchedNotifications.append(notification)
+      startBatchTimer()
+    } else {
+      notifications.append(notification)
+    }
+  }
+
+  private func startBatchTimer() {
+    // If timer is already running, don't start a new one
+    guard batchTimer == nil else { return }
+
+    batchTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(notificationPreferences.batchIntervalSeconds), repeats: false) { [weak self] _ in
+      guard let self = self else { return }
+      self.flushBatchedNotifications()
+    }
+  }
+
+  private func flushBatchedNotifications() {
+    guard !batchedNotifications.isEmpty else {
+      batchTimer?.invalidate()
+      batchTimer = nil
+      return
+    }
+
+    // Add all batched notifications to the main queue
+    notifications.append(contentsOf: batchedNotifications)
+    batchedNotifications.removeAll()
+    batchTimer?.invalidate()
+    batchTimer = nil
+  }
+
+  func dismissNotification(id: String) {
+    if let index = notifications.firstIndex(where: { $0.id == id }) {
+      notifications[index].dismissed = true
+      // Remove after a brief delay to allow animation
+      Task {
+        try? await Task.sleep(nanoseconds: 300_000_000) // 0.3s
+        notifications.removeAll(where: { $0.id == id && $0.dismissed })
+      }
+    }
+  }
+
+  func dismissAllNotifications() {
+    notifications.removeAll()
+    batchedNotifications.removeAll()
+    batchTimer?.invalidate()
+    batchTimer = nil
+  }
+
+  func updateNotificationPreferences(_ preferences: NotificationPreferences) {
+    notificationPreferences = preferences
+    // Flush batched notifications if batching is disabled
+    if !preferences.batchLowPriority {
+      flushBatchedNotifications()
     }
   }
 
@@ -3497,6 +3637,29 @@ final class AppViewModel: ObservableObject {
         self.lastSuccessfulPushAt = Date()
         self.lastPushedCommitHash = commitHash
         self.lastPushError = nil
+      }
+    }
+  }
+
+  func updatePendingChangesCount() {
+    guard let repoURL = repoURL else {
+      pendingChangesCount = 0
+      return
+    }
+
+    Task.detached {
+      do {
+        // Count commits ahead of origin/main
+        let ahead = try await Git.runAsync(["rev-list", "--count", "origin/main..HEAD"], cwd: repoURL)
+        let count = Int(ahead.stdout.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+
+        await MainActor.run {
+          self.pendingChangesCount = count
+        }
+      } catch {
+        await MainActor.run {
+          self.pendingChangesCount = 0
+        }
       }
     }
   }

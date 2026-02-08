@@ -235,6 +235,7 @@ struct OverviewView: View {
         velocitySection
         detailedStatsSection
         workerStatusSection
+        syncStatusSection
         projectCardsSection
         columnsSection
         inboxColumnsSection
@@ -409,6 +410,90 @@ struct OverviewView: View {
         onRequestWorker: { vm.requestWorker() }
       )
     }
+  }
+
+  @ViewBuilder
+  private var syncStatusSection: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack {
+        Image(systemName: "arrow.triangle.2.circlepath")
+          .foregroundStyle(.blue)
+        Text("Sync Status")
+          .font(.headline)
+          .fontWeight(.bold)
+        Spacer()
+        if vm.pendingChangesCount > 0 {
+          Text("\(vm.pendingChangesCount) pending")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+              Capsule()
+                .fill(Color.orange.opacity(0.2))
+            )
+        }
+      }
+
+      VStack(alignment: .leading, spacing: 8) {
+        if let lastPush = vm.lastSuccessfulPushAt {
+          HStack {
+            Text("Last sync:")
+              .foregroundStyle(.secondary)
+            Text(lastPush, style: .relative)
+              .foregroundStyle(.primary)
+            Text("ago")
+              .foregroundStyle(.secondary)
+          }
+          .font(.callout)
+        }
+
+        if let error = vm.lastPushError, !error.isEmpty {
+          HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+              .foregroundStyle(.red)
+            Text(error)
+              .font(.callout)
+              .foregroundStyle(.red)
+          }
+          .padding(8)
+          .background(
+            RoundedRectangle(cornerRadius: 6)
+              .fill(Color.red.opacity(0.1))
+          )
+        }
+
+        if vm.syncBlockedByUncommitted {
+          VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+              Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+              Text("Sync blocked by uncommitted changes")
+                .font(.callout)
+                .foregroundStyle(.orange)
+            }
+
+            Text("Commit or discard local changes to resume syncing.")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
+          .padding(8)
+          .background(
+            RoundedRectangle(cornerRadius: 6)
+              .fill(Color.orange.opacity(0.1))
+          )
+        }
+      }
+    }
+    .padding(16)
+    .background(
+      RoundedRectangle(cornerRadius: OTheme.cardRadius)
+        .fill(OTheme.cardBg)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: OTheme.cardRadius)
+        .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
+    )
   }
 
   private func isWorkerStatusStale(_ status: WorkerStatus) -> Bool {
@@ -2528,8 +2613,12 @@ private struct WorkerHistoryRow: View {
   @State private var expanded = false
 
   private var hasTaskDetails: Bool {
-    guard let log = run.taskLog else { return false }
-    return !log.isEmpty
+    // Show expand chevron if there's task log, commits, files, or compare URL
+    if let log = run.taskLog, !log.isEmpty { return true }
+    if let commits = run.commitSHAs, !commits.isEmpty { return true }
+    if let files = run.filesModified, !files.isEmpty { return true }
+    if run.githubCompareURL != nil { return true }
+    return false
   }
 
   var body: some View {
@@ -2689,6 +2778,93 @@ private struct WorkerHistoryRow: View {
         }
         .padding(.top, 4)
         .padding(.bottom, 2)
+      }
+
+      // Audit details (commits, files, compare link)
+      if expanded {
+        VStack(alignment: .leading, spacing: 6) {
+          // Commits pushed
+          if let commits = run.commitSHAs, !commits.isEmpty {
+            HStack(spacing: 8) {
+              Spacer().frame(width: 20)
+              Image(systemName: "arrow.triangle.branch")
+                .font(.system(size: 9))
+                .foregroundStyle(.purple)
+              Text("Commits: \(commits.count)")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+
+              // Show first few commit SHAs
+              HStack(spacing: 4) {
+                ForEach(commits.prefix(3), id: \.self) { sha in
+                  Text(String(sha.prefix(7)))
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Color.purple.opacity(0.08))
+                    .clipShape(Capsule())
+                }
+                if commits.count > 3 {
+                  Text("+\(commits.count - 3)")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+                }
+              }
+            }
+            .padding(.vertical, 2)
+          }
+
+          // Files modified
+          if let files = run.filesModified, !files.isEmpty {
+            HStack(spacing: 8) {
+              Spacer().frame(width: 20)
+              Image(systemName: "doc.text")
+                .font(.system(size: 9))
+                .foregroundStyle(.orange)
+              Text("Files: \(files.count)")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+
+              // Show first few files
+              HStack(spacing: 4) {
+                ForEach(files.prefix(3), id: \.self) { file in
+                  Text(URL(fileURLWithPath: file).lastPathComponent)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Color.orange.opacity(0.08))
+                    .clipShape(Capsule())
+                }
+                if files.count > 3 {
+                  Text("+\(files.count - 3)")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+                }
+              }
+            }
+            .padding(.vertical, 2)
+          }
+
+          // GitHub compare link
+          if let compareURL = run.githubCompareURL {
+            HStack(spacing: 8) {
+              Spacer().frame(width: 20)
+              Image(systemName: "link")
+                .font(.system(size: 9))
+                .foregroundStyle(.blue)
+              Link("View changes on GitHub", destination: URL(string: compareURL)!)
+                .font(.system(size: 11))
+                .foregroundStyle(.blue)
+            }
+            .padding(.vertical, 2)
+          }
+        }
+        .padding(.top, 2)
+        .padding(.bottom, 4)
       }
     }
   }

@@ -463,6 +463,36 @@ struct InboxResponse: Codable, Identifiable, Hashable {
 
 // MARK: - Inbox Thread (threaded conversations per document)
 
+enum InboxTriageStatus: String, Codable, Hashable, CaseIterable {
+  case needsResponse = "needs_response"
+  case pending = "pending"
+  case resolved = "resolved"
+
+  var displayName: String {
+    switch self {
+    case .needsResponse: return "Needs Response"
+    case .pending: return "Pending"
+    case .resolved: return "Resolved"
+    }
+  }
+
+  var iconName: String {
+    switch self {
+    case .needsResponse: return "exclamationmark.bubble.fill"
+    case .pending: return "clock.fill"
+    case .resolved: return "checkmark.circle.fill"
+    }
+  }
+
+  var color: String {
+    switch self {
+    case .needsResponse: return "orange"
+    case .pending: return "blue"
+    case .resolved: return "green"
+    }
+  }
+}
+
 struct InboxThreadMessage: Codable, Identifiable, Hashable {
   var id: String
   var author: String   // "rafe" or "lobs"
@@ -474,8 +504,29 @@ struct InboxThread: Codable, Identifiable, Hashable {
   var id: String       // same as docId
   var docId: String
   var messages: [InboxThreadMessage]
+  var triageStatus: InboxTriageStatus = .needsResponse
   var createdAt: Date
   var updatedAt: Date
+
+  // Custom decoder to provide default for triageStatus on legacy data
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    id = try container.decode(String.self, forKey: .id)
+    docId = try container.decode(String.self, forKey: .docId)
+    messages = try container.decode([InboxThreadMessage].self, forKey: .messages)
+    triageStatus = (try? container.decode(InboxTriageStatus.self, forKey: .triageStatus)) ?? .needsResponse
+    createdAt = try container.decode(Date.self, forKey: .createdAt)
+    updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+  }
+
+  init(id: String, docId: String, messages: [InboxThreadMessage], triageStatus: InboxTriageStatus = .needsResponse, createdAt: Date, updatedAt: Date) {
+    self.id = id
+    self.docId = docId
+    self.messages = messages
+    self.triageStatus = triageStatus
+    self.createdAt = createdAt
+    self.updatedAt = updatedAt
+  }
 }
 
 // MARK: - Task Templates
@@ -562,6 +613,15 @@ struct WorkerHistoryRun: Codable, Identifiable {
   /// Optional: lightweight list of tasks completed during the run.
   var taskLog: [WorkerTaskLogEntry]?
 
+  /// Commit SHAs pushed during this run (for auditability).
+  var commitSHAs: [String]?
+
+  /// Files modified during this run (for auditability).
+  var filesModified: [String]?
+
+  /// GitHub compare URL for changes in this run (if available).
+  var githubCompareURL: String?
+
   var id: String { "\(workerId ?? "unknown")-\(startedAt?.timeIntervalSince1970 ?? 0)" }
 }
 
@@ -642,3 +702,85 @@ struct TrackerItem: Codable, Identifiable, Hashable {
   var createdAt: Date
   var updatedAt: Date
 }
+
+// MARK: - Notifications
+
+enum NotificationType: String, Codable {
+  case reminder = "reminder"
+  case blocker = "blocker"
+  case error = "error"
+  case success = "success"
+  case info = "info"
+  case warning = "warning"
+
+  var displayName: String {
+    switch self {
+    case .reminder: return "Reminder"
+    case .blocker: return "Blocker"
+    case .error: return "Error"
+    case .success: return "Success"
+    case .info: return "Info"
+    case .warning: return "Warning"
+    }
+  }
+
+  var iconName: String {
+    switch self {
+    case .reminder: return "bell.fill"
+    case .blocker: return "hand.raised.fill"
+    case .error: return "xmark.circle.fill"
+    case .success: return "checkmark.circle.fill"
+    case .info: return "info.circle.fill"
+    case .warning: return "exclamationmark.triangle.fill"
+    }
+  }
+
+  var priority: NotificationPriority {
+    switch self {
+    case .reminder, .blocker, .error:
+      return .high
+    case .warning:
+      return .medium
+    case .success, .info:
+      return .low
+    }
+  }
+}
+
+enum NotificationPriority: Int, Codable {
+  case low = 0
+  case medium = 1
+  case high = 2
+}
+
+struct DashboardNotification: Identifiable, Codable {
+  var id: String
+  var type: NotificationType
+  var message: String
+  var createdAt: Date
+  var dismissed: Bool
+
+  init(id: String = UUID().uuidString, type: NotificationType, message: String, createdAt: Date = Date(), dismissed: Bool = false) {
+    self.id = id
+    self.type = type
+    self.message = message
+    self.createdAt = createdAt
+    self.dismissed = dismissed
+  }
+}
+
+struct NotificationPreferences: Codable {
+  var enabledTypes: Set<String> // Set of NotificationType.rawValue
+  var batchLowPriority: Bool
+  var batchIntervalSeconds: Int // How long to wait before showing batched notifications
+
+  static var `default`: NotificationPreferences {
+    NotificationPreferences(
+      enabledTypes: Set(NotificationType.allCases.map { $0.rawValue }),
+      batchLowPriority: true,
+      batchIntervalSeconds: 30
+    )
+  }
+}
+
+extension NotificationType: CaseIterable {}

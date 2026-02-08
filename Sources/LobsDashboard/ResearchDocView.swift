@@ -48,6 +48,68 @@ struct ResearchDocView: View {
     vm.researchRequests.filter { $0.status == .done || $0.status == .completed }
   }
 
+  /// Current document filename (for backlink detection)
+  private var currentDocFilename: String? {
+    if let deliverable = selectedDeliverable {
+      return deliverable.filename
+    }
+    // Main project doc doesn't have a filename in deliverables
+    return nil
+  }
+
+  /// Documents that reference the current document
+  private var backlinks: [(String, String)] { // [(filename, title)]
+    guard let currentDoc = currentDocFilename else { return [] }
+
+    var links: [(String, String)] = []
+
+    // Check all deliverables for links to current doc
+    for deliverable in vm.researchDeliverables {
+      if deliverable.id == currentDoc { continue } // Skip self
+
+      // Look for markdown links: [text](currentDoc) or [[currentDoc]]
+      let patterns = [
+        "\\[.*?\\]\\(\(NSRegularExpression.escapedPattern(for: currentDoc))\\)",
+        "\\[\\[\(NSRegularExpression.escapedPattern(for: currentDoc))\\]\\]"
+      ]
+
+      for pattern in patterns {
+        if let regex = try? NSRegularExpression(pattern: pattern) {
+          let range = NSRange(deliverable.content.startIndex..., in: deliverable.content)
+          if regex.firstMatch(in: deliverable.content, range: range) != nil {
+            links.append((deliverable.filename, deliverable.title))
+            break // Found a match, no need to check other patterns
+          }
+        }
+      }
+    }
+
+    return links
+  }
+
+  /// Cross-doc search results (search across all deliverables)
+  private var crossDocSearchResults: [(String, String, String)] { // [(filename, title, matchingSnippet)]
+    guard !docSearchText.isEmpty else { return [] }
+
+    var results: [(String, String, String)] = []
+    let query = docSearchText.lowercased()
+
+    for deliverable in vm.researchDeliverables {
+      if deliverable.content.lowercased().contains(query) {
+        // Find a snippet containing the search term
+        let lines = deliverable.content.split(separator: "\n")
+        if let matchingLine = lines.first(where: { $0.lowercased().contains(query) }) {
+          let snippet = String(matchingLine.prefix(100))
+          results.append((deliverable.filename, deliverable.title, snippet))
+        } else {
+          results.append((deliverable.filename, deliverable.title, String(deliverable.content.prefix(100))))
+        }
+      }
+    }
+
+    return results
+  }
+
   var body: some View {
     HSplitView {
       // Left sidebar: TOC + Sources + Requests
@@ -152,6 +214,16 @@ struct ResearchDocView: View {
 
           // Sources
           sourcesSection
+
+          // Backlinks (documents that reference current doc)
+          if !backlinks.isEmpty {
+            backlinksSection
+          }
+
+          // Cross-doc search results
+          if !crossDocSearchResults.isEmpty {
+            crossDocSearchSection
+          }
 
           // Open Requests
           if !openRequests.isEmpty {
@@ -338,6 +410,98 @@ struct ResearchDocView: View {
     }
     .padding(10)
     .background(DocTheme.subtle)
+    .clipShape(RoundedRectangle(cornerRadius: 8))
+  }
+
+  private var backlinksSection: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      HStack {
+        Image(systemName: "arrow.triangle.turn.up.right.circle")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+        Text("Referenced in (\(backlinks.count))")
+          .font(.footnote)
+          .fontWeight(.semibold)
+          .foregroundStyle(.secondary)
+      }
+
+      ForEach(backlinks, id: \.0) { filename, title in
+        Button {
+          // Switch to the document that references this one
+          if let deliverable = vm.researchDeliverables.first(where: { $0.filename == filename }) {
+            selectedDeliverable = deliverable
+            showCombinedDocs = false
+          }
+        } label: {
+          HStack(spacing: 6) {
+            Image(systemName: "doc.text")
+              .font(.system(size: 10))
+              .foregroundStyle(.blue)
+            Text(title)
+              .font(.footnote)
+              .foregroundStyle(.primary)
+              .lineLimit(1)
+          }
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, 2)
+        .onHover { hovering in
+          if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+        }
+      }
+    }
+    .padding(10)
+    .background(DocTheme.subtle)
+    .clipShape(RoundedRectangle(cornerRadius: 8))
+  }
+
+  private var crossDocSearchSection: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      HStack {
+        Image(systemName: "magnifyingglass")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+        Text("Found in other docs (\(crossDocSearchResults.count))")
+          .font(.footnote)
+          .fontWeight(.semibold)
+          .foregroundStyle(.secondary)
+      }
+
+      ForEach(crossDocSearchResults, id: \.0) { filename, title, snippet in
+        Button {
+          // Switch to the matching document
+          if let deliverable = vm.researchDeliverables.first(where: { $0.filename == filename }) {
+            selectedDeliverable = deliverable
+            showCombinedDocs = false
+          }
+        } label: {
+          VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+              Image(systemName: "doc.text")
+                .font(.system(size: 10))
+                .foregroundStyle(.orange)
+              Text(title)
+                .font(.footnote)
+                .fontWeight(.medium)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+            }
+            Text(snippet)
+              .font(.system(size: 10))
+              .foregroundStyle(.secondary)
+              .lineLimit(2)
+              .padding(.leading, 16)
+          }
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, 2)
+        .onHover { hovering in
+          if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+        }
+      }
+    }
+    .padding(10)
+    .background(Color.orange.opacity(0.08))
     .clipShape(RoundedRectangle(cornerRadius: 8))
   }
 

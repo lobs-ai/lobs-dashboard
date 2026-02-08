@@ -82,13 +82,28 @@ struct InboxView: View {
   @State private var selectedItem: InboxItem? = nil
   @State private var searchText: String = ""
   @AppStorage("inboxShowReadItems") private var showReadItems: Bool = true
+  @AppStorage("inboxTriageFilter") private var triageFilter: String = "all"
   @State private var didApplyInitialSelection: Bool = false
 
   private var filteredItems: [InboxItem] {
     var items = vm.inboxItems
+
+    // Filter by read status
     if !showReadItems {
       items = items.filter { !$0.isRead || vm.unreadFollowupCount(docId: $0.id) > 0 }
     }
+
+    // Filter by triage status
+    if triageFilter != "all" {
+      items = items.filter { item in
+        guard let thread = vm.inboxThreadsByDocId[item.id] else {
+          return triageFilter == "needs_response" // Default to needs response if no thread
+        }
+        return thread.triageStatus.rawValue == triageFilter
+      }
+    }
+
+    // Filter by search text
     let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     if !q.isEmpty {
       items = items.filter { item in
@@ -97,6 +112,7 @@ struct InboxView: View {
           || item.summary.lowercased().contains(q)
       }
     }
+
     return items
   }
 
@@ -142,6 +158,47 @@ struct InboxView: View {
         .padding(.vertical, 6)
         .background(ITheme.subtle)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+
+        // Triage filter
+        Menu {
+          Button {
+            triageFilter = "all"
+          } label: {
+            HStack {
+              Text("All")
+              if triageFilter == "all" {
+                Image(systemName: "checkmark")
+              }
+            }
+          }
+
+          Divider()
+
+          ForEach(InboxTriageStatus.allCases, id: \.self) { status in
+            Button {
+              triageFilter = status.rawValue
+            } label: {
+              HStack {
+                Image(systemName: status.iconName)
+                Text(status.displayName)
+                if triageFilter == status.rawValue {
+                  Image(systemName: "checkmark")
+                }
+              }
+            }
+          }
+        } label: {
+          HStack(spacing: 4) {
+            Image(systemName: triageFilter == "all" ? "tray.2" : InboxTriageStatus(rawValue: triageFilter)?.iconName ?? "tray.2")
+            Text(triageFilter == "all" ? "All" : InboxTriageStatus(rawValue: triageFilter)?.displayName ?? "All")
+              .font(.footnote)
+          }
+          .padding(.horizontal, 10)
+          .padding(.vertical, 6)
+          .background(triageFilter == "all" ? ITheme.subtle : Color.orange.opacity(0.12))
+          .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
 
         // Toggle read
         Button {
@@ -545,6 +602,70 @@ private struct DocumentViewer: View {
             proxy.scrollTo("thread-bottom", anchor: .bottom)
           }
         }
+      }
+
+      Divider()
+
+      // Quick reply chips
+      if let thread = thread, thread.triageStatus == .needsResponse {
+        HStack(spacing: 8) {
+          Text("Quick reply:")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+          Button("👍 Yes") {
+            vm.quickReplyInboxThread(docId: item.id, reply: "Yes", triageStatus: .pending)
+          }
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+
+          Button("👎 No") {
+            vm.quickReplyInboxThread(docId: item.id, reply: "No", triageStatus: .resolved)
+          }
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+
+          Button("⏸️ Do later") {
+            vm.quickReplyInboxThread(docId: item.id, reply: "Will do this later", triageStatus: .pending)
+          }
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+
+          Spacer()
+
+          // Manual triage status controls
+          Menu {
+            ForEach(InboxTriageStatus.allCases, id: \.self) { status in
+              Button {
+                vm.updateInboxThreadTriage(docId: item.id, status: status)
+              } label: {
+                HStack {
+                  Image(systemName: status.iconName)
+                  Text(status.displayName)
+                  if thread.triageStatus == status {
+                    Image(systemName: "checkmark")
+                  }
+                }
+              }
+            }
+          } label: {
+            HStack(spacing: 4) {
+              Image(systemName: thread.triageStatus.iconName)
+              Text(thread.triageStatus.displayName)
+              Image(systemName: "chevron.down")
+                .font(.system(size: 10))
+            }
+            .font(.caption)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(ITheme.subtle)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+          }
+          .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 8)
+        .background(Color.orange.opacity(0.08))
       }
 
       Divider()
