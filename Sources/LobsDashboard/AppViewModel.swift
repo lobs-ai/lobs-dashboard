@@ -278,6 +278,45 @@ final class AppViewModel: ObservableObject {
     // Check for dashboard source updates on launch
     checkForDashboardUpdate()
     refreshWorkerRequestPending()
+
+    // Setup app activity monitoring for automatic pause/resume of refresh
+    setupActivityMonitoring()
+  }
+
+  private var wasAutoRefreshEnabledBeforePause: Bool = true
+
+  private func setupActivityMonitoring() {
+    // Pause refresh when app becomes inactive (user switches away)
+    NotificationCenter.default.addObserver(
+      forName: NSApplication.willResignActiveNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      guard let self = self else { return }
+      // Only pause if auto-refresh is currently enabled
+      if self.autoRefreshEnabled {
+        self.wasAutoRefreshEnabledBeforePause = true
+        self.refreshTimer?.invalidate()
+        self.refreshTimer = nil
+      }
+    }
+
+    // Resume refresh when app becomes active again
+    NotificationCenter.default.addObserver(
+      forName: NSApplication.didBecomeActiveNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      guard let self = self else { return }
+      // Only resume if we paused it (user had auto-refresh enabled)
+      if self.wasAutoRefreshEnabledBeforePause && self.autoRefreshEnabled {
+        self.startAutoRefreshIfNeeded()
+        // Do an immediate refresh when becoming active
+        Task { @MainActor in
+          await self.silentReload()
+        }
+      }
+    }
   }
 
   var selectedProject: Project? {
