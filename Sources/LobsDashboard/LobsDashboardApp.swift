@@ -48,5 +48,19 @@ struct LobsDashboardApp: App {
     // Set a reasonable initial window size; the `.frame(minWidth/minHeight)` only
     // constrains resizing and does not guarantee the initial window dimensions.
     .defaultSize(width: 1200, height: 800)
+    .commands {
+      CommandGroup(replacing: .appSettings) {
+        Button("Settings...") {
+          NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        }
+        .keyboardShortcut(",", modifiers: .command)
+      }
+    }
+    
+    // Settings Window
+    Settings {
+      SettingsView()
+        .environmentObject(vm)
+    }
   }
 }
