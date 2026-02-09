@@ -3,6 +3,20 @@ import Foundation
 import SwiftUI
 import UserNotifications
 
+enum GitHubCLIError: Error, LocalizedError {
+  case commandFailed(stderr: String)
+  case parseError(output: String)
+  
+  var errorDescription: String? {
+    switch self {
+    case .commandFailed(let stderr):
+      return "gh command failed: \(stderr)"
+    case .parseError(let output):
+      return "Failed to parse issue number from gh output: \(output)"
+    }
+  }
+}
+
 @MainActor
 final class AppViewModel: ObservableObject {
   @Published private(set) var repoPath: String = ""
@@ -2371,6 +2385,11 @@ final class AppViewModel: ObservableObject {
     let trimmedNotes = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmedTitle.isEmpty, let repoURL else { return }
 
+    // Check if the selected project uses GitHub tracking
+    let project = projects.first(where: { $0.id == selectedProjectId })
+    let isGitHubProject = project?.resolvedTracking == .github
+    let githubConfig = project?.github
+
     // UX: when Rafe creates a task, that means "start work" → goes straight to Active.
     let now = Date()
     var newTask = DashboardTask(
@@ -2389,6 +2408,65 @@ final class AppViewModel: ObservableObject {
       finishedAt: nil
     )
 
+    // For GitHub projects, create the issue first and get the issue number
+    if isGitHubProject, let config = githubConfig {
+      // Show loading state in UI immediately
+      withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+        tasks.append(newTask)
+        sortTasksForUX(&tasks)
+      }
+      selectedTaskId = newTask.id
+      popoverTaskId = newTask.id
+      
+      isGitBusy = true
+      Task {
+        do {
+          // Create GitHub issue and parse issue number
+          let issueNumber = try await createGitHubIssue(
+            repo: config.repo,
+            title: trimmedTitle,
+            body: trimmedNotes ?? "",
+            labels: config.labelFilter
+          )
+          
+          // Update task with GitHub issue number
+          await MainActor.run {
+            if let idx = self.tasks.firstIndex(where: { $0.id == newTask.id }) {
+              self.tasks[idx].githubIssueNumber = issueNumber
+            }
+            newTask.githubIssueNumber = issueNumber
+            self.flashSuccess("Created GitHub issue #\(issueNumber)")
+          }
+          
+          // Save to local cache with GitHub issue number
+          let store = LobsControlStore(repoRoot: repoURL)
+          try store.saveExistingTask(newTask)
+          
+          // Commit and push the cache update
+          try await self.asyncCommitAndMaybePush(
+            repoURL: repoURL,
+            message: "Lobs: add task \(newTask.id) (GitHub issue #\(issueNumber))",
+            autoPush: autoPush
+          )
+          
+          await MainActor.run {
+            self.isGitBusy = false
+            // Refresh cache to ensure consistency
+            self.silentReload()
+          }
+        } catch {
+          await MainActor.run {
+            // Remove the task from UI since creation failed
+            self.tasks.removeAll { $0.id == newTask.id }
+            self.flashError("Failed to create GitHub issue: \(error.localizedDescription)")
+            self.isGitBusy = false
+          }
+        }
+      }
+      return
+    }
+
+    // Local mode: standard flow
     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
       tasks.append(newTask)
       sortTasksForUX(&tasks)
@@ -2419,9 +2497,6 @@ final class AppViewModel: ObservableObject {
     isGitBusy = true
     Task {
       do {
-        // GitHub sync for new tasks is not yet supported with gh CLI
-        // TODO: Implement gh CLI-based sync for task creation
-
         try await asyncCommitAndMaybePush(
           repoURL: repoURL,
           message: "Lobs: submit task \(newTask.id)",
@@ -2461,6 +2536,80 @@ final class AppViewModel: ObservableObject {
       }
       isGitBusy = false
     }
+  }
+  
+  /// Create a GitHub issue using gh CLI and return the issue number.
+  private func createGitHubIssue(repo: String, title: String, body: String, labels: [String]?) async throws -> Int {
+    // Build gh CLI command
+    var args = ["issue", "create", "--repo", repo, "--title", title, "--body", body]
+    
+    // Add labels if provided
+    if let labels = labels, !labels.isEmpty {
+      for label in labels {
+        args.append("--label")
+        args.append(label)
+      }
+    }
+    
+    // Run gh CLI
+    let result = try await runGhCommand(args: args)
+    
+    guard result.ok else {
+      throw GitHubCLIError.commandFailed(stderr: result.stderr)
+    }
+    
+    // Parse issue number from output
+    // gh issue create outputs the issue URL, e.g., "https://github.com/owner/repo/issues/123"
+    let output = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let issueNumber = parseIssueNumberFromURL(output) else {
+      throw GitHubCLIError.parseError(output: output)
+    }
+    
+    return issueNumber
+  }
+  
+  /// Run gh CLI command asynchronously.
+  private func runGhCommand(args: [String]) async throws -> Git.Result {
+    return try await withCheckedThrowingContinuation { continuation in
+      DispatchQueue.global(qos: .userInitiated).async {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        proc.arguments = ["gh"] + args
+        proc.environment = ProcessInfo.processInfo.environment
+        
+        let out = Pipe()
+        let err = Pipe()
+        proc.standardOutput = out
+        proc.standardError = err
+        
+        do {
+          try proc.run()
+          proc.waitUntilExit()
+          
+          let stdout = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+          let stderr = String(data: err.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+          
+          continuation.resume(returning: Git.Result(
+            exitCode: proc.terminationStatus,
+            stdout: stdout,
+            stderr: stderr
+          ))
+        } catch {
+          continuation.resume(throwing: error)
+        }
+      }
+    }
+  }
+  
+  /// Parse issue number from GitHub issue URL.
+  /// Expected format: "https://github.com/owner/repo/issues/123"
+  private func parseIssueNumberFromURL(_ url: String) -> Int? {
+    let components = url.split(separator: "/")
+    guard let lastComponent = components.last,
+          let number = Int(lastComponent) else {
+      return nil
+    }
+    return number
   }
 
   // MARK: - Projects
