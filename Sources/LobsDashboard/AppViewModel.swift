@@ -70,20 +70,30 @@ final class AppViewModel: ObservableObject {
 
   // Inbox (Design Docs)
   @Published var inboxItems: [InboxItem] = []
+
+  /// Read state for inbox documents.
+  ///
+  /// Note: we still mirror this into local settings for convenience/offline caching,
+  /// but the source of truth is the control repo (see `state/inbox/read-state.json`).
   @Published var readItemIds: Set<String> = [] {
     didSet {
+      guard !isApplyingInboxReadState else { return }
       var s = settings
       s.readInboxItemIds = Array(readItemIds)
       settings = s
+      persistInboxReadStateDebounced()
     }
   }
+
   /// Tracks last-seen thread message count per doc ID. When a thread has more messages
   /// than this count, the item shows as having unread follow-ups.
   @Published var lastSeenThreadCounts: [String: Int] = [:] {
     didSet {
+      guard !isApplyingInboxReadState else { return }
       var s = settings
       s.lastSeenThreadCounts = lastSeenThreadCounts
       settings = s
+      persistInboxReadStateDebounced()
     }
   }
   @Published var showInbox: Bool = false
@@ -93,6 +103,10 @@ final class AppViewModel: ObservableObject {
   /// Threads with local edits that haven't been confirmed pushed yet.
   /// Prevents auto-refresh from overwriting freshly-posted messages.
   private var pendingThreadWrites: [String: InboxThread] = [:]
+
+  // Inbox read-state persistence (repo-backed)
+  private var isApplyingInboxReadState: Bool = false
+  private var inboxReadStateCommitTask: Task<Void, Never>? = nil
 
   // Project README
   @Published var projectReadme: String = ""
@@ -1567,9 +1581,67 @@ final class AppViewModel: ObservableObject {
 
   // MARK: - Inbox
 
+  private func applyInboxReadStateFromRepo(store: LobsControlStore) {
+    do {
+      if let file = try store.loadInboxReadState() {
+        isApplyingInboxReadState = true
+        readItemIds = Set(file.readItemIds)
+        lastSeenThreadCounts = file.lastSeenThreadCounts
+        isApplyingInboxReadState = false
+        return
+      }
+
+      // Migration path: if repo file doesn't exist yet, seed it from local settings
+      // so the read state becomes portable across devices.
+      if !readItemIds.isEmpty || !lastSeenThreadCounts.isEmpty {
+        try store.saveInboxReadState(readItemIds: readItemIds, lastSeenThreadCounts: lastSeenThreadCounts)
+        // Best-effort: commit the migrated state so it survives reclones.
+        persistInboxReadStateDebounced()
+      }
+    } catch {
+      // Non-fatal: inbox can still work with local settings.
+      isApplyingInboxReadState = false
+    }
+  }
+
+  private func persistInboxReadStateDebounced() {
+    guard let repoURL else { return }
+
+    // Coalesce rapid read/unread toggles into a single commit.
+    inboxReadStateCommitTask?.cancel()
+    inboxReadStateCommitTask = Task { @MainActor in
+      // Give UI time to batch multiple operations
+      try? await Task.sleep(nanoseconds: 750_000_000)
+      guard !Task.isCancelled else { return }
+
+      let store = LobsControlStore(repoRoot: repoURL)
+      do {
+        try store.saveInboxReadState(readItemIds: readItemIds, lastSeenThreadCounts: lastSeenThreadCounts)
+      } catch {
+        return
+      }
+
+      // Commit + push so the state is durable across reclones.
+      // This is intentionally best-effort and silent.
+      do {
+        try await asyncCommitAndMaybePush(
+          repoURL: repoURL,
+          message: "Lobs: update inbox read state",
+          autoPush: true
+        )
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   func loadInboxItems(store: LobsControlStore? = nil) {
     guard let repoURL else { return }
     let s = store ?? LobsControlStore(repoRoot: repoURL)
+
+    // Pull repo-backed read state (and migrate from local settings if needed).
+    applyInboxReadStateFromRepo(store: s)
+
     do {
       var items = try s.loadInboxItems()
       // Apply read state
@@ -4501,25 +4573,40 @@ final class AppViewModel: ObservableObject {
 
   /// Load inbox items asynchronously (off main thread)
   private func loadInboxItemsAsync(store: LobsControlStore) async {
-    let data: ([InboxItem], [String: InboxThread])? = await Task.detached { () -> ([InboxItem], [String: InboxThread])? in
+    let data: (items: [InboxItem], threads: [String: InboxThread], readState: InboxReadStateFile?)? = await Task.detached { () -> (items: [InboxItem], threads: [String: InboxThread], readState: InboxReadStateFile?)? in
       do {
         let items = try store.loadInboxItems()
         let threads = try store.loadAllInboxThreads()
-        return (items, threads)
+        let readState = try store.loadInboxReadState()
+        return (items: items, threads: threads, readState: readState)
       } catch {
         return nil
       }
     }.value
-    
-    guard let (items, threads) = data else { return }
-    
+
+    guard let data else { return }
+
     await MainActor.run {
+      // Apply repo-backed read state if present; otherwise keep local state.
+      if let file = data.readState {
+        self.isApplyingInboxReadState = true
+        self.readItemIds = Set(file.readItemIds)
+        self.lastSeenThreadCounts = file.lastSeenThreadCounts
+        self.isApplyingInboxReadState = false
+      }
+
+      // Apply read state to items.
+      var items = data.items
+      for i in items.indices {
+        items[i].isRead = self.readItemIds.contains(items[i].id)
+      }
+
       // Merge with pendingThreadWrites to preserve local edits
-      var mergedThreads = threads
+      var mergedThreads = data.threads
       for (docId, pendingThread) in self.pendingThreadWrites {
         mergedThreads[docId] = pendingThread
       }
-      
+
       self.inboxItems = items
       self.inboxThreadsByDocId = mergedThreads
     }

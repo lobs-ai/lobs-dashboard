@@ -575,6 +575,18 @@ struct InboxResponse: Codable, Identifiable, Hashable {
   var updatedAt: Date
 }
 
+// MARK: - Inbox Read State (repo-backed)
+
+/// Repo-backed read/seen state for inbox items.
+///
+/// Stored in the control repo so it survives reinstall/reclone across machines.
+struct InboxReadStateFile: Codable, Hashable {
+  var schemaVersion: Int
+  var generatedAt: Date
+  var readItemIds: [String]
+  var lastSeenThreadCounts: [String: Int]
+}
+
 // MARK: - Inbox Thread (threaded conversations per document)
 
 enum InboxTriageStatus: String, Codable, Hashable, CaseIterable {

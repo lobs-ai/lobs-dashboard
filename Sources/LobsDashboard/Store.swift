@@ -916,6 +916,40 @@ final class LobsControlStore {
     repoRoot.appendingPathComponent("state").appendingPathComponent("inbox-responses")
   }
 
+  // MARK: - Inbox Read State (repo-backed)
+
+  private var inboxReadStateURL: URL {
+    repoRoot
+      .appendingPathComponent("state")
+      .appendingPathComponent("inbox")
+      .appendingPathComponent("read-state.json")
+  }
+
+  func loadInboxReadState() throws -> InboxReadStateFile? {
+    let fm = FileManager.default
+    guard fm.fileExists(atPath: inboxReadStateURL.path) else { return nil }
+    let data = try Data(contentsOf: inboxReadStateURL)
+    return try decoder().decode(InboxReadStateFile.self, from: data)
+  }
+
+  func saveInboxReadState(readItemIds: Set<String>, lastSeenThreadCounts: [String: Int]) throws {
+    try FileManager.default.createDirectory(
+      at: inboxReadStateURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true,
+      attributes: nil
+    )
+
+    let file = InboxReadStateFile(
+      schemaVersion: 1,
+      generatedAt: Date(),
+      readItemIds: Array(readItemIds).sorted(),
+      lastSeenThreadCounts: lastSeenThreadCounts
+    )
+
+    let data = try encodeToPythonJSON(file)
+    try data.write(to: inboxReadStateURL, options: [.atomic])
+  }
+
   private var inboxThreadsDirURL: URL {
     inboxResponsesDirURL.appendingPathComponent("threads")
   }
