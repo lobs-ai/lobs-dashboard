@@ -1,0 +1,237 @@
+import SwiftUI
+
+/// Repository setup screen of the onboarding wizard
+struct OnboardingRepoSetupView: View {
+    @EnvironmentObject var vm: AppViewModel
+    let onBack: () -> Void
+    let onContinue: (String, Bool) -> Void
+    
+    @State private var repoChoice: RepoChoice = .existing
+    @State private var sshUrl: String = ""
+    @State private var validationError: String? = nil
+    
+    /// Whether the user has an existing repo or needs to create one
+    enum RepoChoice {
+        case existing
+        case new
+    }
+    
+    var body: some View {
+        VStack(spacing: 32) {
+            Spacer()
+            
+            VStack(spacing: 12) {
+                // Title
+                Text("Control Repository")
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundColor(.primary)
+                
+                // Subtitle
+                Text("Set up your control repository to store configuration and task data.")
+                    .font(.system(size: 14))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 480)
+            }
+            
+            VStack(spacing: 24) {
+                // Radio button selection
+                VStack(spacing: 12) {
+                    RadioOption(
+                        title: "I have an existing control repo",
+                        isSelected: repoChoice == .existing,
+                        action: {
+                            repoChoice = .existing
+                            validationError = nil
+                        }
+                    )
+                    
+                    RadioOption(
+                        title: "I need to create a new one",
+                        isSelected: repoChoice == .new,
+                        action: {
+                            repoChoice = .new
+                            validationError = nil
+                        }
+                    )
+                }
+                .padding(.top, 8)
+                
+                // Instructions for new repo
+                if repoChoice == .new {
+                    HStack(spacing: 8) {
+                        Image(systemName: "info.circle")
+                            .foregroundColor(.secondary)
+                        Text("Create an empty repository on GitHub, then paste the SSH URL below")
+                            .font(.system(size: 13))
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: 450, alignment: .leading)
+                }
+                
+                // SSH URL input field
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("SSH URL")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.secondary)
+                    
+                    TextField("git@github.com:user/lobs-control.git", text: $sshUrl)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 14, design: .monospaced))
+                        .padding(10)
+                        .background(Theme.cardBg)
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(validationError != nil ? Color.red : Theme.border, lineWidth: 1)
+                        )
+                        .onChange(of: sshUrl) { _ in
+                            validationError = nil
+                        }
+                    
+                    // Helper or error text
+                    if let error = validationError {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 11))
+                            Text(error)
+                                .font(.system(size: 12))
+                        }
+                        .foregroundColor(.red)
+                    } else {
+                        Text(helperText)
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .frame(width: 450)
+            }
+            
+            Spacer()
+            
+            // Navigation buttons
+            HStack(spacing: 12) {
+                Button(action: onBack) {
+                    Text("Back")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.primary)
+                        .frame(width: 120)
+                        .padding(.vertical, 10)
+                }
+                .buttonStyle(.plain)
+                .background(Theme.cardBg)
+                .cornerRadius(8)
+                
+                Button(action: handleContinue) {
+                    Text("Continue")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.white)
+                        .frame(width: 120)
+                        .padding(.vertical, 10)
+                }
+                .buttonStyle(.plain)
+                .background(Theme.accent)
+                .cornerRadius(8)
+                .disabled(sshUrl.trimmingCharacters(in: .whitespaces).isEmpty)
+                .opacity(sshUrl.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1.0)
+            }
+            .padding(.bottom, 60)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.bg)
+    }
+    
+    /// Helper text that changes based on repo choice
+    private var helperText: String {
+        switch repoChoice {
+        case .existing:
+            return "Enter the SSH URL of your existing control repository"
+        case .new:
+            return "We will initialize the required structure for you"
+        }
+    }
+    
+    /// Validate SSH URL and proceed if valid
+    private func handleContinue() {
+        let trimmedUrl = sshUrl.trimmingCharacters(in: .whitespaces)
+        
+        // Validate SSH URL format
+        if !isValidSSHUrl(trimmedUrl) {
+            validationError = "Invalid SSH URL format. Must start with 'git@' or use SSH format."
+            return
+        }
+        
+        // Pass data to parent
+        let isNewRepo = repoChoice == .new
+        onContinue(trimmedUrl, isNewRepo)
+    }
+    
+    /// Validate that the URL is a proper SSH Git URL
+    private func isValidSSHUrl(_ url: String) -> Bool {
+        // Check if it starts with git@
+        if url.hasPrefix("git@") {
+            // Basic check: should contain : and end with .git
+            return url.contains(":") && url.hasSuffix(".git")
+        }
+        
+        // Check for ssh:// format
+        if url.hasPrefix("ssh://") {
+            return url.hasSuffix(".git")
+        }
+        
+        return false
+    }
+}
+
+/// Reusable radio button option component
+struct RadioOption: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                // Radio circle
+                ZStack {
+                    Circle()
+                        .stroke(isSelected ? Theme.accent : Color.secondary.opacity(0.3), lineWidth: 2)
+                        .frame(width: 20, height: 20)
+                    
+                    if isSelected {
+                        Circle()
+                            .fill(Theme.accent)
+                            .frame(width: 10, height: 10)
+                    }
+                }
+                
+                Text(title)
+                    .font(.system(size: 14))
+                    .foregroundColor(.primary)
+                
+                Spacer()
+            }
+            .padding(12)
+            .frame(maxWidth: 450)
+            .background(isSelected ? Theme.accent.opacity(0.08) : Theme.cardBg)
+            .cornerRadius(10)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(isSelected ? Theme.accent.opacity(0.3) : Theme.border, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+#Preview {
+    OnboardingRepoSetupView(
+        onBack: {},
+        onContinue: { url, isNew in
+            print("Continue with URL: \(url), isNew: \(isNew)")
+        }
+    )
+    .environmentObject(AppViewModel())
+    .frame(width: 800, height: 600)
+}
