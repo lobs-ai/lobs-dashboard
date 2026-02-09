@@ -547,6 +547,9 @@ final class AppViewModel: ObservableObject {
         // Check for dashboard source updates on every sync
         checkForDashboardUpdate()
 
+        // Check control repo ahead/behind status
+        checkControlRepoStatus()
+
         // Update pending changes count
         updatePendingChangesCount()
       } catch {
