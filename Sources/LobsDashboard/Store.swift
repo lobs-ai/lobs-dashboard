@@ -1711,10 +1711,20 @@ final class LobsControlStore {
   // MARK: - Main Session Usage
 
   func loadMainSessionUsage() throws -> MainSessionUsage? {
-    let url = repoRoot
-      .appendingPathComponent("state")
-      .appendingPathComponent("main-session-usage.json")
-    guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+    // Tracked in the control repo by the orchestrator. The file name/path has changed a few times,
+    // so we probe a small set of known locations for backwards/forwards compatibility.
+    let candidates: [URL] = [
+      repoRoot.appendingPathComponent("state").appendingPathComponent("main-session-usage.json"),
+      repoRoot.appendingPathComponent("state").appendingPathComponent("main_session_usage.json"),
+      repoRoot.appendingPathComponent("state").appendingPathComponent("main-usage.json"),
+      repoRoot.appendingPathComponent("state").appendingPathComponent("ai-usage.json"),
+      repoRoot.appendingPathComponent("state").appendingPathComponent("ai").appendingPathComponent("main-session-usage.json"),
+      repoRoot.appendingPathComponent("state").appendingPathComponent("usage").appendingPathComponent("main-session-usage.json"),
+      repoRoot.appendingPathComponent("state").appendingPathComponent("usage").appendingPathComponent("main_session_usage.json"),
+    ]
+
+    let fm = FileManager.default
+    guard let url = candidates.first(where: { fm.fileExists(atPath: $0.path) }) else { return nil }
     let data = try Data(contentsOf: url)
     return try decoder().decode(MainSessionUsage.self, from: data)
   }
