@@ -20,10 +20,13 @@ final class AppViewModel: ObservableObject {
   private let selectedProjectIdKey = "selectedProjectId"
 
   @Published private(set) var repoPath: String = ""
+  
+  /// Current application configuration
+  @Published var config: AppConfig?
 
   /// Whether onboarding is needed (config not set or incomplete)
   var needsOnboarding: Bool {
-    guard let config = ConfigManager.load() else { return true }
+    guard let config = config else { return true }
     return !config.onboardingComplete || config.controlRepoPath.isEmpty
   }
 
@@ -256,9 +259,12 @@ final class AppViewModel: ObservableObject {
   private var refreshTimer: Timer?
 
   init() {
-    // Load repo path from ConfigManager (config-driven, not UserDefaults)
-    if let config = ConfigManager.load() {
-      repoPath = config.controlRepoPath
+    // Load config from ConfigManager
+    config = ConfigManager.load()
+    
+    // Load repo path from config
+    if let loadedConfig = config {
+      repoPath = loadedConfig.controlRepoPath
     } else {
       repoPath = ""
     }

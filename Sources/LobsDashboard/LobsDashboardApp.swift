@@ -7,36 +7,43 @@ struct LobsDashboardApp: App {
 
   var body: some Scene {
     WindowGroup {
-      ContentView()
-        .environmentObject(vm)
-        .frame(minWidth: 1100, minHeight: 720)
-        .onAppear {
-          // Register global quick capture hotkey (⌘⇧Space)
-          QuickCapturePanel.shared.setup(vm: vm)
-          // Ensure the app becomes key so keyboard input goes to fields.
-          NSApp.activate(ignoringOtherApps: true)
-          // Request notification permissions for worker event alerts
-          vm.requestNotificationPermissions()
-          // Set app icon from bundled resource.
-          // NOTE: This project is SwiftPM-based, so resources are accessed via `Bundle.module`.
-          // Prefer the rounded variant so the Dock icon matches typical macOS icon shape.
-          let iconUrl = Bundle.module.url(forResource: "AppIconRounded", withExtension: "png")
-            ?? Bundle.module.url(forResource: "AppIcon", withExtension: "png")
-          if let url = iconUrl,
-             let img = NSImage(contentsOf: url) {
-            NSApplication.shared.applicationIconImage = img
-          }
-          // Enable macOS native spell checking globally for all text views.
-          // NSSpellChecker is the system spell checker; enabling continuous
-          // spell checking and automatic spelling correction covers all
-          // NSTextView-backed fields (TextField with axis: .vertical, TextEditor).
-          NSSpellChecker.shared.automaticallyIdentifiesLanguages = true
-          // Enable continuous spell checking on all NSTextView instances via
-          // swizzling the default: when a new NSTextView appears, the system
-          // respects the user's global preference. We nudge it here.
-          UserDefaults.standard.set(true, forKey: "NSAllowsContinuousSpellChecking")
-          UserDefaults.standard.set(true, forKey: "WebContinuousSpellCheckingEnabled")
+      Group {
+        if vm.needsOnboarding {
+          OnboardingView()
+            .environmentObject(vm)
+        } else {
+          ContentView()
+            .environmentObject(vm)
+            .frame(minWidth: 1100, minHeight: 720)
         }
+      }
+      .onAppear {
+        // Register global quick capture hotkey (⌘⇧Space)
+        QuickCapturePanel.shared.setup(vm: vm)
+        // Ensure the app becomes key so keyboard input goes to fields.
+        NSApp.activate(ignoringOtherApps: true)
+        // Request notification permissions for worker event alerts
+        vm.requestNotificationPermissions()
+        // Set app icon from bundled resource.
+        // NOTE: This project is SwiftPM-based, so resources are accessed via `Bundle.module`.
+        // Prefer the rounded variant so the Dock icon matches typical macOS icon shape.
+        let iconUrl = Bundle.module.url(forResource: "AppIconRounded", withExtension: "png")
+          ?? Bundle.module.url(forResource: "AppIcon", withExtension: "png")
+        if let url = iconUrl,
+           let img = NSImage(contentsOf: url) {
+          NSApplication.shared.applicationIconImage = img
+        }
+        // Enable macOS native spell checking globally for all text views.
+        // NSSpellChecker is the system spell checker; enabling continuous
+        // spell checking and automatic spelling correction covers all
+        // NSTextView-backed fields (TextField with axis: .vertical, TextEditor).
+        NSSpellChecker.shared.automaticallyIdentifiesLanguages = true
+        // Enable continuous spell checking on all NSTextView instances via
+        // swizzling the default: when a new NSTextView appears, the system
+        // respects the user's global preference. We nudge it here.
+        UserDefaults.standard.set(true, forKey: "NSAllowsContinuousSpellChecking")
+        UserDefaults.standard.set(true, forKey: "WebContinuousSpellCheckingEnabled")
+      }
     }
     // Set a reasonable initial window size; the `.frame(minWidth/minHeight)` only
     // constrains resizing and does not guarantee the initial window dimensions.
