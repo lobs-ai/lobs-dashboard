@@ -46,7 +46,12 @@ class ConfigManager {
         
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(config)
+        var data = try encoder.encode(config)
+        // Convert to Python-compatible format (": " instead of " : ")
+        if var jsonString = String(data: data, encoding: .utf8) {
+            jsonString = jsonString.replacingOccurrences(of: " : ", with: ": ")
+            data = Data(jsonString.utf8)
+        }
         try data.write(to: configFile, options: .atomic)
     }
     

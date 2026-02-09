@@ -64,6 +64,17 @@ final class LobsControlStore {
     return e
   }
 
+  /// Encode value to JSON with Python-compatible formatting (": " instead of " : ").
+  private func encodeToPythonJSON<T: Encodable>(_ value: T) throws -> Data {
+    let data = try encoder().encode(value)
+    guard var jsonString = String(data: data, encoding: .utf8) else {
+      return data
+    }
+    // Replace Swift's " : " with Python's ": "
+    jsonString = jsonString.replacingOccurrences(of: " : ", with: ": ")
+    return Data(jsonString.utf8)
+  }
+
   private func taskFileURL(taskId: String) -> URL {
     tasksDirURL.appendingPathComponent("\(taskId).json")
   }
@@ -95,7 +106,7 @@ final class LobsControlStore {
       withIntermediateDirectories: true
     )
 
-    let data = try encoder().encode(file)
+    let data = try encodeToPythonJSON(file)
     try data.write(to: projectsURL, options: [.atomic])
   }
 
@@ -262,16 +273,15 @@ final class LobsControlStore {
         withIntermediateDirectories: true
       )
 
-      let enc = encoder()
       for task in file.tasks {
-        let data = try enc.encode(task)
+        let data = try encodeToPythonJSON(task)
         try data.write(to: taskFileURL(taskId: task.id), options: [.atomic])
       }
 
       // Keep legacy tasks.json updated too (helps older tooling).
       var legacy = file
       legacy.generatedAt = Date()
-      let legacyData = try enc.encode(legacy)
+      let legacyData = try encodeToPythonJSON(legacy)
       try FileManager.default.createDirectory(
         at: tasksURL.deletingLastPathComponent(),
         withIntermediateDirectories: true
@@ -284,7 +294,7 @@ final class LobsControlStore {
     var file = file
     file.generatedAt = Date()
 
-    let data = try encoder().encode(file)
+    let data = try encodeToPythonJSON(file)
 
     try FileManager.default.createDirectory(
       at: tasksURL.deletingLastPathComponent(),
@@ -466,7 +476,7 @@ final class LobsControlStore {
       var task = try decoder().decode(DashboardTask.self, from: data)
       task.status = status
       task.updatedAt = Date()
-      let out = try encoder().encode(task)
+      let out = try encodeToPythonJSON(task)
       try out.write(to: url, options: [.atomic])
       return
     }
@@ -486,7 +496,7 @@ final class LobsControlStore {
       var task = try decoder().decode(DashboardTask.self, from: data)
       task.workState = workState
       task.updatedAt = Date()
-      let out = try encoder().encode(task)
+      let out = try encodeToPythonJSON(task)
       try out.write(to: url, options: [.atomic])
       return
     }
@@ -506,7 +516,7 @@ final class LobsControlStore {
       var task = try decoder().decode(DashboardTask.self, from: data)
       task.reviewState = reviewState
       task.updatedAt = Date()
-      let out = try encoder().encode(task)
+      let out = try encodeToPythonJSON(task)
       try out.write(to: url, options: [.atomic])
       return
     }
@@ -526,7 +536,7 @@ final class LobsControlStore {
       var task = try decoder().decode(DashboardTask.self, from: data)
       task.sortOrder = sortOrder
       task.updatedAt = Date()
-      let out = try encoder().encode(task)
+      let out = try encodeToPythonJSON(task)
       try out.write(to: url, options: [.atomic])
       return
     }
@@ -561,7 +571,7 @@ final class LobsControlStore {
       task.title = cleanTitle.isEmpty ? task.title : cleanTitle
       task.notes = (cleanNotes?.isEmpty == true) ? nil : cleanNotes
       task.updatedAt = Date()
-      let out = try encoder().encode(task)
+      let out = try encodeToPythonJSON(task)
       try out.write(to: url, options: [.atomic])
       return
     }
@@ -601,7 +611,7 @@ final class LobsControlStore {
 
     if FileManager.default.fileExists(atPath: tasksDirURL.path) {
       try FileManager.default.createDirectory(at: tasksDirURL, withIntermediateDirectories: true)
-      let out = try encoder().encode(task)
+      let out = try encodeToPythonJSON(task)
       try out.write(to: taskFileURL(taskId: task.id), options: [.atomic])
       return task
     }
@@ -615,7 +625,7 @@ final class LobsControlStore {
   func saveExistingTask(_ task: DashboardTask) throws {
     if FileManager.default.fileExists(atPath: tasksDirURL.path) {
       let url = taskFileURL(taskId: task.id)
-      let data = try encoder().encode(task)
+      let data = try encodeToPythonJSON(task)
       try data.write(to: url, options: [.atomic])
       return
     }
@@ -902,7 +912,7 @@ final class LobsControlStore {
       attributes: nil
     )
 
-    let data = try encoder().encode(existing!)
+    let data = try encodeToPythonJSON(existing!)
     try data.write(to: url, options: [.atomic])
     return existing!
   }
@@ -1072,7 +1082,7 @@ final class LobsControlStore {
       attributes: nil
     )
 
-    let data = try encoder().encode(thread)
+    let data = try encodeToPythonJSON(thread)
     try data.write(to: url, options: [.atomic])
   }
 
@@ -1191,7 +1201,7 @@ final class LobsControlStore {
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let url = researchSourcesURL(projectId: projectId)
     let file = ResearchSourcesFile(sources: sources)
-    let data = try encoder().encode(file)
+    let data = try encodeToPythonJSON(file)
     try data.write(to: url, options: [.atomic])
   }
 
@@ -1311,7 +1321,7 @@ final class LobsControlStore {
     let dir = tilesDirURL(projectId: tile.projectId)
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let url = dir.appendingPathComponent("\(tile.id).json")
-    let data = try encoder().encode(tile)
+    let data = try encodeToPythonJSON(tile)
     try data.write(to: url, options: [.atomic])
   }
 
@@ -1356,7 +1366,7 @@ final class LobsControlStore {
     let dir = requestsDirURL(projectId: request.projectId)
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let url = dir.appendingPathComponent("\(request.id).json")
-    let data = try encoder().encode(request)
+    let data = try encodeToPythonJSON(request)
     try data.write(to: url, options: [.atomic])
   }
 
@@ -1397,7 +1407,7 @@ final class LobsControlStore {
     let dir = trackerItemsDirURL(projectId: item.projectId)
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let url = dir.appendingPathComponent("\(item.id).json")
-    let data = try encoder().encode(item)
+    let data = try encodeToPythonJSON(item)
     try data.write(to: url, options: [.atomic])
   }
 
@@ -1445,7 +1455,7 @@ final class LobsControlStore {
     let dir = trackerRequestsDirURL(projectId: request.projectId)
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let url = dir.appendingPathComponent("\(request.id).json")
-    let data = try encoder().encode(request)
+    let data = try encodeToPythonJSON(request)
     try data.write(to: url, options: [.atomic])
   }
 
@@ -1488,7 +1498,7 @@ final class LobsControlStore {
   func saveTemplate(_ template: TaskTemplate) throws {
     try FileManager.default.createDirectory(at: templatesDirURL, withIntermediateDirectories: true)
     let url = templatesDirURL.appendingPathComponent("\(template.id).json")
-    let data = try encoder().encode(template)
+    let data = try encodeToPythonJSON(template)
     try data.write(to: url, options: [.atomic])
   }
 
@@ -1539,7 +1549,7 @@ final class LobsControlStore {
   func saveTextDump(_ dump: TextDump) throws {
     try FileManager.default.createDirectory(at: textDumpsDir, withIntermediateDirectories: true)
     let url = textDumpsDir.appendingPathComponent("\(dump.id).json")
-    let data = try encoder().encode(dump)
+    let data = try encodeToPythonJSON(dump)
     try data.write(to: url)
   }
 
@@ -1599,7 +1609,12 @@ final class LobsControlStore {
       "requestedAt": ISO8601DateFormatter().string(from: Date()),
       "source": "dashboard"
     ]
-    let data = try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
+    var data = try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
+    // Convert to Python-compatible format (": " instead of " : ")
+    if var jsonString = String(data: data, encoding: .utf8) {
+      jsonString = jsonString.replacingOccurrences(of: " : ", with: ": ")
+      data = Data(jsonString.utf8)
+    }
     try data.write(to: workerRequestURL)
   }
 }
