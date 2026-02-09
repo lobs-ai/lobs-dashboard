@@ -7,8 +7,7 @@ import UserNotifications
 final class AppViewModel: ObservableObject {
   private let settings = UserDefaults.standard
 
-  // UserDefaults keys
-  private let repoPathKey = "repoPath"
+  // UserDefaults keys (repoPath migrated to ConfigManager)
   private let ownerFilterKey = "ownerFilter"
   private let wipLimitActiveKey = "wipLimitActive"
   private let completedShowRecentKey = "completedShowRecent"
@@ -21,6 +20,12 @@ final class AppViewModel: ObservableObject {
   private let selectedProjectIdKey = "selectedProjectId"
 
   @Published private(set) var repoPath: String = ""
+
+  /// Whether onboarding is needed (config not set or incomplete)
+  var needsOnboarding: Bool {
+    guard let config = ConfigManager.load() else { return true }
+    return !config.onboardingComplete || config.controlRepoPath.isEmpty
+  }
 
   @Published var tasks: [DashboardTask] = []
   @Published var selectedTaskId: String? = nil
@@ -251,7 +256,13 @@ final class AppViewModel: ObservableObject {
   private var refreshTimer: Timer?
 
   init() {
-    repoPath = settings.string(forKey: repoPathKey) ?? ""
+    // Load repo path from ConfigManager (config-driven, not UserDefaults)
+    if let config = ConfigManager.load() {
+      repoPath = config.controlRepoPath
+    } else {
+      repoPath = ""
+    }
+    
     selectedProjectId = settings.string(forKey: selectedProjectIdKey) ?? "default"
 
     // Load persisted settings (with safe defaults)
@@ -499,7 +510,17 @@ final class AppViewModel: ObservableObject {
 
   func setRepoURL(_ url: URL) {
     repoPath = url.path
-    settings.set(repoPath, forKey: repoPathKey)
+    
+    // Save to ConfigManager instead of UserDefaults
+    var config = ConfigManager.load() ?? AppConfig()
+    config.controlRepoPath = url.path
+    config.onboardingComplete = true
+    
+    do {
+      try ConfigManager.save(config)
+    } catch {
+      print("⚠️ Failed to save config: \(error)")
+    }
   }
 
   /// URL of the lobs-dashboard repo — derived as sibling of lobs-control.
@@ -3462,7 +3483,7 @@ final class AppViewModel: ObservableObject {
     }
   }
 
-  /// Persist a research request update to ~/lobs-control and push.
+  /// Persist a research request update to the control repository and push.
   func updateRequest(_ request: ResearchRequest) {
     guard let repoURL else { return }
     var updated = request

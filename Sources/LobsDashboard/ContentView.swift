@@ -63,6 +63,7 @@ struct ContentView: View {
   @State private var showAIUsage = false
   @State private var requestSearchFocus = false
   @State private var showCommandPalette = false
+  @State private var showOnboarding = false
 
   var body: some View {
     ZStack(alignment: .top) {
@@ -348,6 +349,7 @@ struct ContentView: View {
       switch result {
       case .success(let url):
         vm.setRepoURL(url)
+        showOnboarding = false  // Close onboarding if it was open
         vm.reload()
       case .failure(let err):
         vm.lastError = String(describing: err)
@@ -375,7 +377,17 @@ struct ContentView: View {
     .sheet(isPresented: $showTextDumpResults) {
       TextDumpResultsSheet(vm: vm)
     }
-    .onAppear { vm.reloadIfPossible() }
+    .sheet(isPresented: $showOnboarding) {
+      OnboardingSheet(vm: vm, showPicker: $showPicker)
+    }
+    .onAppear {
+      // Check if onboarding is needed on first launch
+      if vm.needsOnboarding {
+        showOnboarding = true
+      } else {
+        vm.reloadIfPossible()
+      }
+    }
     .onChange(of: vm.textDumps) { _ in
       // Auto-show results when a dump finishes processing
       if !vm.unreviewedCompletedDumps.isEmpty && !showTextDumpResults {
@@ -4420,5 +4432,99 @@ private struct TextDumpResultsSheet: View {
       Image(systemName: "circle")
         .foregroundStyle(.secondary)
     }
+  }
+}
+
+// MARK: - Onboarding Sheet
+
+struct OnboardingSheet: View {
+  @ObservedObject var vm: AppViewModel
+  @Binding var showPicker: Bool
+  @Environment(\.dismiss) var dismiss
+  
+  var body: some View {
+    VStack(spacing: 24) {
+      // Header
+      VStack(spacing: 8) {
+        Image(systemName: "folder.badge.gearshape")
+          .font(.system(size: 48))
+          .foregroundStyle(.blue)
+        
+        Text("Welcome to Lobs Dashboard")
+          .font(.title)
+          .fontWeight(.bold)
+        
+        Text("Get started by choosing your control repository location")
+          .font(.body)
+          .foregroundStyle(.secondary)
+      }
+      .padding(.top, 32)
+      
+      Divider()
+      
+      // Instructions
+      VStack(alignment: .leading, spacing: 16) {
+        Text("Setup Instructions")
+          .font(.headline)
+        
+        VStack(alignment: .leading, spacing: 12) {
+          HStack(alignment: .top, spacing: 12) {
+            Text("1.")
+              .fontWeight(.semibold)
+              .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+              Text("Choose your control repository folder")
+                .fontWeight(.medium)
+              Text("This is where Lobs Dashboard will sync all your tasks, projects, and research data.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+          }
+          
+          HStack(alignment: .top, spacing: 12) {
+            Text("2.")
+              .fontWeight(.semibold)
+              .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+              Text("The folder should be a git repository")
+                .fontWeight(.medium)
+              Text("Lobs Dashboard uses git to sync state across devices and with AI agents.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+          }
+          
+          HStack(alignment: .top, spacing: 12) {
+            Text("3.")
+              .fontWeight(.semibold)
+              .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+              Text("Click 'Choose Folder' to get started")
+                .fontWeight(.medium)
+              Text("You can change this later in Settings if needed.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+          }
+        }
+      }
+      .padding(.horizontal, 24)
+      
+      Spacer()
+      
+      // Action button
+      Button {
+        showPicker = true
+        dismiss()
+      } label: {
+        Label("Choose Folder", systemImage: "folder.badge.plus")
+          .frame(maxWidth: .infinity)
+      }
+      .buttonStyle(.borderedProminent)
+      .controlSize(.large)
+      .padding(.horizontal, 24)
+      .padding(.bottom, 24)
+    }
+    .frame(width: 500, height: 500)
   }
 }
