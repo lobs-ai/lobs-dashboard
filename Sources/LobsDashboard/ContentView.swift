@@ -493,7 +493,15 @@ private struct KeyboardShortcutReceiver: View {
     .allowsHitTesting(false)
     #if os(macOS)
     .background(
-      ArrowKeyMonitor(onDown: onNextTask, onUp: onPrevTask, onRight: onNextColumn, onLeft: onPrevColumn, onEscape: onEscape, onProjectSwitch: onProjectSwitch)
+      ArrowKeyMonitor(
+        onDown: onNextTask,
+        onUp: onPrevTask,
+        onRight: onNextColumn,
+        onLeft: onPrevColumn,
+        onEscape: onEscape,
+        onProjectSwitch: onProjectSwitch,
+        onCommandPalette: onSearch
+      )
     )
     #endif
   }
@@ -509,6 +517,7 @@ private struct ArrowKeyMonitor: NSViewRepresentable {
   var onLeft: (() -> Void)? = nil
   var onEscape: (() -> Bool)? = nil
   var onProjectSwitch: ((Int) -> Void)? = nil
+  var onCommandPalette: (() -> Void)? = nil
 
   func makeNSView(context: Context) -> NSView {
     let view = NSView()
@@ -516,6 +525,7 @@ private struct ArrowKeyMonitor: NSViewRepresentable {
     context.coordinator.onRight = onRight
     context.coordinator.onLeft = onLeft
     context.coordinator.onProjectSwitch = onProjectSwitch
+    context.coordinator.onCommandPalette = onCommandPalette
     context.coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
       // Escape key — close overlays first (works even when text fields are focused)
       if event.keyCode == 53 { // escape
@@ -524,6 +534,15 @@ private struct ArrowKeyMonitor: NSViewRepresentable {
           if handled { return nil }
         }
         return event
+      }
+
+      // ⌘K — command palette (must work even when text fields are focused)
+      if event.modifierFlags.contains(.command),
+         let chars = event.charactersIgnoringModifiers?.lowercased(),
+         chars == "k",
+         let handler = context.coordinator.onCommandPalette {
+        DispatchQueue.main.async { handler() }
+        return nil
       }
 
       // ⌘0-9 — project switching (works even in text fields)
@@ -579,6 +598,7 @@ private struct ArrowKeyMonitor: NSViewRepresentable {
     context.coordinator.onRight = onRight
     context.coordinator.onLeft = onLeft
     context.coordinator.onProjectSwitch = onProjectSwitch
+    context.coordinator.onCommandPalette = onCommandPalette
   }
 
   static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
@@ -595,6 +615,7 @@ private struct ArrowKeyMonitor: NSViewRepresentable {
     var onRight: (() -> Void)?
     var onLeft: (() -> Void)?
     var onProjectSwitch: ((Int) -> Void)?
+    var onCommandPalette: (() -> Void)?
   }
 }
 #endif
