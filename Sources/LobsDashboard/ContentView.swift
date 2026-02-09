@@ -872,7 +872,7 @@ private struct ToolbarArea: View {
               }
               Image(systemName: projectTypeIcon(p.resolvedType))
               Text(p.title)
-              if p.syncMode == .github {
+              if p.tracking == .github {
                 Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
                   .foregroundStyle(.blue)
                   .help("Synced with GitHub Issues")
@@ -1142,7 +1142,7 @@ private struct ToolbarArea: View {
       }
 
       // GitHub sync status (for collaborative projects)
-      if vm.selectedProject?.syncMode == .github {
+      if vm.selectedProject?.tracking == .github {
         if vm.isGitHubSyncing {
           HStack(spacing: 4) {
             ProgressView()
@@ -1159,30 +1159,31 @@ private struct ToolbarArea: View {
                         elapsed < 3600 ? "\(Int(elapsed/60))m ago" :
                         elapsed < 86400 ? "\(Int(elapsed/3600))h ago" :
                         "\(Int(elapsed/86400))d ago"
+          let isStale = elapsed > 300  // Consider stale after 5 minutes
           HStack(spacing: 4) {
-            Image(systemName: "checkmark.circle.fill")
+            Image(systemName: isStale ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
               .font(.system(size: 10))
-              .foregroundStyle(.green)
-            Text("GitHub \(timeAgo)")
+              .foregroundStyle(isStale ? .orange : .green)
+            Text("Cache \(timeAgo)")
               .font(.system(size: 10, weight: .medium))
               .foregroundStyle(.secondary)
           }
-          .help("Last synced with GitHub Issues at \(lastSync.formatted(date: .abbreviated, time: .shortened))")
-        } else if let error = vm.lastGitHubSyncError {
+          .help("Last cached from GitHub at \(lastSync.formatted(date: .abbreviated, time: .shortened))\(isStale ? " (stale)" : "")")
+        } else {
           HStack(spacing: 4) {
             Image(systemName: "exclamationmark.triangle.fill")
               .font(.system(size: 10))
               .foregroundStyle(.orange)
-            Text("GitHub sync issue")
+            Text("No cache")
               .font(.system(size: 10, weight: .medium))
               .foregroundStyle(.orange)
           }
-          .help("GitHub sync error: \(error)")
+          .help("GitHub cache not found. Run gh-sync to populate.")
         }
 
         // Manual sync button for GitHub projects
         Button {
-          vm.reload()
+          vm.syncGitHubCache()
         } label: {
           Image(systemName: "arrow.triangle.2.circlepath")
             .font(.system(size: 11))
@@ -1190,7 +1191,7 @@ private struct ToolbarArea: View {
         }
         .buttonStyle(.plain)
         .disabled(vm.isGitHubSyncing || vm.isGitBusy)
-        .help("Sync with GitHub Issues now")
+        .help("Refresh GitHub cache (runs gh-sync)")
       }
 
       // Text dump button — paste bulk text for task breakdown
@@ -2227,16 +2228,34 @@ private struct TaskTile: View {
               isEditingTitle = true
             }
 
-          // GitHub issue number badge
+          // GitHub issue number badge (clickable link)
           if let issueNumber = task.githubIssueNumber {
-            Text("#\(issueNumber)")
-              .font(.system(size: 9, weight: .medium, design: .monospaced))
+            Button {
+              // Open GitHub issue in browser
+              if let project = vm.projects.first(where: { $0.id == task.projectId }),
+                 let repo = project.github?.repo {
+                let urlString = "https://github.com/\(repo)/issues/\(issueNumber)"
+                if let url = URL(string: urlString) {
+                  #if os(macOS)
+                  NSWorkspace.shared.open(url)
+                  #endif
+                }
+              }
+            } label: {
+              HStack(spacing: 2) {
+                Image(systemName: "link")
+                  .font(.system(size: 8))
+                Text("#\(issueNumber)")
+                  .font(.system(size: 9, weight: .medium, design: .monospaced))
+              }
               .foregroundStyle(.secondary)
               .padding(.horizontal, 4)
               .padding(.vertical, 2)
               .background(Color.secondary.opacity(0.1))
               .clipShape(RoundedRectangle(cornerRadius: 3))
-              .help("GitHub Issue #\(issueNumber)")
+            }
+            .buttonStyle(.plain)
+            .help("Open GitHub Issue #\(issueNumber)")
           }
 
           Spacer()

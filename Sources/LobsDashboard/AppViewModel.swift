@@ -916,16 +916,16 @@ final class AppViewModel: ObservableObject {
         }
 
         // Track GitHub sync status if any project uses GitHub mode
-        let hasGitHubProject = projects.contains { $0.syncMode == .github && $0.githubConfig != nil }
+        let hasGitHubProject = projects.contains { $0.tracking == .github && $0.github != nil }
         if hasGitHubProject {
           isGitHubSyncing = true
         }
 
         let file = try await store.loadTasks()
 
-        // Update GitHub sync status
-        if hasGitHubProject {
-          lastGitHubSyncAt = Date()
+        // Update GitHub sync status from cache timestamp
+        if hasGitHubProject, let currentProject = projects.first(where: { $0.id == selectedProjectId && $0.tracking == .github }) {
+          lastGitHubSyncAt = store.getGitHubCacheTimestamp(project: currentProject)
           lastGitHubSyncError = nil
           isGitHubSyncing = false
         }
@@ -960,6 +960,53 @@ final class AppViewModel: ObservableObject {
         }
       }
       isGitBusy = false
+    }
+  }
+
+  /// Sync GitHub cache by running the gh-sync script for the current project.
+  func syncGitHubCache() {
+    guard let repoURL else {
+      flashError("Repo path not set")
+      return
+    }
+    guard let currentProject = projects.first(where: { $0.id == selectedProjectId }),
+          currentProject.tracking == .github else {
+      flashError("Current project is not GitHub-tracked")
+      return
+    }
+    guard !isGitHubSyncing && !isGitBusy else { return }
+
+    isGitHubSyncing = true
+    Task {
+      do {
+        let ghSyncPath = repoURL.appendingPathComponent("bin/gh-sync").path
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: ghSyncPath)
+        process.arguments = [currentProject.id]
+        process.currentDirectoryURL = repoURL
+
+        try process.run()
+        process.waitUntilExit()
+
+        if process.terminationStatus != 0 {
+          await MainActor.run {
+            flashError("gh-sync failed")
+            isGitHubSyncing = false
+          }
+          return
+        }
+
+        // Reload tasks to pick up the new cache
+        await MainActor.run {
+          isGitHubSyncing = false
+          reload()
+        }
+      } catch {
+        await MainActor.run {
+          flashError("Failed to run gh-sync: \(error.localizedDescription)")
+          isGitHubSyncing = false
+        }
+      }
     }
   }
 
