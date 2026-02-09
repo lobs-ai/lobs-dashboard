@@ -11,9 +11,13 @@ final class QuickCapturePanel {
   private var globalMonitor: Any?
   private var localMonitor: Any?
   private weak var vm: AppViewModel?
+  private var cachedHotkeyMode: Int = 1
 
   func setup(vm: AppViewModel) {
     self.vm = vm
+    Task { @MainActor in
+      self.cachedHotkeyMode = vm.quickCaptureHotkeyMode
+    }
     registerGlobalHotkey()
   }
 
@@ -42,7 +46,7 @@ final class QuickCapturePanel {
   private func isHotkey(_ event: NSEvent) -> Bool {
     // Hotkey is configurable (managed by AppViewModel via ~/.lobs/config.json)
     // 0 = ⌘⇧Space, 1 = ⌥Space
-    let mode = vm?.quickCaptureHotkeyMode ?? 1
+    let mode = cachedHotkeyMode
     let isSpace = (event.keyCode == 49)
     if !isSpace { return false }
 

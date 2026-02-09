@@ -3234,7 +3234,7 @@ private struct EditProjectSheet: View {
             Text("GitHub").tag(TrackingMode.github)
           }
           .pickerStyle(.segmented)
-          .onChange(of: tracking) { oldValue, newValue in
+          .onChange(of: tracking) { _ in
             // Clear connection test result when switching modes
             connectionTestResult = nil
           }
@@ -3264,7 +3264,7 @@ private struct EditProjectSheet: View {
                 .foregroundStyle(.secondary)
               TextField("owner/repo (e.g., RafeSymonds/my-project)", text: $ghRepo)
                 .textFieldStyle(.roundedBorder)
-                .onChange(of: ghRepo) { oldValue, newValue in
+                .onChange(of: ghRepo) { _ in
                   // Clear connection test result when repo changes
                   connectionTestResult = nil
                 }

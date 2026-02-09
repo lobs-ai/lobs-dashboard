@@ -494,6 +494,13 @@ final class AppViewModel: ObservableObject {
         return
       }
 
+      // Capture main-actor properties before detaching
+      let shouldAutoArchiveCompleted = autoArchiveCompleted
+      let archiveAfterDays = archiveCompletedAfterDays
+      let shouldAutoArchiveReadInbox = autoArchiveReadInbox
+      let archiveReadAfterDays = archiveReadInboxAfterDays
+      let currentReadItemIds = await readItemIds
+
       // Load data off the main thread to avoid blocking UI
       let loadedData: (projects: [Project], tasks: [DashboardTask], hasGitHubProject: Bool)? = await Task.detached {
         do {
@@ -507,12 +514,12 @@ final class AppViewModel: ObservableObject {
             loadedProjects.insert(Project(id: "default", title: "Default", createdAt: now, updatedAt: now, notes: nil, archived: false), at: 0)
           }
 
-          if self.autoArchiveCompleted {
-            try store.archiveCompleted(olderThanDays: self.archiveCompletedAfterDays)
+          if shouldAutoArchiveCompleted {
+            try store.archiveCompleted(olderThanDays: archiveAfterDays)
           }
 
-          if self.autoArchiveReadInbox {
-            try store.archiveReadInboxItems(olderThanDays: self.archiveReadInboxAfterDays, readItemIds: self.readItemIds)
+          if shouldAutoArchiveReadInbox {
+            try await store.archiveReadInboxItems(olderThanDays: archiveReadAfterDays, readItemIds: currentReadItemIds)
           }
 
           // Track GitHub sync status if selected project uses GitHub mode
@@ -918,6 +925,14 @@ final class AppViewModel: ObservableObject {
         return
       }
 
+      // Capture main-actor properties before detaching
+      let shouldAutoArchiveCompleted = autoArchiveCompleted
+      let archiveAfterDays = archiveCompletedAfterDays
+      let shouldAutoArchiveReadInbox = autoArchiveReadInbox
+      let archiveReadAfterDays = archiveReadInboxAfterDays
+      let currentReadItemIds = await readItemIds
+      let currentProjectId = selectedProjectId
+
       // Load data off the main thread to avoid blocking UI
       let loadedData: (projects: [Project], tasks: [DashboardTask], hasGitHubProject: Bool, githubSyncTime: Date?)? = await Task.detached {
         do {
@@ -931,12 +946,12 @@ final class AppViewModel: ObservableObject {
             loadedProjects.insert(Project(id: "default", title: "Default", createdAt: now, updatedAt: now, notes: nil, archived: false), at: 0)
           }
 
-          if self.autoArchiveCompleted {
-            try store.archiveCompleted(olderThanDays: self.archiveCompletedAfterDays)
+          if shouldAutoArchiveCompleted {
+            try store.archiveCompleted(olderThanDays: archiveAfterDays)
           }
 
-          if self.autoArchiveReadInbox {
-            try store.archiveReadInboxItems(olderThanDays: self.archiveReadInboxAfterDays, readItemIds: self.readItemIds)
+          if shouldAutoArchiveReadInbox {
+            try await store.archiveReadInboxItems(olderThanDays: archiveReadAfterDays, readItemIds: currentReadItemIds)
           }
 
           // Track GitHub sync status if any project uses GitHub mode
@@ -946,7 +961,7 @@ final class AppViewModel: ObservableObject {
 
           // Get GitHub sync timestamp
           let githubSyncTime: Date? = {
-            if hasGitHubProject, let currentProject = loadedProjects.first(where: { $0.id == self.selectedProjectId && $0.tracking == .github }) {
+            if hasGitHubProject, let currentProject = loadedProjects.first(where: { $0.id == currentProjectId && $0.tracking == .github }) {
               return store.getGitHubCacheTimestamp(project: currentProject)
             }
             return nil
@@ -4386,17 +4401,19 @@ final class AppViewModel: ObservableObject {
   /// Load research data asynchronously (off main thread)
   private func loadResearchDataAsync(store: LobsControlStore) async {
     guard isResearchProject else { return }
-    
-    let data = await Task.detached {
+
+    let projectId = await MainActor.run { self.selectedProjectId }
+
+    let data: (String, [ResearchSource], [ResearchDeliverable], [ResearchTile], [ResearchRequest])? = await Task.detached {
       do {
-        try store.migrateResearchTilesToDoc(projectId: self.selectedProjectId)
-        
-        let docContent = try store.loadResearchDoc(projectId: self.selectedProjectId)
-        let sources = try store.loadResearchSources(projectId: self.selectedProjectId)
-        let deliverables = try store.loadResearchDeliverables(projectId: self.selectedProjectId)
-        let tiles = try store.loadTiles(projectId: self.selectedProjectId)
-        let requests = try store.loadRequests(projectId: self.selectedProjectId)
-        
+        try store.migrateResearchTilesToDoc(projectId: projectId)
+
+        let docContent = try store.loadResearchDoc(projectId: projectId)
+        let sources = try store.loadResearchSources(projectId: projectId)
+        let deliverables = try store.loadResearchDeliverables(projectId: projectId)
+        let tiles = try store.loadTiles(projectId: projectId)
+        let requests = try store.loadRequests(projectId: projectId)
+
         return (docContent, sources, deliverables, tiles, requests)
       } catch {
         return nil
@@ -4417,11 +4434,13 @@ final class AppViewModel: ObservableObject {
   /// Load tracker data asynchronously (off main thread)
   private func loadTrackerDataAsync(store: LobsControlStore) async {
     guard isTrackerProject else { return }
-    
-    let data = await Task.detached {
+
+    let projectId = await MainActor.run { self.selectedProjectId }
+
+    let data: ([TrackerItem], [ResearchRequest])? = await Task.detached {
       do {
-        let items = try store.loadTrackerItems(projectId: self.selectedProjectId)
-        let requests = try store.loadTrackerRequests(projectId: self.selectedProjectId)
+        let items = try store.loadTrackerItems(projectId: projectId)
+        let requests = try store.loadTrackerRequests(projectId: projectId)
         return (items, requests)
       } catch {
         return nil
@@ -4438,7 +4457,7 @@ final class AppViewModel: ObservableObject {
 
   /// Load inbox items asynchronously (off main thread)
   private func loadInboxItemsAsync(store: LobsControlStore) async {
-    let data = await Task.detached {
+    let data: ([InboxItem], [String: InboxThread])? = await Task.detached { () -> ([InboxItem], [String: InboxThread])? in
       do {
         let items = try store.loadInboxItems()
         let threads = try store.loadAllInboxThreads()
@@ -4464,7 +4483,7 @@ final class AppViewModel: ObservableObject {
 
   /// Load worker status asynchronously (off main thread)
   private func loadWorkerStatusAsync(store: LobsControlStore) async {
-    let data = await Task.detached {
+    let data: (WorkerStatus?, WorkerHistory?, MainSessionUsage?)? = await Task.detached { () -> (WorkerStatus?, WorkerHistory?, MainSessionUsage?)? in
       do {
         let status = try store.loadWorkerStatus()
         let history = try store.loadWorkerHistory()
@@ -4494,22 +4513,22 @@ final class AppViewModel: ObservableObject {
       return
     }
     
-    let result = await Task.detached {
+    let result: (String, String, Int)? = await Task.detached {
       // Fetch latest from origin (timeout after 10 seconds)
       let fetch = Git.runWithErrorHandling(["fetch", "origin", "main"], cwd: dashURL)
       guard fetch.success else { return nil }
-      
+
       let localCommit = Git.runWithErrorHandling(["rev-parse", "--short", "HEAD"], cwd: dashURL)
       let remoteCommit = Git.runWithErrorHandling(["rev-parse", "--short", "origin/main"], cwd: dashURL)
       let behindRes = Git.runWithErrorHandling(
         ["rev-list", "--count", "HEAD..origin/main"],
         cwd: dashURL
       )
-      
+
       let local = localCommit.output.trimmingCharacters(in: .whitespacesAndNewlines)
       let remote = remoteCommit.output.trimmingCharacters(in: .whitespacesAndNewlines)
       let behind = Int(behindRes.output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
-      
+
       return (local, remote, behind)
     }.value
     
@@ -4544,14 +4563,14 @@ final class AppViewModel: ObservableObject {
         ["rev-list", "--count", "HEAD..origin/main"],
         cwd: repoURL
       )
-      
+
       let ahead = Int(aheadRes.output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
       let behind = Int(behindRes.output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
-      
+
       return (ahead, behind)
     }.value
-    
-    guard let (ahead, behind) = result else { return }
+
+    let (ahead, behind) = result
     
     await MainActor.run {
       self.controlRepoAhead = ahead
