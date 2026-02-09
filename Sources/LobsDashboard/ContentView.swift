@@ -45,7 +45,7 @@ struct ContentView: View {
   @EnvironmentObject var vm: AppViewModel
 
   @State private var showPicker = false
-  @State private var autoPush = true
+  @AppStorage("autoPush") private var autoPush = true
   @State private var showAddTask = false
   @State private var showCreateProject = false
   @State private var editingProject: Project? = nil
