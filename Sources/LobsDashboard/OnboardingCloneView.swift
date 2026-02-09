@@ -300,11 +300,12 @@ struct OnboardingCloneView: View {
         
         let result = await runGitCommand(["clone", url, path])
         
-        switch result {
-        case .success:
+        if result.success {
             await updateStep(title: "Repository cloned", status: .completed)
-        case .failure(let error):
-            await finishWithError("Failed to clone repository: \(error)")
+        } else if let error = result.error {
+            await finishWithError(error.errorDescription ?? "Failed to clone repository")
+        } else {
+            await finishWithError("Failed to clone repository")
         }
     }
     
@@ -386,7 +387,7 @@ struct OnboardingCloneView: View {
         
         // Add all files
         let addResult = await runGitCommand(["add", "-A"], workingDirectory: path)
-        guard case .success = addResult else {
+        guard addResult.success else {
             await updateStep(
                 title: "Created structure",
                 status: .warning("Could not commit changes")
@@ -399,7 +400,7 @@ struct OnboardingCloneView: View {
                      createdItems.map { "- \($0)" }.joined(separator: "\n")
         let commitResult = await runGitCommand(["commit", "-m", message], workingDirectory: path)
         
-        guard case .success = commitResult else {
+        guard commitResult.success else {
             await updateStep(
                 title: "Created structure",
                 status: .warning("Could not commit changes")
@@ -434,38 +435,20 @@ struct OnboardingCloneView: View {
         await updateStep(title: "Configuration saved", status: .completed)
     }
     
-    /// Run a git command and return the result
-    private func runGitCommand(_ args: [String], workingDirectory: String? = nil) async -> Result<String, String> {
-        return await withCheckedContinuation { continuation in
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            process.arguments = ["git"] + args
-            
-            if let workDir = workingDirectory {
-                process.currentDirectoryURL = URL(fileURLWithPath: workDir)
-            }
-            
-            let outputPipe = Pipe()
-            let errorPipe = Pipe()
-            process.standardOutput = outputPipe
-            process.standardError = errorPipe
-            
-            do {
-                try process.run()
-                process.waitUntilExit()
-                
-                if process.terminationStatus == 0 {
-                    let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
-                    let output = String(data: data, encoding: .utf8) ?? ""
-                    continuation.resume(returning: .success(output))
-                } else {
-                    let data = errorPipe.fileHandleForReading.readDataToEndOfFile()
-                    let error = String(data: data, encoding: .utf8) ?? "Unknown error"
-                    continuation.resume(returning: .failure(error))
-                }
-            } catch {
-                continuation.resume(returning: .failure(error.localizedDescription))
-            }
+    /// Run a git command with enhanced error handling
+    private func runGitCommand(_ args: [String], workingDirectory: String? = nil) async -> GitOperationResult {
+        let cwd: URL
+        if let workDir = workingDirectory {
+            cwd = URL(fileURLWithPath: workDir)
+        } else {
+            cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        }
+        
+        // Use retry for network-sensitive operations
+        if args.first == "clone" || args.first == "fetch" || args.first == "pull" {
+            return await Git.runWithRetry(args, cwd: cwd, maxRetries: 3)
+        } else {
+            return await Git.runAsyncWithErrorHandling(args, cwd: cwd)
         }
     }
     

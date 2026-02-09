@@ -302,13 +302,8 @@ struct OnboardingVerificationView: View {
         guard let config = vm.config else { return false }
         let repoPath = URL(fileURLWithPath: config.controlRepoPath)
         
-        do {
-            let result = try await Git.runAsync(["pull"], cwd: repoPath)
-            return result.ok
-        } catch {
-            print("Git pull error: \(error)")
-            return false
-        }
+        let result = await Git.runWithRetry(["pull", "--rebase"], cwd: repoPath, maxRetries: 3)
+        return result.success
     }
     
     /// Check worker status from state/worker-status.json

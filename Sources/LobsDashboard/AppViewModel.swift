@@ -920,58 +920,84 @@ final class AppViewModel: ObservableObject {
 
     isGitBusy = true
     Task {
-      do {
+      await MainActor.run {
+        self.lastPushAttemptAt = Date()
+      }
+      
+      // Check for uncommitted changes
+      let status = await Git.runAsyncWithErrorHandling(["status", "--porcelain"], cwd: repoURL)
+      if !status.success {
         await MainActor.run {
-          self.lastPushAttemptAt = Date()
-        }
-        // If there are uncommitted changes, commit them first so push includes everything.
-        let status = try await Git.runAsync(["status", "--porcelain"], cwd: repoURL)
-        let hasLocalChanges = status.ok && !status.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        if hasLocalChanges {
-          try await autoCommitLocalChangesAsync(repoURL: repoURL)
-        }
-
-        let push = try await Git.runAsync(["push"], cwd: repoURL)
-        if !push.ok {
-          // Retry once after pulling with rebase.
-          let pull = try await Git.runAsync(["pull", "--rebase"], cwd: repoURL)
-          if !pull.ok {
-            await MainActor.run {
-              self.lastPushError = "Push failed (pull --rebase also failed): \(pull.stderr)"
-              self.flashError(self.lastPushError ?? "Push failed")
-              self.isGitBusy = false
-            }
-            return
-          }
-
-          let retry = try await Git.runAsync(["push"], cwd: repoURL)
-          if !retry.ok {
-            await MainActor.run {
-              self.lastPushError = "Push failed: \(retry.stderr)"
-              self.flashError(self.lastPushError ?? "Push failed")
-              self.isGitBusy = false
-            }
-            return
-          }
-        }
-
-        // Get current commit hash for display
-        let hashResult = try await Git.runAsync(["rev-parse", "--short", "HEAD"], cwd: repoURL)
-        let commitHash = hashResult.ok ? hashResult.stdout.trimmingCharacters(in: .whitespacesAndNewlines) : nil
-
-        await MainActor.run {
-          self.lastSuccessfulPushAt = Date()
-          self.lastPushedCommitHash = commitHash
-          self.lastPushError = nil
-          self.flashSuccess("Pushed to origin")
-          self.isGitBusy = false
-        }
-      } catch {
-        await MainActor.run {
-          self.lastPushError = "Push failed: \(error.localizedDescription)"
+          self.lastPushError = status.error?.errorDescription ?? "Failed to check status"
           self.flashError(self.lastPushError ?? "Push failed")
           self.isGitBusy = false
         }
+        return
+      }
+      
+      let hasLocalChanges = !status.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      if hasLocalChanges {
+        do {
+          try await autoCommitLocalChangesAsync(repoURL: repoURL)
+        } catch {
+          await MainActor.run {
+            self.lastPushError = "Failed to commit local changes"
+            self.flashError(self.lastPushError ?? "Push failed")
+            self.isGitBusy = false
+          }
+          return
+        }
+      }
+
+      // Attempt push
+      let push = await Git.runAsyncWithErrorHandling(["push"], cwd: repoURL)
+      if !push.success {
+        // If push failed, check if we should pull first
+        if push.suggestsPull {
+          let pull = await Git.runWithRetry(["pull", "--rebase"], cwd: repoURL, maxRetries: 2)
+          if !pull.success {
+            await MainActor.run {
+              let errorMsg = pull.error?.errorDescription ?? "Pull failed"
+              self.lastPushError = "Push failed: \(errorMsg)"
+              self.flashError(self.lastPushError ?? "Push failed")
+              self.isGitBusy = false
+            }
+            return
+          }
+
+          // Retry push after successful pull
+          let retry = await Git.runAsyncWithErrorHandling(["push"], cwd: repoURL)
+          if !retry.success {
+            await MainActor.run {
+              let errorMsg = retry.error?.errorDescription ?? "Push failed"
+              self.lastPushError = errorMsg
+              self.flashError(self.lastPushError ?? "Push failed")
+              self.isGitBusy = false
+            }
+            return
+          }
+        } else {
+          // Push failed for a non-recoverable reason
+          await MainActor.run {
+            let errorMsg = push.error?.errorDescription ?? "Push failed"
+            self.lastPushError = errorMsg
+            self.flashError(self.lastPushError ?? "Push failed")
+            self.isGitBusy = false
+          }
+          return
+        }
+      }
+
+      // Get current commit hash for display
+      let hashResult = await Git.runAsyncWithErrorHandling(["rev-parse", "--short", "HEAD"], cwd: repoURL)
+      let commitHash = hashResult.success ? hashResult.output.trimmingCharacters(in: .whitespacesAndNewlines) : nil
+
+      await MainActor.run {
+        self.lastSuccessfulPushAt = Date()
+        self.lastPushedCommitHash = commitHash
+        self.lastPushError = nil
+        self.flashSuccess("Pushed to origin")
+        self.isGitBusy = false
       }
     }
   }
@@ -3635,10 +3661,14 @@ final class AppViewModel: ObservableObject {
   // MARK: - Async Git Helpers
 
   private func asyncCommitAndMaybePush(repoURL: URL, message: String, autoPush: Bool) async throws {
-    _ = try await Git.runAsync(["add", "-A"], cwd: repoURL)
+    let addResult = await Git.runAsyncWithErrorHandling(["add", "-A"], cwd: repoURL)
+    if !addResult.success {
+      throw NSError(domain: "Git", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: addResult.error?.errorDescription ?? "Failed to stage changes"])
+    }
 
-    let stagedClean = try await Git.runAsync(["diff", "--cached", "--quiet"], cwd: repoURL)
-    if stagedClean.exitCode == 0 { return }
+    let stagedClean = await Git.runAsyncWithErrorHandling(["diff", "--cached", "--quiet"], cwd: repoURL)
+    if stagedClean.success { return }
 
     let author = "Lobs <thelobsbot@gmail.com>"
     let committerEnv: [String: String] = [
@@ -3646,13 +3676,13 @@ final class AppViewModel: ObservableObject {
       "GIT_COMMITTER_EMAIL": "thelobsbot@gmail.com",
     ]
 
-    let commit = try await Git.runAsync([
+    let commit = await Git.runAsyncWithErrorHandling([
       "commit", "--author", author, "-m", message
     ], cwd: repoURL, env: committerEnv)
 
-    if commit.exitCode != 0 {
-      throw NSError(domain: "Git", code: Int(commit.exitCode),
-                    userInfo: [NSLocalizedDescriptionKey: commit.stderr])
+    if !commit.success {
+      throw NSError(domain: "Git", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: commit.error?.errorDescription ?? "Commit failed"])
     }
 
     if autoPush {
@@ -3660,32 +3690,41 @@ final class AppViewModel: ObservableObject {
         self.lastPushAttemptAt = Date()
       }
 
-      let push = try await Git.runAsync(["push"], cwd: repoURL)
-      if push.exitCode != 0 {
-        // Push failed — pull --rebase and retry once.
-        let pull = try await Git.runAsync(["pull", "--rebase"], cwd: repoURL)
-        if pull.exitCode != 0 {
-          let msg = "Pull --rebase failed: \(pull.stderr)"
+      let push = await Git.runAsyncWithErrorHandling(["push"], cwd: repoURL)
+      if !push.success {
+        // Push failed — pull --rebase and retry once if suggested.
+        if push.suggestsPull {
+          let pull = await Git.runWithRetry(["pull", "--rebase"], cwd: repoURL, maxRetries: 2)
+          if !pull.success {
+            let msg = pull.error?.errorDescription ?? "Pull failed"
+            await MainActor.run {
+              self.lastPushError = msg
+            }
+            throw NSError(domain: "Git", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: msg])
+          }
+          let retry = await Git.runAsyncWithErrorHandling(["push"], cwd: repoURL)
+          if !retry.success {
+            let msg = retry.error?.errorDescription ?? "Push failed"
+            await MainActor.run {
+              self.lastPushError = msg
+            }
+            throw NSError(domain: "Git", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: msg])
+          }
+        } else {
+          let msg = push.error?.errorDescription ?? "Push failed"
           await MainActor.run {
             self.lastPushError = msg
           }
-          throw NSError(domain: "Git", code: Int(pull.exitCode),
-                        userInfo: [NSLocalizedDescriptionKey: msg])
-        }
-        let retry = try await Git.runAsync(["push"], cwd: repoURL)
-        if retry.exitCode != 0 {
-          let msg = retry.stderr
-          await MainActor.run {
-            self.lastPushError = msg
-          }
-          throw NSError(domain: "Git", code: Int(retry.exitCode),
+          throw NSError(domain: "Git", code: 1,
                         userInfo: [NSLocalizedDescriptionKey: msg])
         }
       }
 
       // Get current commit hash for display
-      let hashResult = try await Git.runAsync(["rev-parse", "--short", "HEAD"], cwd: repoURL)
-      let commitHash = hashResult.ok ? hashResult.stdout.trimmingCharacters(in: .whitespacesAndNewlines) : nil
+      let hashResult = await Git.runAsyncWithErrorHandling(["rev-parse", "--short", "HEAD"], cwd: repoURL)
+      let commitHash = hashResult.success ? hashResult.output.trimmingCharacters(in: .whitespacesAndNewlines) : nil
 
       await MainActor.run {
         self.lastSuccessfulPushAt = Date()
@@ -3702,108 +3741,112 @@ final class AppViewModel: ObservableObject {
     }
 
     Task.detached {
-      do {
-        // Count commits ahead of origin/main
-        let ahead = try await Git.runAsync(["rev-list", "--count", "origin/main..HEAD"], cwd: repoURL)
-        let count = Int(ahead.stdout.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+      // Count commits ahead of origin/main
+      let ahead = await Git.runAsyncWithErrorHandling(["rev-list", "--count", "origin/main..HEAD"], cwd: repoURL)
+      let count = ahead.success ? (Int(ahead.output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0) : 0
 
-        await MainActor.run {
-          self.pendingChangesCount = count
-        }
-      } catch {
-        await MainActor.run {
-          self.pendingChangesCount = 0
-        }
+      await MainActor.run {
+        self.pendingChangesCount = count
       }
     }
   }
 
   private func syncRepo(repoURL: URL) throws {
-    let remotes = try Git.run(["remote"], cwd: repoURL)
-    if remotes.exitCode != 0 { return }
-    let hasOrigin = remotes.stdout.split(separator: "\n").map(String.init).contains("origin")
+    let remotes = Git.runWithErrorHandling(["remote"], cwd: repoURL)
+    if !remotes.success { return }
+    let hasOrigin = remotes.output.split(separator: "\n").map(String.init).contains("origin")
     if !hasOrigin { return }
 
     // Auto-commit local changes so sync can proceed (instead of silently skipping).
-    let status = try Git.run(["status", "--porcelain"], cwd: repoURL)
-    let hasLocalChanges = status.exitCode == 0
-      && !status.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    let status = Git.runWithErrorHandling(["status", "--porcelain"], cwd: repoURL)
+    let hasLocalChanges = status.success
+      && !status.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
     if hasLocalChanges {
       try autoCommitLocalChanges(repoURL: repoURL)
     }
     syncBlockedByUncommitted = false
 
-    _ = try Git.run(["fetch", "origin"], cwd: repoURL)
-
-    // Decide whether to rebase vs hard-reset.
-    // If local HEAD is ahead of origin/main (even with a clean working tree), we must rebase,
-    // not reset, or we'd discard local commits.
-    let aheadRes = try Git.run(["rev-list", "--count", "origin/main..HEAD"], cwd: repoURL)
-    let behindRes = try Git.run(["rev-list", "--count", "HEAD..origin/main"], cwd: repoURL)
-    let aheadCount = Int(aheadRes.stdout.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
-    let behindCount = Int(behindRes.stdout.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
-
-    if hasLocalChanges || aheadCount > 0 {
-      // Rebase local commits on top of remote to preserve them.
-      let rebase = try Git.run(["rebase", "origin/main"], cwd: repoURL)
-      if rebase.exitCode != 0 {
-        _ = try Git.run(["rebase", "--abort"], cwd: repoURL)
-        syncBlockedByUncommitted = true
-        return
-      }
-    } else if behindCount > 0 {
-      _ = try Git.run(["reset", "--hard", "origin/main"], cwd: repoURL)
-      _ = try Git.run(["clean", "-fd"], cwd: repoURL)
-    }
-  }
-
-  /// Async version of syncRepo — runs git commands off the main thread to avoid UI lag.
-  private func syncRepoAsync(repoURL: URL) async throws {
-    let remotes = try await Git.runAsync(["remote"], cwd: repoURL)
-    if remotes.exitCode != 0 { return }
-    let hasOrigin = remotes.stdout.split(separator: "\n").map(String.init).contains("origin")
-    if !hasOrigin { return }
-
-    // Auto-commit local changes so sync can proceed.
-    let status = try await Git.runAsync(["status", "--porcelain"], cwd: repoURL)
-    let hasLocalChanges = status.exitCode == 0
-      && !status.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-
-    if hasLocalChanges {
-      try await autoCommitLocalChangesAsync(repoURL: repoURL)
-    }
-    syncBlockedByUncommitted = false
-
-    let fetch = try await Git.runAsync(["fetch", "origin"], cwd: repoURL)
-    if !fetch.ok {
-      print("[sync] git fetch failed (exit \(fetch.exitCode)): \(fetch.stderr)")
+    let fetchResult = Git.runWithErrorHandling(["fetch", "origin"], cwd: repoURL)
+    if !fetchResult.success {
+      print("[sync] git fetch failed: \(fetchResult.error?.errorDescription ?? "Unknown error")")
       return
     }
 
     // Decide whether to rebase vs hard-reset.
     // If local HEAD is ahead of origin/main (even with a clean working tree), we must rebase,
     // not reset, or we'd discard local commits.
-    let aheadRes = try await Git.runAsync(["rev-list", "--count", "origin/main..HEAD"], cwd: repoURL)
-    let behindRes = try await Git.runAsync(["rev-list", "--count", "HEAD..origin/main"], cwd: repoURL)
-    let aheadCount = Int(aheadRes.stdout.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
-    let behindCount = Int(behindRes.stdout.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+    let aheadRes = Git.runWithErrorHandling(["rev-list", "--count", "origin/main..HEAD"], cwd: repoURL)
+    let behindRes = Git.runWithErrorHandling(["rev-list", "--count", "HEAD..origin/main"], cwd: repoURL)
+    let aheadCount = Int(aheadRes.output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+    let behindCount = Int(behindRes.output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
 
     if hasLocalChanges || aheadCount > 0 {
-      let rebase = try await Git.runAsync(["rebase", "origin/main"], cwd: repoURL)
-      if !rebase.ok {
-        _ = try await Git.runAsync(["rebase", "--abort"], cwd: repoURL)
+      // Rebase local commits on top of remote to preserve them.
+      let rebase = Git.runWithErrorHandling(["rebase", "origin/main"], cwd: repoURL)
+      if !rebase.success {
+        _ = Git.runWithErrorHandling(["rebase", "--abort"], cwd: repoURL)
         syncBlockedByUncommitted = true
-        print("[sync] rebase conflict — sync blocked, user intervention needed")
+        print("[sync] rebase conflict: \(rebase.error?.errorDescription ?? "Unknown error")")
         return
       }
     } else if behindCount > 0 {
-      let reset = try await Git.runAsync(["reset", "--hard", "origin/main"], cwd: repoURL)
-      if !reset.ok {
-        print("[sync] git reset failed (exit \(reset.exitCode)): \(reset.stderr)")
+      let resetResult = Git.runWithErrorHandling(["reset", "--hard", "origin/main"], cwd: repoURL)
+      if !resetResult.success {
+        print("[sync] git reset failed: \(resetResult.error?.errorDescription ?? "Unknown error")")
         return
       }
-      _ = try await Git.runAsync(["clean", "-fd"], cwd: repoURL)
+      _ = Git.runWithErrorHandling(["clean", "-fd"], cwd: repoURL)
+    }
+  }
+
+  /// Async version of syncRepo — runs git commands off the main thread to avoid UI lag.
+  private func syncRepoAsync(repoURL: URL) async throws {
+    let remotes = await Git.runAsyncWithErrorHandling(["remote"], cwd: repoURL)
+    if !remotes.success { return }
+    let hasOrigin = remotes.output.split(separator: "\n").map(String.init).contains("origin")
+    if !hasOrigin { return }
+
+    // Auto-commit local changes so sync can proceed.
+    let status = await Git.runAsyncWithErrorHandling(["status", "--porcelain"], cwd: repoURL)
+    let hasLocalChanges = status.success
+      && !status.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+    if hasLocalChanges {
+      try await autoCommitLocalChangesAsync(repoURL: repoURL)
+    }
+    syncBlockedByUncommitted = false
+
+    // Fetch with retry (network operation)
+    let fetch = await Git.runWithRetry(["fetch", "origin"], cwd: repoURL, maxRetries: 3)
+    if !fetch.success {
+      print("[sync] git fetch failed: \(fetch.error?.errorDescription ?? "Unknown error")")
+      return
+    }
+
+    // Decide whether to rebase vs hard-reset.
+    // If local HEAD is ahead of origin/main (even with a clean working tree), we must rebase,
+    // not reset, or we'd discard local commits.
+    let aheadRes = await Git.runAsyncWithErrorHandling(["rev-list", "--count", "origin/main..HEAD"], cwd: repoURL)
+    let behindRes = await Git.runAsyncWithErrorHandling(["rev-list", "--count", "HEAD..origin/main"], cwd: repoURL)
+    let aheadCount = Int(aheadRes.output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+    let behindCount = Int(behindRes.output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+
+    if hasLocalChanges || aheadCount > 0 {
+      let rebase = await Git.runAsyncWithErrorHandling(["rebase", "origin/main"], cwd: repoURL)
+      if !rebase.success {
+        _ = await Git.runAsyncWithErrorHandling(["rebase", "--abort"], cwd: repoURL)
+        syncBlockedByUncommitted = true
+        print("[sync] rebase conflict — sync blocked: \(rebase.error?.errorDescription ?? "Unknown error")")
+        return
+      }
+    } else if behindCount > 0 {
+      let reset = await Git.runAsyncWithErrorHandling(["reset", "--hard", "origin/main"], cwd: repoURL)
+      if !reset.success {
+        print("[sync] git reset failed: \(reset.error?.errorDescription ?? "Unknown error")")
+        return
+      }
+      _ = await Git.runAsyncWithErrorHandling(["clean", "-fd"], cwd: repoURL)
     }
   }
 
@@ -3814,10 +3857,18 @@ final class AppViewModel: ObservableObject {
       "GIT_COMMITTER_NAME": "Lobs",
       "GIT_COMMITTER_EMAIL": "thelobsbot@gmail.com",
     ]
-    _ = try Git.run(["add", "-A"], cwd: repoURL)
-    _ = try Git.run([
+    let addResult = Git.runWithErrorHandling(["add", "-A"], cwd: repoURL)
+    if !addResult.success {
+      throw NSError(domain: "Git", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: addResult.error?.errorDescription ?? "Failed to stage changes"])
+    }
+    let commitResult = Git.runWithErrorHandling([
       "commit", "--author", author, "-m", "Auto-commit local changes before sync"
     ], cwd: repoURL, env: committerEnv)
+    if !commitResult.success {
+      throw NSError(domain: "Git", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: commitResult.error?.errorDescription ?? "Failed to commit changes"])
+    }
   }
 
   /// Async version of autoCommitLocalChanges.
@@ -3827,17 +3878,29 @@ final class AppViewModel: ObservableObject {
       "GIT_COMMITTER_NAME": "Lobs",
       "GIT_COMMITTER_EMAIL": "thelobsbot@gmail.com",
     ]
-    _ = try await Git.runAsync(["add", "-A"], cwd: repoURL)
-    _ = try await Git.runAsync([
+    let addResult = await Git.runAsyncWithErrorHandling(["add", "-A"], cwd: repoURL)
+    if !addResult.success {
+      throw NSError(domain: "Git", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: addResult.error?.errorDescription ?? "Failed to stage changes"])
+    }
+    let commitResult = await Git.runAsyncWithErrorHandling([
       "commit", "--author", author, "-m", "Auto-commit local changes before sync"
     ], cwd: repoURL, env: committerEnv)
+    if !commitResult.success {
+      throw NSError(domain: "Git", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: commitResult.error?.errorDescription ?? "Failed to commit changes"])
+    }
   }
 
   private func commitAndMaybePush(repoURL: URL, message: String, autoPush: Bool) throws {
-    _ = try Git.run(["add", "-A"], cwd: repoURL)
+    let addResult = Git.runWithErrorHandling(["add", "-A"], cwd: repoURL)
+    if !addResult.success {
+      throw NSError(domain: "Git", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: addResult.error?.errorDescription ?? "Failed to stage changes"])
+    }
 
-    let stagedClean = try Git.run(["diff", "--cached", "--quiet"], cwd: repoURL)
-    if stagedClean.exitCode == 0 { return }
+    let stagedClean = Git.runWithErrorHandling(["diff", "--cached", "--quiet"], cwd: repoURL)
+    if stagedClean.success { return }
 
     let author = "Lobs <thelobsbot@gmail.com>"
     let committerEnv: [String: String] = [
@@ -3845,28 +3908,33 @@ final class AppViewModel: ObservableObject {
       "GIT_COMMITTER_EMAIL": "thelobsbot@gmail.com",
     ]
 
-    let commit = try Git.run([
+    let commit = Git.runWithErrorHandling([
       "commit", "--author", author, "-m", message
     ], cwd: repoURL, env: committerEnv)
 
-    if commit.exitCode != 0 {
-      throw NSError(domain: "Git", code: Int(commit.exitCode),
-                    userInfo: [NSLocalizedDescriptionKey: commit.stderr])
+    if !commit.success {
+      throw NSError(domain: "Git", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: commit.error?.errorDescription ?? "Commit failed"])
     }
 
     if autoPush {
-      let push = try Git.run(["push"], cwd: repoURL)
-      if push.exitCode != 0 {
-        // Push failed — pull --rebase and retry once.
-        let pull = try Git.run(["pull", "--rebase"], cwd: repoURL)
-        if pull.exitCode != 0 {
-          throw NSError(domain: "Git", code: Int(pull.exitCode),
-                        userInfo: [NSLocalizedDescriptionKey: "Pull --rebase failed: \(pull.stderr)"])
-        }
-        let retry = try Git.run(["push"], cwd: repoURL)
-        if retry.exitCode != 0 {
-          throw NSError(domain: "Git", code: Int(retry.exitCode),
-                        userInfo: [NSLocalizedDescriptionKey: retry.stderr])
+      let push = Git.runWithErrorHandling(["push"], cwd: repoURL)
+      if !push.success {
+        // Push failed — pull --rebase and retry once if suggested.
+        if push.suggestsPull {
+          let pull = Git.runWithErrorHandling(["pull", "--rebase"], cwd: repoURL)
+          if !pull.success {
+            throw NSError(domain: "Git", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: pull.error?.errorDescription ?? "Pull failed"])
+          }
+          let retry = Git.runWithErrorHandling(["push"], cwd: repoURL)
+          if !retry.success {
+            throw NSError(domain: "Git", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: retry.error?.errorDescription ?? "Push failed"])
+          }
+        } else {
+          throw NSError(domain: "Git", code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: push.error?.errorDescription ?? "Push failed"])
         }
       }
     }
