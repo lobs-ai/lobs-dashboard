@@ -3860,6 +3860,19 @@ final class AppViewModel: ObservableObject {
   // MARK: - Async Git Helpers
 
   private func asyncCommitAndMaybePush(repoURL: URL, message: String, autoPush: Bool) async throws {
+    // If auto-pushing, always pull --rebase first to minimize conflicts
+    if autoPush {
+      let pull = await Git.runWithRetry(["pull", "--rebase"], cwd: repoURL, maxRetries: 2)
+      if !pull.success {
+        let msg = pull.error?.errorDescription ?? "Pull --rebase failed"
+        await MainActor.run {
+          self.lastPushError = msg
+        }
+        throw NSError(domain: "Git", code: 1,
+                      userInfo: [NSLocalizedDescriptionKey: msg])
+      }
+    }
+
     let addResult = await Git.runAsyncWithErrorHandling(["add", "-A"], cwd: repoURL)
     if !addResult.success {
       throw NSError(domain: "Git", code: 1,
