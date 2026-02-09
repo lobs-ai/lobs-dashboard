@@ -1148,7 +1148,8 @@ final class AppViewModel: ObservableObject {
       // Check for updates in background (low priority)
       Task.detached(priority: .utility) {
         await self.checkForDashboardUpdateAsync()
-        await self.checkControlRepoStatusAsync()
+        await self.checkControlRepoStatusAsync(force: true)
+        await self.updatePendingChangesCountAsync(force: true)
       }
     }
   }
@@ -4706,11 +4707,12 @@ final class AppViewModel: ObservableObject {
   }
 
   /// Check control repo status asynchronously
-  private func checkControlRepoStatusAsync() async {
+  private func checkControlRepoStatusAsync(force: Bool = false) async {
     guard let repoURL else { return }
     
-    // Throttle: don't check more than once every 10 seconds
-    if let last = await MainActor.run(body: { lastControlRepoStatusCheck }),
+    // Throttle: don't check more than once every 10 seconds (unless forced)
+    if !force,
+       let last = await MainActor.run(body: { lastControlRepoStatusCheck }),
        Date().timeIntervalSince(last) < 10 {
       return
     }
@@ -4741,21 +4743,21 @@ final class AppViewModel: ObservableObject {
   }
 
   /// Update pending changes count asynchronously
-  private func updatePendingChangesCountAsync() async {
+  private func updatePendingChangesCountAsync(force: Bool = false) async {
     guard let repoURL else { return }
     
-    // Throttle: don't check more than once every 5 seconds
-    if let last = await MainActor.run(body: { lastPendingChangesUpdate }),
+    // Throttle: don't check more than once every 5 seconds (unless forced)
+    if !force,
+       let last = await MainActor.run(body: { lastPendingChangesUpdate }),
        Date().timeIntervalSince(last) < 5 {
       return
     }
     
     let count = await Task.detached {
-      let status = Git.runWithErrorHandling(["status", "--porcelain"], cwd: repoURL)
-      guard status.success else { return 0 }
-      
-      let lines = status.output.split(separator: "\n")
-      return lines.count
+      // Count commits ahead of origin/main (unpublished changes)
+      let ahead = Git.runWithErrorHandling(["rev-list", "--count", "origin/main..HEAD"], cwd: repoURL)
+      guard ahead.success else { return 0 }
+      return Int(ahead.output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
     }.value
     
     await MainActor.run {
