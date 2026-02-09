@@ -6,8 +6,33 @@ private typealias UTheme = Theme
 struct WorkerUsageDetailSheet: View {
   let history: WorkerHistory
   let period: WorkerStatusCard.UsagePeriod
+  var tasks: [DashboardTask] = []
 
   @Environment(\.dismiss) private var dismiss
+  
+  /// Extract task ID from filename (e.g., "ABCD1234-5678-90AB-CDEF-1234567890AB.json" -> "ABCD1234-5678-90AB-CDEF-1234567890AB")
+  private func taskIdFromFilename(_ filename: String) -> String? {
+    guard filename.hasSuffix(".json") else { return nil }
+    return String(filename.dropLast(5))
+  }
+  
+  /// Look up task title from filename or raw task string
+  private func resolveTaskDisplay(_ taskString: String?) -> String? {
+    guard let taskString = taskString else { return nil }
+    
+    // If it starts with "research:" or doesn't look like a filename, return as-is
+    if taskString.lowercased().hasPrefix("research:") || !taskString.contains("-") || !taskString.hasSuffix(".json") {
+      return taskString
+    }
+    
+    // Try to extract task ID and look up the actual task
+    guard let taskId = taskIdFromFilename(taskString),
+          let task = tasks.first(where: { $0.id == taskId }) else {
+      return taskString
+    }
+    
+    return task.title
+  }
 
   private var filteredRuns: [WorkerHistoryRun] {
     history.runs
@@ -65,7 +90,7 @@ struct WorkerUsageDetailSheet: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 10) {
           ForEach(filteredRuns) { run in
-            WorkerRunRow(run: run)
+            WorkerRunRow(run: run, resolveTaskDisplay: resolveTaskDisplay)
           }
         }
       }
@@ -76,6 +101,7 @@ struct WorkerUsageDetailSheet: View {
 
 private struct WorkerRunRow: View {
   let run: WorkerHistoryRun
+  var resolveTaskDisplay: ((String?) -> String?) = { $0 }
   @State private var isExpanded = false
 
   private var hasTaskLog: Bool {
@@ -144,7 +170,7 @@ private struct WorkerRunRow: View {
                 .foregroundStyle(.green)
                 .padding(.top, 2)
               VStack(alignment: .leading, spacing: 1) {
-                Text(entry.task ?? "Untitled task")
+                Text(resolveTaskDisplay(entry.task) ?? entry.task ?? "Untitled task")
                   .font(.system(size: 11))
                   .foregroundStyle(.primary)
                 if let project = entry.project, !project.isEmpty {

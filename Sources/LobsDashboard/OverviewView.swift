@@ -425,7 +425,8 @@ struct OverviewView: View {
         history: vm.workerHistory,
         canRequestWorker: (!ws.active || stale) && !vm.workerRequestPending,
         workerRequested: vm.workerRequestPending,
-        onRequestWorker: { vm.requestWorker() }
+        onRequestWorker: { vm.requestWorker() },
+        tasks: allTasks
       )
     }
   }
@@ -2229,10 +2230,35 @@ struct WorkerStatusCard: View {
   var canRequestWorker: Bool = false
   var workerRequested: Bool = false
   var onRequestWorker: (() -> Void)? = nil
+  var tasks: [DashboardTask] = []
   @State private var showHistory = false
   @State private var showLiveDetails = false
   @State private var showUsageDetail = false
   @State private var selectedUsagePeriod: UsagePeriod = .today
+  
+  /// Extract task ID from filename (e.g., "ABCD1234-5678-90AB-CDEF-1234567890AB.json" -> "ABCD1234-5678-90AB-CDEF-1234567890AB")
+  private func taskIdFromFilename(_ filename: String) -> String? {
+    guard filename.hasSuffix(".json") else { return nil }
+    return String(filename.dropLast(5))
+  }
+  
+  /// Look up task title from filename or raw task string
+  private func resolveTaskDisplay(_ taskString: String?) -> String? {
+    guard let taskString = taskString else { return nil }
+    
+    // If it starts with "research:" or doesn't look like a filename, return as-is
+    if taskString.lowercased().hasPrefix("research:") || !taskString.contains("-") || !taskString.hasSuffix(".json") {
+      return taskString
+    }
+    
+    // Try to extract task ID and look up the actual task
+    guard let taskId = taskIdFromFilename(taskString),
+          let task = tasks.first(where: { $0.id == taskId }) else {
+      return taskString
+    }
+    
+    return task.title
+  }
 
   enum UsagePeriod: String, CaseIterable {
     case today = "Today"
@@ -2331,13 +2357,13 @@ struct WorkerStatusCard: View {
         if isActive {
           VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 12) {
-              if let task = status.currentTask {
+              if let task = status.currentTask, let displayTask = resolveTaskDisplay(task) {
                 let isResearch = task.lowercased().hasPrefix("research:")
                 HStack(spacing: 4) {
                   Image(systemName: isResearch ? "magnifyingglass" : "hammer.fill")
                     .font(.system(size: 10))
                     .foregroundStyle(isResearch ? .purple : .secondary)
-                  Text(task)
+                  Text(displayTask)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -2407,7 +2433,8 @@ struct WorkerStatusCard: View {
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
                       ForEach(Array(log.suffix(5).enumerated()), id: \.offset) { _, e in
-                        Text("• \(e.task ?? "(task)")")
+                        let displayTask = resolveTaskDisplay(e.task) ?? e.task ?? "(task)"
+                        Text("• \(displayTask)")
                           .font(.system(size: 11))
                           .foregroundStyle(.tertiary)
                           .lineLimit(1)
@@ -2619,7 +2646,8 @@ struct WorkerStatusCard: View {
       .sheet(isPresented: $showUsageDetail) {
         WorkerUsageDetailSheet(
           history: history,
-          period: selectedUsagePeriod
+          period: selectedUsagePeriod,
+          tasks: tasks
         )
         .frame(minWidth: 560, minHeight: 520)
       }
