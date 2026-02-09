@@ -1582,6 +1582,21 @@ final class AppViewModel: ObservableObject {
       }
 
       inboxThreadsByDocId = loadedThreads
+
+      // If the user opened/marked an item read before the thread finished loading,
+      // we store -1 as a sentinel. Once threads are loaded, convert that sentinel
+      // into the current message count so future new messages can show as unread.
+      var updatedSeen = lastSeenThreadCounts
+      var didChangeSeen = false
+      for (docId, thread) in loadedThreads {
+        if updatedSeen[docId] == -1 {
+          updatedSeen[docId] = thread.messages.count
+          didChangeSeen = true
+        }
+      }
+      if didChangeSeen {
+        lastSeenThreadCounts = updatedSeen
+      }
     } catch {
       flashError("Failed to load inbox: \(error.localizedDescription)")
     }
@@ -1593,6 +1608,11 @@ final class AppViewModel: ObservableObject {
   func unreadFollowupCount(docId: String) -> Int {
     guard let thread = inboxThreadsByDocId[docId] else { return 0 }
     let seen = lastSeenThreadCounts[docId, default: 0]
+
+    // If we marked this thread as "seen" before the thread content was loaded,
+    // we store a sentinel of -1. Treat it as fully seen.
+    if seen < 0 { return 0 }
+
     return max(0, thread.messages.count - seen)
   }
 
@@ -1602,8 +1622,12 @@ final class AppViewModel: ObservableObject {
       inboxItems[idx].isRead = true
     }
     // Mark thread follow-ups as seen when opening/marking as read.
+    // If thread data hasn't been loaded yet, record a sentinel so that when
+    // the thread arrives we don't briefly show the item as unread again.
     if let thread = inboxThreadsByDocId[item.id] {
       lastSeenThreadCounts[item.id] = thread.messages.count
+    } else {
+      lastSeenThreadCounts[item.id] = -1
     }
   }
 
