@@ -200,12 +200,15 @@ final class ControlRepoValidator {
     
     return """
     {
+      "schemaVersion": 1,
+      "generatedAt": "\(now)",
       "projects": [
         {
           "id": "default",
           "title": "Default",
           "sortOrder": 0,
           "archived": false,
+          "tracking": "local",
           "createdAt": "\(now)",
           "updatedAt": "\(now)"
         }

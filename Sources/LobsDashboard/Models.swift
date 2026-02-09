@@ -198,19 +198,65 @@ enum ProjectType: String, Codable, CaseIterable, Hashable {
   case tracker
 }
 
-/// Sync mode for project task storage.
-enum SyncMode: String, Codable, CaseIterable, Hashable {
+/// Tracking mode for project task storage.
+enum TrackingMode: String, Codable, CaseIterable, Hashable {
   case local   // Tasks stored in local JSON files
   case github  // Tasks synced with GitHub Issues
 }
 
-/// GitHub configuration for project sync.
-struct GitHubConfig: Codable, Hashable {
-  var owner: String           // GitHub repo owner/org
-  var repo: String            // GitHub repo name
-  var accessToken: String?    // Optional: GitHub personal access token (stored securely)
-  var syncLabels: [String]?   // Labels to apply to synced issues
+/// GitHub configuration for project tracking.
+struct GitHubProjectConfig: Codable, Hashable {
+  var repo: String             // GitHub repo in 'owner/repo' format
+  var labelFilter: [String]?   // Optional labels to filter issues
+  
+  // Legacy support for old format
+  enum CodingKeys: String, CodingKey {
+    case repo
+    case labelFilter
+    case owner      // legacy
+    case repoName = "repoName"  // legacy
+    case accessToken  // legacy
+    case syncLabels   // legacy
+  }
+  
+  init(repo: String, labelFilter: [String]? = nil) {
+    self.repo = repo
+    self.labelFilter = labelFilter
+  }
+  
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    
+    // Try new format first
+    if let repo = try? container.decode(String.self, forKey: .repo) {
+      self.repo = repo
+      self.labelFilter = try? container.decode([String].self, forKey: .labelFilter)
+    }
+    // Fall back to legacy format
+    else if let owner = try? container.decode(String.self, forKey: .owner),
+            let repoName = try? container.decode(String.self, forKey: .repoName) {
+      self.repo = "\(owner)/\(repoName)"
+      // Map legacy syncLabels to labelFilter
+      self.labelFilter = try? container.decode([String].self, forKey: .syncLabels)
+    } else {
+      throw DecodingError.dataCorruptedError(
+        forKey: .repo,
+        in: container,
+        debugDescription: "Missing required 'repo' field or legacy 'owner'/'repoName' fields"
+      )
+    }
+  }
+  
+  func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(repo, forKey: .repo)
+    try container.encodeIfPresent(labelFilter, forKey: .labelFilter)
+  }
 }
+
+/// Legacy type alias for backward compatibility
+typealias SyncMode = TrackingMode
+typealias GitHubConfig = GitHubProjectConfig
 
 struct Project: Codable, Identifiable, Hashable {
   var id: String
@@ -224,17 +270,85 @@ struct Project: Codable, Identifiable, Hashable {
   /// Manual sort order (lower = higher in list). Nil means unsorted (append to end).
   var sortOrder: Int?
 
-  /// Sync mode for task storage (local JSON or GitHub Issues). Defaults to local.
-  var syncMode: SyncMode?
-
-  /// GitHub configuration (required when syncMode is .github).
-  var githubConfig: GitHubConfig?
+  /// Tracking mode for task storage (local JSON or GitHub Issues). Defaults to local.
+  var tracking: TrackingMode?
+  
+  /// GitHub configuration (required when tracking is .github).
+  var github: GitHubProjectConfig?
+  
+  // Legacy field support for backward compatibility
+  var syncMode: TrackingMode? {
+    get { tracking }
+    set { tracking = newValue }
+  }
+  
+  var githubConfig: GitHubProjectConfig? {
+    get { github }
+    set { github = newValue }
+  }
 
   /// Resolved type (defaults to kanban for backwards compatibility).
   var resolvedType: ProjectType { type ?? .kanban }
 
-  /// Resolved sync mode (defaults to local for backwards compatibility).
-  var resolvedSyncMode: SyncMode { syncMode ?? .local }
+  /// Resolved tracking mode (defaults to local for backwards compatibility).
+  var resolvedTracking: TrackingMode { tracking ?? .local }
+  
+  /// Legacy accessor for backward compatibility
+  var resolvedSyncMode: TrackingMode { resolvedTracking }
+  
+  enum CodingKeys: String, CodingKey {
+    case id, title, createdAt, updatedAt, notes, archived, type, sortOrder
+    case tracking, github
+    case syncMode, githubConfig  // legacy keys
+  }
+  
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    
+    id = try container.decode(String.self, forKey: .id)
+    title = try container.decode(String.self, forKey: .title)
+    createdAt = try container.decode(Date.self, forKey: .createdAt)
+    updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+    notes = try? container.decode(String.self, forKey: .notes)
+    archived = try? container.decode(Bool.self, forKey: .archived)
+    type = try? container.decode(ProjectType.self, forKey: .type)
+    sortOrder = try? container.decode(Int.self, forKey: .sortOrder)
+    
+    // Try new format first, fall back to legacy
+    tracking = try? container.decode(TrackingMode.self, forKey: .tracking)
+      ?? (try? container.decode(TrackingMode.self, forKey: .syncMode))
+    
+    github = try? container.decode(GitHubProjectConfig.self, forKey: .github)
+      ?? (try? container.decode(GitHubProjectConfig.self, forKey: .githubConfig))
+  }
+  
+  func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    
+    try container.encode(id, forKey: .id)
+    try container.encode(title, forKey: .title)
+    try container.encode(createdAt, forKey: .createdAt)
+    try container.encode(updatedAt, forKey: .updatedAt)
+    try container.encodeIfPresent(notes, forKey: .notes)
+    try container.encodeIfPresent(archived, forKey: .archived)
+    try container.encodeIfPresent(type, forKey: .type)
+    try container.encodeIfPresent(sortOrder, forKey: .sortOrder)
+    try container.encodeIfPresent(tracking, forKey: .tracking)
+    try container.encodeIfPresent(github, forKey: .github)
+  }
+  
+  init(id: String, title: String, createdAt: Date, updatedAt: Date, notes: String? = nil, archived: Bool? = nil, type: ProjectType? = nil, sortOrder: Int? = nil, tracking: TrackingMode? = nil, github: GitHubProjectConfig? = nil) {
+    self.id = id
+    self.title = title
+    self.createdAt = createdAt
+    self.updatedAt = updatedAt
+    self.notes = notes
+    self.archived = archived
+    self.type = type
+    self.sortOrder = sortOrder
+    self.tracking = tracking
+    self.github = github
+  }
 }
 
 // MARK: - Research Tile Types
