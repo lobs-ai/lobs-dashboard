@@ -376,7 +376,7 @@ struct CommandPaletteView: View {
         id: "inbox:\(item.id)",
         icon: "doc.text",
         title: item.title,
-        subtitle: "Inbox item • \(item.author ?? "Unknown")",
+        subtitle: "Inbox item • \(item.filename)",
         category: "Inbox",
         action: {
           // Open inbox view with this item selected
@@ -567,7 +567,7 @@ struct CommandResult: Identifiable, Hashable {
   let icon: String
   let title: String
   let subtitle: String
-  let category: String
+  var category: String
   let action: () -> Void
   
   static func == (lhs: CommandResult, rhs: CommandResult) -> Bool {
@@ -614,7 +614,7 @@ private struct ResultRow: View {
       // Category badge
       Text(result.category)
         .font(.system(size: 10, weight: .medium))
-        .foregroundStyle(isSelected ? .white.opacity(0.7) : .tertiary)
+        .foregroundStyle(isSelected ? .white.opacity(0.7) : Color.secondary)
         .padding(.horizontal, 6)
         .padding(.vertical, 2)
         .background((isSelected ? Color.white : Color.gray).opacity(isSelected ? 0.2 : 0.1))
@@ -760,4 +760,14 @@ func shapeIcon(_ shape: TaskShape) -> String {
 
 func shapeLabel(_ shape: TaskShape) -> String {
   shape.rawValue.capitalized
+}
+
+func shapeColor(_ shape: TaskShape) -> Color {
+  switch shape {
+  case .deep: return .purple
+  case .shallow: return .green
+  case .creative: return .orange
+  case .waiting: return .yellow
+  case .admin: return .blue
+  }
 }

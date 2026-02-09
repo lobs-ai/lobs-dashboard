@@ -2890,7 +2890,7 @@ final class AppViewModel: ObservableObject {
 
     // Persist + git
     do {
-      let store = LobsControlStore(repoURL)
+      let store = LobsControlStore(repoRoot: repoURL)
       var file = try store.loadProjects()
       for (i, project) in sorted.enumerated() {
         if let idx = file.projects.firstIndex(where: { $0.id == project.id }) {
