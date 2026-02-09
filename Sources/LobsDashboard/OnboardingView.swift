@@ -11,7 +11,7 @@ struct OnboardingView: View {
     enum OnboardingStep {
         case welcome
         case repoSetup
-        // Add more steps as needed (e.g., .gitSetup, .completion)
+        case cloneAndValidate
     }
     
     var body: some View {
@@ -33,6 +33,15 @@ struct OnboardingView: View {
                     }
                 )
                 .transition(.opacity)
+            
+            case .cloneAndValidate:
+                OnboardingCloneView(
+                    repoUrl: repoUrl,
+                    isNewRepo: isNewRepo,
+                    onBack: goBackToPreviousStep,
+                    onComplete: completeOnboarding
+                )
+                .transition(.opacity)
             }
         }
         .animation(.easeInOut(duration: 0.3), value: currentStep)
@@ -44,7 +53,9 @@ struct OnboardingView: View {
         case .welcome:
             currentStep = .repoSetup
         case .repoSetup:
-            // When repo setup is complete, mark onboarding as done
+            currentStep = .cloneAndValidate
+        case .cloneAndValidate:
+            // When clone and validation is complete, mark onboarding as done
             completeOnboarding()
         }
     }
@@ -57,6 +68,8 @@ struct OnboardingView: View {
             break
         case .repoSetup:
             currentStep = .welcome
+        case .cloneAndValidate:
+            currentStep = .repoSetup
         }
     }
     
@@ -65,20 +78,8 @@ struct OnboardingView: View {
         repoUrl = url
         isNewRepo = isNew
         
-        // Save the repository URL to config
-        if var config = vm.config {
-            config.controlRepoUrl = url
-            // Note: controlRepoPath will be set when the repo is actually cloned
-            // For now, we just save the URL
-            do {
-                try ConfigManager.save(config)
-                vm.config = config
-            } catch {
-                print("⚠️ Failed to save repo URL: \(error)")
-            }
-        }
-        
-        // Advance to next step (or complete onboarding if this is the last step)
+        // Don't save config yet - the clone screen will handle that
+        // Just advance to the next step
         advanceToNextStep()
     }
     
