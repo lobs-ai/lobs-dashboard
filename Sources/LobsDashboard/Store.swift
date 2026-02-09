@@ -697,10 +697,66 @@ final class LobsControlStore {
     }
   }
 
+  func archiveReadInboxItems(olderThanDays days: Int, readItemIds: Set<String>) throws {
+    guard days > 0 else { return }
+    let fm = FileManager.default
+    
+    let cutoff = Date().addingTimeInterval(TimeInterval(-days * 24 * 3600))
+    
+    // Archive from both inbox/ and artifacts/ directories
+    let dirsToProcess: [(URL, URL)] = [
+      (inboxDirURL, inboxArchiveDirURL),
+      (artifactsDirURL, artifactsArchiveDirURL),
+    ]
+    
+    for (sourceDir, archiveDir) in dirsToProcess {
+      guard fm.fileExists(atPath: sourceDir.path) else { continue }
+      
+      let files = try fm.contentsOfDirectory(
+        at: sourceDir,
+        includingPropertiesForKeys: [.contentModificationDateKey],
+        options: [.skipsHiddenFiles]
+      )
+      
+      for fileURL in files {
+        let ext = fileURL.pathExtension.lowercased()
+        guard ext == "md" || ext == "txt" || ext == "markdown" else { continue }
+        
+        let filename = fileURL.lastPathComponent
+        // Skip README files
+        guard filename.lowercased() != "readme.md" else { continue }
+        
+        // Construct the item ID (matches InboxItem.id format)
+        let dirName = sourceDir.lastPathComponent
+        let itemId = "\(dirName)/\(filename)"
+        
+        // Check if item is read and old enough to archive
+        guard readItemIds.contains(itemId) else { continue }
+        
+        let attrs = try fm.attributesOfItem(atPath: fileURL.path)
+        let modDate = (attrs[.modificationDate] as? Date) ?? Date()
+        
+        guard modDate < cutoff else { continue }
+        
+        // Archive the file
+        try fm.createDirectory(at: archiveDir, withIntermediateDirectories: true)
+        let destURL = archiveDir.appendingPathComponent(filename)
+        
+        // Remove existing file at destination if present
+        _ = try? fm.removeItem(at: destURL)
+        
+        // Move file to archive
+        try fm.moveItem(at: fileURL, to: destURL)
+      }
+    }
+  }
+
   // MARK: - Inbox (Design Docs)
 
   private var artifactsDirURL: URL { repoRoot.appendingPathComponent("artifacts") }
   private var inboxDirURL: URL { repoRoot.appendingPathComponent("inbox") }
+  private var inboxArchiveDirURL: URL { repoRoot.appendingPathComponent("inbox-archive") }
+  private var artifactsArchiveDirURL: URL { repoRoot.appendingPathComponent("artifacts-archive") }
   private var inboxResponsesDirURL: URL {
     repoRoot.appendingPathComponent("state").appendingPathComponent("inbox-responses")
   }

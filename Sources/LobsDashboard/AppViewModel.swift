@@ -14,6 +14,8 @@ final class AppViewModel: ObservableObject {
   private let completedShowRecentKey = "completedShowRecent"
   private let autoArchiveCompletedKey = "autoArchiveCompleted"
   private let archiveCompletedAfterDaysKey = "archiveCompletedAfterDays"
+  private let autoArchiveReadInboxKey = "autoArchiveReadInbox"
+  private let archiveReadInboxAfterDaysKey = "archiveReadInboxAfterDays"
   private let autoRefreshEnabledKey = "autoRefreshEnabled"
   private let autoRefreshIntervalSecondsKey = "autoRefreshIntervalSeconds"
   private let selectedProjectIdKey = "selectedProjectId"
@@ -211,6 +213,14 @@ final class AppViewModel: ObservableObject {
     didSet { settings.set(archiveCompletedAfterDays, forKey: archiveCompletedAfterDaysKey) }
   }
 
+  // Inbox hygiene
+  @Published var autoArchiveReadInbox: Bool = true {
+    didSet { settings.set(autoArchiveReadInbox, forKey: autoArchiveReadInboxKey) }
+  }
+  @Published var archiveReadInboxAfterDays: Int = 7 {
+    didSet { settings.set(archiveReadInboxAfterDays, forKey: archiveReadInboxAfterDaysKey) }
+  }
+
   // Popover state for task detail
   @Published var popoverTaskId: String? = nil
 
@@ -257,6 +267,11 @@ final class AppViewModel: ObservableObject {
 
     let days = settings.integer(forKey: archiveCompletedAfterDaysKey)
     archiveCompletedAfterDays = (days == 0) ? 7 : days
+
+    autoArchiveReadInbox = settings.object(forKey: autoArchiveReadInboxKey) as? Bool ?? true
+
+    let inboxDays = settings.integer(forKey: archiveReadInboxAfterDaysKey)
+    archiveReadInboxAfterDays = (inboxDays == 0) ? 7 : inboxDays
 
     // Default true if unset
     autoRefreshEnabled = settings.object(forKey: autoRefreshEnabledKey) as? Bool ?? true
@@ -424,6 +439,10 @@ final class AppViewModel: ObservableObject {
 
         if autoArchiveCompleted {
           try store.archiveCompleted(olderThanDays: archiveCompletedAfterDays)
+        }
+
+        if autoArchiveReadInbox {
+          try store.archiveReadInboxItems(olderThanDays: archiveReadInboxAfterDays, readItemIds: readItemIds)
         }
 
         // Track GitHub sync status if selected project uses GitHub mode
@@ -809,6 +828,10 @@ final class AppViewModel: ObservableObject {
 
         if autoArchiveCompleted {
           try store.archiveCompleted(olderThanDays: archiveCompletedAfterDays)
+        }
+
+        if autoArchiveReadInbox {
+          try store.archiveReadInboxItems(olderThanDays: archiveReadInboxAfterDays, readItemIds: readItemIds)
         }
 
         // Track GitHub sync status if any project uses GitHub mode

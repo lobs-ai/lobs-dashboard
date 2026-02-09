@@ -1439,6 +1439,22 @@ private struct SettingsPopover: View {
                 .font(.footnote)
             }
           }
+
+          Toggle("Auto-archive read inbox items", isOn: $vm.autoArchiveReadInbox)
+            .toggleStyle(.switch)
+            .controlSize(.small)
+
+          if vm.autoArchiveReadInbox {
+            HStack {
+              Text("Archive after")
+                .font(.footnote)
+              TextField("", value: $vm.archiveReadInboxAfterDays, format: .number)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 50)
+              Text("days")
+                .font(.footnote)
+            }
+          }
         }
       }
 
