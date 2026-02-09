@@ -40,9 +40,9 @@ final class QuickCapturePanel {
   }
 
   private func isHotkey(_ event: NSEvent) -> Bool {
-    // Hotkey is configurable via UserDefaults (set by AppViewModel)
+    // Hotkey is configurable (managed by AppViewModel via ~/.lobs/config.json)
     // 0 = ⌘⇧Space, 1 = ⌥Space
-    let mode = UserDefaults.standard.integer(forKey: "quickCaptureHotkeyMode")
+    let mode = vm?.quickCaptureHotkeyMode ?? 1
     let isSpace = (event.keyCode == 49)
     if !isSpace { return false }
 

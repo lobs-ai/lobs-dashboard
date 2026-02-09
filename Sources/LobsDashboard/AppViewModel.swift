@@ -5,24 +5,31 @@ import UserNotifications
 
 @MainActor
 final class AppViewModel: ObservableObject {
-  private let settings = UserDefaults.standard
-
-  // UserDefaults keys (repoPath migrated to ConfigManager)
-  private let ownerFilterKey = "ownerFilter"
-  private let wipLimitActiveKey = "wipLimitActive"
-  private let completedShowRecentKey = "completedShowRecent"
-  private let autoArchiveCompletedKey = "autoArchiveCompleted"
-  private let archiveCompletedAfterDaysKey = "archiveCompletedAfterDays"
-  private let autoArchiveReadInboxKey = "autoArchiveReadInbox"
-  private let archiveReadInboxAfterDaysKey = "archiveReadInboxAfterDays"
-  private let autoRefreshEnabledKey = "autoRefreshEnabled"
-  private let autoRefreshIntervalSecondsKey = "autoRefreshIntervalSeconds"
-  private let selectedProjectIdKey = "selectedProjectId"
-
   @Published private(set) var repoPath: String = ""
   
-  /// Current application configuration
+  /// Current application configuration (includes user settings)
   @Published var config: AppConfig?
+  
+  /// Helper to access settings from config
+  private var settings: UserSettings {
+    get { config?.settings ?? UserSettings() }
+    set {
+      var updatedConfig = config ?? AppConfig()
+      updatedConfig.settings = newValue
+      config = updatedConfig
+      saveConfig()
+    }
+  }
+  
+  /// Save config to disk
+  private func saveConfig() {
+    guard let config = config else { return }
+    do {
+      try ConfigManager.save(config)
+    } catch {
+      print("⚠️ Failed to save config: \(error)")
+    }
+  }
 
   /// Whether onboarding is needed (config not set or incomplete)
   var needsOnboarding: Bool {
@@ -51,16 +58,18 @@ final class AppViewModel: ObservableObject {
   @Published var inboxItems: [InboxItem] = []
   @Published var readItemIds: Set<String> = [] {
     didSet {
-      settings.set(Array(readItemIds), forKey: "readInboxItemIds")
+      var s = settings
+      s.readInboxItemIds = Array(readItemIds)
+      settings = s
     }
   }
   /// Tracks last-seen thread message count per doc ID. When a thread has more messages
   /// than this count, the item shows as having unread follow-ups.
   @Published var lastSeenThreadCounts: [String: Int] = [:] {
     didSet {
-      if let data = try? JSONEncoder().encode(lastSeenThreadCounts) {
-        settings.set(data, forKey: "lastSeenThreadCounts")
-      }
+      var s = settings
+      s.lastSeenThreadCounts = lastSeenThreadCounts
+      settings = s
     }
   }
   @Published var showInbox: Bool = false
@@ -85,7 +94,11 @@ final class AppViewModel: ObservableObject {
   @Published var textDumps: [TextDump] = []
   /// IDs of completed dumps the user has already reviewed.
   @Published var reviewedDumpIds: Set<String> = [] {
-    didSet { settings.set(Array(reviewedDumpIds), forKey: "reviewedTextDumpIds") }
+    didSet {
+      var s = settings
+      s.reviewedTextDumpIds = Array(reviewedDumpIds)
+      settings = s
+    }
   }
   /// Completed text dumps that haven't been reviewed yet.
   var unreviewedCompletedDumps: [TextDump] {
@@ -99,7 +112,9 @@ final class AppViewModel: ObservableObject {
 
   @Published var selectedProjectId: String = "default" {
     didSet {
-      settings.set(selectedProjectId, forKey: selectedProjectIdKey)
+      var s = settings
+      s.selectedProjectId = selectedProjectId
+      settings = s
       loadResearchData()
       loadTrackerData()
       loadProjectReadme()
@@ -201,32 +216,60 @@ final class AppViewModel: ObservableObject {
   /// Inbox is treated as a filter, not a column.
   @Published var showInboxOnly: Bool = false
   @Published var ownerFilter: String = "all" {
-    didSet { settings.set(ownerFilter, forKey: ownerFilterKey) }
+    didSet {
+      var s = settings
+      s.ownerFilter = ownerFilter
+      settings = s
+    }
   }
 
   /// Filter tasks by shape/type. nil = show all.
   @Published var shapeFilter: TaskShape? = nil
   @Published var wipLimitActive: Int = 6 {
-    didSet { settings.set(wipLimitActive, forKey: wipLimitActiveKey) }
+    didSet {
+      var s = settings
+      s.wipLimitActive = wipLimitActive
+      settings = s
+    }
   }
 
   // Completed hygiene
   @Published var completedShowRecent: Int = 30 {
-    didSet { settings.set(completedShowRecent, forKey: completedShowRecentKey) }
+    didSet {
+      var s = settings
+      s.completedShowRecent = completedShowRecent
+      settings = s
+    }
   }
   @Published var autoArchiveCompleted: Bool = true {
-    didSet { settings.set(autoArchiveCompleted, forKey: autoArchiveCompletedKey) }
+    didSet {
+      var s = settings
+      s.autoArchiveCompleted = autoArchiveCompleted
+      settings = s
+    }
   }
   @Published var archiveCompletedAfterDays: Int = 7 {
-    didSet { settings.set(archiveCompletedAfterDays, forKey: archiveCompletedAfterDaysKey) }
+    didSet {
+      var s = settings
+      s.archiveCompletedAfterDays = archiveCompletedAfterDays
+      settings = s
+    }
   }
 
   // Inbox hygiene
   @Published var autoArchiveReadInbox: Bool = true {
-    didSet { settings.set(autoArchiveReadInbox, forKey: autoArchiveReadInboxKey) }
+    didSet {
+      var s = settings
+      s.autoArchiveReadInbox = autoArchiveReadInbox
+      settings = s
+    }
   }
   @Published var archiveReadInboxAfterDays: Int = 7 {
-    didSet { settings.set(archiveReadInboxAfterDays, forKey: archiveReadInboxAfterDaysKey) }
+    didSet {
+      var s = settings
+      s.archiveReadInboxAfterDays = archiveReadInboxAfterDays
+      settings = s
+    }
   }
 
   // Popover state for task detail
@@ -236,7 +279,9 @@ final class AppViewModel: ObservableObject {
   /// 0 = System, 1 = Light, 2 = Dark
   @Published var appearanceMode: Int = 0 {
     didSet {
-      settings.set(appearanceMode, forKey: "appearanceMode")
+      var s = settings
+      s.appearanceMode = appearanceMode
+      settings = s
       applyAppearance()
     }
   }
@@ -245,75 +290,61 @@ final class AppViewModel: ObservableObject {
   /// 0 = ⌘⇧Space, 1 = ⌥Space
   @Published var quickCaptureHotkeyMode: Int = 1 {
     didSet {
-      settings.set(quickCaptureHotkeyMode, forKey: "quickCaptureHotkeyMode")
+      var s = settings
+      s.quickCaptureHotkeyMode = quickCaptureHotkeyMode
+      settings = s
     }
   }
 
   // Auto-refresh
   @Published var autoRefreshEnabled: Bool = true {
-    didSet { settings.set(autoRefreshEnabled, forKey: autoRefreshEnabledKey) }
+    didSet {
+      var s = settings
+      s.autoRefreshEnabled = autoRefreshEnabled
+      settings = s
+    }
   }
   @Published var autoRefreshIntervalSeconds: Int = 30 {
-    didSet { settings.set(autoRefreshIntervalSeconds, forKey: autoRefreshIntervalSecondsKey) }
+    didSet {
+      var s = settings
+      s.autoRefreshIntervalSeconds = autoRefreshIntervalSeconds
+      settings = s
+    }
   }
   private var refreshTimer: Timer?
 
   init() {
-    // Load config from ConfigManager
+    // Load config from ConfigManager (includes automatic migration from UserDefaults)
     config = ConfigManager.load()
     
     // Load repo path from config
     if let loadedConfig = config {
       repoPath = loadedConfig.controlRepoPath
+      
+      // Load all settings from config
+      let s = loadedConfig.settings
+      selectedProjectId = s.selectedProjectId
+      ownerFilter = s.ownerFilter
+      wipLimitActive = s.wipLimitActive
+      completedShowRecent = s.completedShowRecent
+      autoArchiveCompleted = s.autoArchiveCompleted
+      archiveCompletedAfterDays = s.archiveCompletedAfterDays
+      autoArchiveReadInbox = s.autoArchiveReadInbox
+      archiveReadInboxAfterDays = s.archiveReadInboxAfterDays
+      autoRefreshEnabled = s.autoRefreshEnabled
+      autoRefreshIntervalSeconds = s.autoRefreshIntervalSeconds
+      readItemIds = Set(s.readInboxItemIds)
+      lastSeenThreadCounts = s.lastSeenThreadCounts
+      reviewedDumpIds = Set(s.reviewedTextDumpIds)
+      appearanceMode = s.appearanceMode
+      quickCaptureHotkeyMode = s.quickCaptureHotkeyMode
     } else {
+      // No config yet (fresh install or migration failed)
       repoPath = ""
+      // Properties will use their default values from UserSettings()
     }
     
-    selectedProjectId = settings.string(forKey: selectedProjectIdKey) ?? "default"
-
-    // Load persisted settings (with safe defaults)
-    ownerFilter = settings.string(forKey: ownerFilterKey) ?? "all"
-
-    let wip = settings.integer(forKey: wipLimitActiveKey)
-    wipLimitActive = (wip == 0) ? 6 : wip
-
-    let csr = settings.integer(forKey: completedShowRecentKey)
-    completedShowRecent = (csr == 0) ? 30 : csr
-
-    autoArchiveCompleted = settings.object(forKey: autoArchiveCompletedKey) as? Bool ?? true
-
-    let days = settings.integer(forKey: archiveCompletedAfterDaysKey)
-    archiveCompletedAfterDays = (days == 0) ? 7 : days
-
-    autoArchiveReadInbox = settings.object(forKey: autoArchiveReadInboxKey) as? Bool ?? true
-
-    let inboxDays = settings.integer(forKey: archiveReadInboxAfterDaysKey)
-    archiveReadInboxAfterDays = (inboxDays == 0) ? 7 : inboxDays
-
-    // Default true if unset
-    autoRefreshEnabled = settings.object(forKey: autoRefreshEnabledKey) as? Bool ?? true
-
-    let interval = settings.integer(forKey: autoRefreshIntervalSecondsKey)
-    autoRefreshIntervalSeconds = (interval == 0) ? 30 : interval
-
-    // Inbox read state
-    readItemIds = Set(settings.stringArray(forKey: "readInboxItemIds") ?? [])
-    if let data = settings.data(forKey: "lastSeenThreadCounts"),
-       let decoded = try? JSONDecoder().decode([String: Int].self, from: data) {
-      lastSeenThreadCounts = decoded
-    }
-
-    // Text dump reviewed state
-    reviewedDumpIds = Set(settings.stringArray(forKey: "reviewedTextDumpIds") ?? [])
-
-    // Appearance mode
-    appearanceMode = settings.integer(forKey: "appearanceMode")
     applyAppearance()
-
-    // Quick capture hotkey
-    let qc = settings.integer(forKey: "quickCaptureHotkeyMode")
-    quickCaptureHotkeyMode = (qc == 0 || qc == 1) ? qc : 1
-
     startAutoRefreshIfNeeded()
 
     // Check for dashboard source updates on launch
@@ -322,6 +353,14 @@ final class AppViewModel: ObservableObject {
 
     // Setup app activity monitoring for automatic pause/resume of refresh
     setupActivityMonitoring()
+    
+    // Clear legacy UserDefaults after successful migration (one-time cleanup)
+    // Only do this if we successfully loaded a config
+    if config != nil {
+      DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2.0) {
+        ConfigManager.clearLegacyUserDefaults()
+      }
+    }
   }
 
   private var wasAutoRefreshEnabledBeforePause: Bool = true
@@ -517,13 +556,14 @@ final class AppViewModel: ObservableObject {
   func setRepoURL(_ url: URL) {
     repoPath = url.path
     
-    // Save to ConfigManager instead of UserDefaults
-    var config = ConfigManager.load() ?? AppConfig()
-    config.controlRepoPath = url.path
-    config.onboardingComplete = true
+    // Save to ConfigManager
+    var updatedConfig = config ?? AppConfig()
+    updatedConfig.controlRepoPath = url.path
+    updatedConfig.onboardingComplete = true
+    config = updatedConfig
     
     do {
-      try ConfigManager.save(config)
+      try ConfigManager.save(updatedConfig)
     } catch {
       print("⚠️ Failed to save config: \(error)")
     }

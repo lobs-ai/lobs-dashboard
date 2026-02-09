@@ -73,6 +73,28 @@ cd lobs-dashboard
 open Package.swift
 ```
 
+## User Data & Settings
+
+All user-specific settings and preferences are stored in `~/.lobs/config.json` (outside the dashboard repository).
+
+**What's stored locally:**
+- Control repository path and URL
+- Onboarding completion status
+- UI preferences (appearance, hotkeys, filters)
+- Read state (inbox items, threads)
+- Auto-refresh settings
+
+**Privacy & Safety:**
+- The dashboard repo contains **zero user-specific data**
+- Safe to clone fresh, reset, or share publicly
+- All your data lives in:
+  - `~/.lobs/config.json` (app settings)
+  - Your `lobs-control` repository (tasks, projects, state)
+
+**Migration Note:** If upgrading from an older version, settings will automatically migrate from `UserDefaults` to the new config file on first launch.
+
+For more details, see [SETTINGS_MIGRATION.md](SETTINGS_MIGRATION.md).
+
 ## First-Time Setup
 
 When you first launch Lobs Dashboard, you'll be guided through an onboarding wizard:

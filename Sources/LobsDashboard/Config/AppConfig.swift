@@ -1,6 +1,7 @@
 import Foundation
 
 /// Application configuration model
+/// Stored in ~/.lobs/config.json for local-only settings
 struct AppConfig: Codable {
     /// Git URL for the control repository (e.g., "git@github.com:user/lobs-control.git")
     var controlRepoUrl: String
@@ -11,9 +12,18 @@ struct AppConfig: Codable {
     /// Whether the user has completed initial onboarding
     var onboardingComplete: Bool
     
-    init(controlRepoUrl: String = "", controlRepoPath: String = "", onboardingComplete: Bool = false) {
+    /// User preferences and UI state
+    var settings: UserSettings
+    
+    init(
+        controlRepoUrl: String = "",
+        controlRepoPath: String = "",
+        onboardingComplete: Bool = false,
+        settings: UserSettings = UserSettings()
+    ) {
         self.controlRepoUrl = controlRepoUrl
         self.controlRepoPath = controlRepoPath
         self.onboardingComplete = onboardingComplete
+        self.settings = settings
     }
 }

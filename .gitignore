@@ -1,9 +1,28 @@
+# macOS
 .DS_Store
+
+# SwiftPM build artifacts
 .build/
 .build-home/
 DerivedData/
+
+# Xcode
 *.xcodeproj
 *.xcworkspace
 *.xcuserstate
+
+# Temp files
 *.swp
+*~
+
+# Generated files
 Sources/LobsDashboard/BuildInfo.generated.swift
+
+# User-specific data (should never be in repo)
+# All user settings are stored in ~/.lobs/config.json
+*.plist
+*.sqlite
+*.db
+.cache/
+cache/
+tmp/
