@@ -53,6 +53,13 @@ struct OverviewView: View {
     vm.sortedActiveProjects
   }
 
+  /// Helper to check if a task belongs to an archived project
+  private func isTaskFromArchivedProject(_ task: DashboardTask) -> Bool {
+    let projectId = task.projectId ?? "default"
+    let project = vm.projects.first(where: { $0.id == projectId })
+    return project?.archived == true
+  }
+
   // Stats
   private var activeTasks: Int {
     allTasks.filter { $0.status == .active }.count
@@ -65,7 +72,12 @@ struct OverviewView: View {
     comps.weekday = 2 // Monday
     let weekStart = calendar.date(from: comps) ?? Date()
     let weekEnd = calendar.date(byAdding: .day, value: 7, to: weekStart) ?? Date()
-    return allTasks.filter { $0.status == .completed && $0.updatedAt >= weekStart && $0.updatedAt < weekEnd }.count
+    return allTasks.filter { task in
+      task.status == .completed && 
+      task.updatedAt >= weekStart && 
+      task.updatedAt < weekEnd &&
+      !isTaskFromArchivedProject(task)
+    }.count
   }
 
   /// Open research request counts per project.
@@ -160,8 +172,13 @@ struct OverviewView: View {
     comps.weekday = 2 // Monday
     let weekStart = calendar.date(from: comps) ?? Date()
     let weekEnd = calendar.date(byAdding: .day, value: 7, to: weekStart) ?? Date()
-    return allTasks.filter { $0.status == .completed && $0.updatedAt >= weekStart && $0.updatedAt < weekEnd }
-      .sorted { $0.updatedAt > $1.updatedAt }
+    return allTasks.filter { task in
+      task.status == .completed && 
+      task.updatedAt >= weekStart && 
+      task.updatedAt < weekEnd &&
+      !isTaskFromArchivedProject(task)
+    }
+    .sorted { $0.updatedAt > $1.updatedAt }
   }
 
   // MARK: - Activity Feed
