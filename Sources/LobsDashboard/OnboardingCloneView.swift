@@ -415,23 +415,16 @@ struct OnboardingCloneView: View {
     private func saveConfiguration(repoPath: String, repoUrl: String) async {
         await updateStep(title: "Saving configuration...", status: .inProgress)
         
-        await MainActor.run {
-            if var config = vm.config {
-                config.controlRepoPath = repoPath
-                config.controlRepoUrl = repoUrl
-                
-                do {
-                    try ConfigManager.save(config)
-                    vm.config = config
-                } catch {
-                    Task {
-                        await finishWithError("Failed to save configuration: \(error.localizedDescription)")
-                    }
-                    return
-                }
-            }
+        let saved = await MainActor.run { () -> Bool in
+            // Ensure we always create/update config (fresh installs may have nil config).
+            vm.setControlRepo(path: repoPath, repoUrl: repoUrl, onboardingComplete: nil)
         }
-        
+
+        if !saved {
+            await finishWithError("Failed to save configuration. Please check permissions for ~/.lobs/config.json and try again.")
+            return
+        }
+
         await updateStep(title: "Configuration saved", status: .completed)
     }
     

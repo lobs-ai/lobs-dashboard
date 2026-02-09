@@ -598,20 +598,40 @@ final class AppViewModel: ObservableObject {
     return URL(fileURLWithPath: repoPath)
   }
 
-  func setRepoURL(_ url: URL) {
-    repoPath = url.path
-    
-    // Save to ConfigManager
+  /// Set the control repo path (and optionally URL) and persist config.
+  ///
+  /// - Parameters:
+  ///   - path: Local filesystem path to the lobs-control repository.
+  ///   - repoUrl: Optional git URL for the control repository.
+  ///   - onboardingComplete: If non-nil, updates the onboarding completion flag.
+  @discardableResult
+  func setControlRepo(path: String, repoUrl: String? = nil, onboardingComplete: Bool? = nil) -> Bool {
+    repoPath = path
+
     var updatedConfig = config ?? AppConfig()
-    updatedConfig.controlRepoPath = url.path
-    updatedConfig.onboardingComplete = true
+    updatedConfig.controlRepoPath = path
+    if let repoUrl {
+      updatedConfig.controlRepoUrl = repoUrl
+    }
+    if let onboardingComplete {
+      updatedConfig.onboardingComplete = onboardingComplete
+    }
     config = updatedConfig
-    
+
     do {
       try ConfigManager.save(updatedConfig)
+      return true
     } catch {
-      print("⚠️ Failed to save config: \(error)")
+      let msg = "Failed to save config: \(error)"
+      print("⚠️ \(msg)")
+      lastError = msg
+      return false
     }
+  }
+
+  func setRepoURL(_ url: URL) {
+    // Legacy API used by the repo picker; selecting a repo implies onboarding is complete.
+    setControlRepo(path: url.path, repoUrl: nil, onboardingComplete: true)
   }
 
   /// URL of the lobs-dashboard repo — derived as sibling of lobs-control.

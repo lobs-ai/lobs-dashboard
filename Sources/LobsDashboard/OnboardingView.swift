@@ -111,14 +111,12 @@ struct OnboardingView: View {
     /// Mark onboarding as complete and save configuration
     private func completeOnboarding() {
         // This will be called when all onboarding steps are finished
-        if var config = vm.config {
-            config.onboardingComplete = true
-            do {
-                try ConfigManager.save(config)
-                vm.config = config
-            } catch {
-                print("⚠️ Failed to save onboarding completion: \(error)")
-            }
+        let path = vm.config?.controlRepoPath ?? ""
+        let url = vm.config?.controlRepoUrl
+        // Persist onboardingComplete, even on fresh installs where config started as nil.
+        let ok = vm.setControlRepo(path: path, repoUrl: url, onboardingComplete: true)
+        if !ok {
+            print("⚠️ Failed to persist onboarding completion")
         }
     }
 }
