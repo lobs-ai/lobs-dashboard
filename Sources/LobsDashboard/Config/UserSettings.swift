@@ -53,6 +53,10 @@ struct UserSettings: Codable {
     
     /// Last-seen thread message counts by doc ID
     var lastSeenThreadCounts: [String: Int]
+
+    /// Timestamp of last local update to inbox read-state.
+    /// Used to prevent older repo state from overwriting newer local state.
+    var inboxReadStateUpdatedAt: Date?
     
     /// IDs of reviewed text dumps
     var reviewedTextDumpIds: [String]
@@ -74,6 +78,7 @@ struct UserSettings: Codable {
         autoRefreshIntervalSeconds: Int = 30,
         readInboxItemIds: [String] = [],
         lastSeenThreadCounts: [String: Int] = [:],
+        inboxReadStateUpdatedAt: Date? = nil,
         reviewedTextDumpIds: [String] = []
     ) {
         self.ownerFilter = ownerFilter
@@ -90,6 +95,7 @@ struct UserSettings: Codable {
         self.autoRefreshIntervalSeconds = autoRefreshIntervalSeconds
         self.readInboxItemIds = readInboxItemIds
         self.lastSeenThreadCounts = lastSeenThreadCounts
+        self.inboxReadStateUpdatedAt = inboxReadStateUpdatedAt
         self.reviewedTextDumpIds = reviewedTextDumpIds
     }
 }

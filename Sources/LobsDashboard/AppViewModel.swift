@@ -80,6 +80,7 @@ final class AppViewModel: ObservableObject {
       guard !isApplyingInboxReadState else { return }
       var s = settings
       s.readInboxItemIds = Array(readItemIds)
+      s.inboxReadStateUpdatedAt = Date()
       settings = s
       persistInboxReadStateDebounced()
     }
@@ -92,6 +93,7 @@ final class AppViewModel: ObservableObject {
       guard !isApplyingInboxReadState else { return }
       var s = settings
       s.lastSeenThreadCounts = lastSeenThreadCounts
+      s.inboxReadStateUpdatedAt = Date()
       settings = s
       persistInboxReadStateDebounced()
     }
@@ -1668,10 +1670,26 @@ final class AppViewModel: ObservableObject {
   private func applyInboxReadStateFromRepo(store: LobsControlStore) {
     do {
       if let file = try store.loadInboxReadState() {
+        // Prevent older repo state from clobbering newer local state.
+        // Local state is tracked via settings.inboxReadStateUpdatedAt.
+        if let localUpdatedAt = settings.inboxReadStateUpdatedAt, localUpdatedAt > file.generatedAt {
+          // Local appears newer — seed repo from local (best-effort) and keep current in-memory state.
+          try? store.saveInboxReadState(readItemIds: readItemIds, lastSeenThreadCounts: lastSeenThreadCounts)
+          persistInboxReadStateDebounced()
+          return
+        }
+
         isApplyingInboxReadState = true
         readItemIds = Set(file.readItemIds)
         lastSeenThreadCounts = file.lastSeenThreadCounts
         isApplyingInboxReadState = false
+
+        // Keep settings mirror in sync (didSet is suppressed while applying).
+        var s = settings
+        s.readInboxItemIds = file.readItemIds
+        s.lastSeenThreadCounts = file.lastSeenThreadCounts
+        s.inboxReadStateUpdatedAt = file.generatedAt
+        settings = s
         return
       }
 
@@ -1679,6 +1697,14 @@ final class AppViewModel: ObservableObject {
       // so the read state becomes portable across devices.
       if !readItemIds.isEmpty || !lastSeenThreadCounts.isEmpty {
         try store.saveInboxReadState(readItemIds: readItemIds, lastSeenThreadCounts: lastSeenThreadCounts)
+
+        // Ensure we have a local timestamp so future loads don't overwrite.
+        if settings.inboxReadStateUpdatedAt == nil {
+          var s = settings
+          s.inboxReadStateUpdatedAt = Date()
+          settings = s
+        }
+
         // Best-effort: commit the migrated state so it survives reclones.
         persistInboxReadStateDebounced()
       }
