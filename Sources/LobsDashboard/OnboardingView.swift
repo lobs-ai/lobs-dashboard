@@ -13,6 +13,7 @@ struct OnboardingView: View {
         case repoSetup
         case cloneAndValidate
         case serverSetup
+        case verification
     }
     
     var body: some View {
@@ -48,7 +49,15 @@ struct OnboardingView: View {
                 OnboardingServerSetupView(
                     repoUrl: repoUrl,
                     onBack: goBackToPreviousStep,
-                    onContinue: completeOnboarding
+                    onContinue: advanceToNextStep
+                )
+                .transition(.opacity)
+            
+            case .verification:
+                OnboardingVerificationView(
+                    repoUrl: repoUrl,
+                    onBack: goBackToPreviousStep,
+                    onComplete: completeOnboarding
                 )
                 .transition(.opacity)
             }
@@ -66,6 +75,8 @@ struct OnboardingView: View {
         case .cloneAndValidate:
             currentStep = .serverSetup
         case .serverSetup:
+            currentStep = .verification
+        case .verification:
             completeOnboarding()
         }
     }
@@ -82,6 +93,8 @@ struct OnboardingView: View {
             currentStep = .repoSetup
         case .serverSetup:
             currentStep = .cloneAndValidate
+        case .verification:
+            currentStep = .serverSetup
         }
     }
     
