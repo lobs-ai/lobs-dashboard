@@ -73,10 +73,9 @@ struct OverviewView: View {
     let weekStart = calendar.date(from: comps) ?? Date()
     let weekEnd = calendar.date(byAdding: .day, value: 7, to: weekStart) ?? Date()
     return allTasks.filter { task in
-      task.status == .completed && 
-      task.updatedAt >= weekStart && 
-      task.updatedAt < weekEnd &&
-      !isTaskFromArchivedProject(task)
+      guard task.status == .completed && !isTaskFromArchivedProject(task) else { return false }
+      let completionDate = task.finishedAt ?? task.updatedAt
+      return completionDate >= weekStart && completionDate < weekEnd
     }.count
   }
 
@@ -173,12 +172,11 @@ struct OverviewView: View {
     let weekStart = calendar.date(from: comps) ?? Date()
     let weekEnd = calendar.date(byAdding: .day, value: 7, to: weekStart) ?? Date()
     return allTasks.filter { task in
-      task.status == .completed && 
-      task.updatedAt >= weekStart && 
-      task.updatedAt < weekEnd &&
-      !isTaskFromArchivedProject(task)
+      guard task.status == .completed && !isTaskFromArchivedProject(task) else { return false }
+      let completionDate = task.finishedAt ?? task.updatedAt
+      return completionDate >= weekStart && completionDate < weekEnd
     }
-    .sorted { $0.updatedAt > $1.updatedAt }
+    .sorted { ($0.finishedAt ?? $0.updatedAt) > ($1.finishedAt ?? $1.updatedAt) }
   }
 
   // MARK: - Activity Feed
@@ -219,8 +217,11 @@ struct OverviewView: View {
     var events: [ActivityEvent] = []
 
     // Task completed
-    for t in allTasks where t.status == .completed && t.updatedAt >= weekAgo {
-      events.append(.taskCompleted(t))
+    for t in allTasks where t.status == .completed {
+      let completionDate = t.finishedAt ?? t.updatedAt
+      if completionDate >= weekAgo {
+        events.append(.taskCompleted(t))
+      }
     }
 
     // New/updated inbox items (docs/artifacts)
@@ -1756,7 +1757,11 @@ private struct DetailedStatsView: View {
 
   /// Tasks completed during the selected week.
   private var completedThisWeek: [DashboardTask] {
-    tasks.filter { $0.status == .completed && $0.updatedAt >= weekStart && $0.updatedAt < weekEnd }
+    tasks.filter { task in
+      guard task.status == .completed else { return false }
+      let completionDate = task.finishedAt ?? task.updatedAt
+      return completionDate >= weekStart && completionDate < weekEnd
+    }
   }
 
   /// Tasks created during the selected week.
