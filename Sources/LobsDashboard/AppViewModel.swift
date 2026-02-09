@@ -203,6 +203,9 @@ final class AppViewModel: ObservableObject {
   /// Commit hash of last successful push.
   @Published var lastPushedCommitHash: String? = nil
 
+  /// Debounced auto-push queue: batches many small saves into a single commit+push.
+  private lazy var gitAutoPushQueue = GitAutoPushQueue(owner: self, debounceSeconds: 10.0)
+
   // Control repo sync status
   /// How many commits local HEAD is ahead of origin/main (unpublished changes).
   @Published var controlRepoAhead: Int = 0
@@ -4126,19 +4129,14 @@ final class AppViewModel: ObservableObject {
   // MARK: - Async Git Helpers
 
   private func asyncCommitAndMaybePush(repoURL: URL, message: String, autoPush: Bool) async throws {
-    // If auto-pushing, always pull --rebase first to minimize conflicts
+    // Auto-push is debounced/batched to avoid pushing on every small UI edit.
+    // We enqueue and return immediately; any errors are reflected via `lastPushError`.
     if autoPush {
-      let pull = await Git.runWithRetry(["pull", "--rebase"], cwd: repoURL, maxRetries: 2)
-      if !pull.success {
-        let msg = pull.error?.errorDescription ?? "Pull --rebase failed"
-        await MainActor.run {
-          self.lastPushError = msg
-        }
-        throw NSError(domain: "Git", code: 1,
-                      userInfo: [NSLocalizedDescriptionKey: msg])
-      }
+      await gitAutoPushQueue.enqueue(repoURL: repoURL, message: message)
+      return
     }
 
+    // Commit-only path (no push): stage and commit immediately.
     let addResult = await Git.runAsyncWithErrorHandling(["add", "-A"], cwd: repoURL)
     if !addResult.success {
       throw NSError(domain: "Git", code: 1,
@@ -4161,54 +4159,6 @@ final class AppViewModel: ObservableObject {
     if !commit.success {
       throw NSError(domain: "Git", code: 1,
                     userInfo: [NSLocalizedDescriptionKey: commit.error?.errorDescription ?? "Commit failed"])
-    }
-
-    if autoPush {
-      await MainActor.run {
-        self.lastPushAttemptAt = Date()
-      }
-
-      let push = await Git.runAsyncWithErrorHandling(["push"], cwd: repoURL)
-      if !push.success {
-        // Push failed — pull --rebase and retry once if suggested.
-        if push.suggestsPull {
-          let pull = await Git.runWithRetry(["pull", "--rebase"], cwd: repoURL, maxRetries: 2)
-          if !pull.success {
-            let msg = pull.error?.errorDescription ?? "Pull failed"
-            await MainActor.run {
-              self.lastPushError = msg
-            }
-            throw NSError(domain: "Git", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: msg])
-          }
-          let retry = await Git.runAsyncWithErrorHandling(["push"], cwd: repoURL)
-          if !retry.success {
-            let msg = retry.error?.errorDescription ?? "Push failed"
-            await MainActor.run {
-              self.lastPushError = msg
-            }
-            throw NSError(domain: "Git", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: msg])
-          }
-        } else {
-          let msg = push.error?.errorDescription ?? "Push failed"
-          await MainActor.run {
-            self.lastPushError = msg
-          }
-          throw NSError(domain: "Git", code: 1,
-                        userInfo: [NSLocalizedDescriptionKey: msg])
-        }
-      }
-
-      // Get current commit hash for display
-      let hashResult = await Git.runAsyncWithErrorHandling(["rev-parse", "--short", "HEAD"], cwd: repoURL)
-      let commitHash = hashResult.success ? hashResult.output.trimmingCharacters(in: .whitespacesAndNewlines) : nil
-
-      await MainActor.run {
-        self.lastSuccessfulPushAt = Date()
-        self.lastPushedCommitHash = commitHash
-        self.lastPushError = nil
-      }
     }
   }
 
