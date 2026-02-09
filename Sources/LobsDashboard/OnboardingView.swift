@@ -12,6 +12,7 @@ struct OnboardingView: View {
         case welcome
         case repoSetup
         case cloneAndValidate
+        case serverSetup
     }
     
     var body: some View {
@@ -39,7 +40,15 @@ struct OnboardingView: View {
                     repoUrl: repoUrl,
                     isNewRepo: isNewRepo,
                     onBack: goBackToPreviousStep,
-                    onComplete: completeOnboarding
+                    onComplete: advanceToNextStep
+                )
+                .transition(.opacity)
+            
+            case .serverSetup:
+                OnboardingServerSetupView(
+                    repoUrl: repoUrl,
+                    onBack: goBackToPreviousStep,
+                    onContinue: completeOnboarding
                 )
                 .transition(.opacity)
             }
@@ -55,7 +64,8 @@ struct OnboardingView: View {
         case .repoSetup:
             currentStep = .cloneAndValidate
         case .cloneAndValidate:
-            // When clone and validation is complete, mark onboarding as done
+            currentStep = .serverSetup
+        case .serverSetup:
             completeOnboarding()
         }
     }
@@ -70,6 +80,8 @@ struct OnboardingView: View {
             currentStep = .welcome
         case .cloneAndValidate:
             currentStep = .repoSetup
+        case .serverSetup:
+            currentStep = .cloneAndValidate
         }
     }
     
