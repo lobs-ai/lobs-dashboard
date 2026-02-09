@@ -138,6 +138,25 @@ final class AppViewModel: ObservableObject {
   /// Per-project last git commit time (computed from lobs-control repo history).
   @Published var projectLastCommitAt: [String: Date] = [:]
 
+  // Overview (Home) cached stats
+  struct ResearchOverviewStats: Equatable, Sendable {
+    var openRequests: Int
+    var totalRequests: Int
+    var deliverables: Int
+  }
+
+  /// Cached per-project research stats used by OverviewView.
+  ///
+  /// Important: OverviewView must not hit the filesystem in computed properties.
+  /// Doing so causes noticeable UI hitches during refreshes (SwiftUI recomputes body frequently).
+  @Published var overviewResearchStatsByProject: [String: ResearchOverviewStats] = [:]
+
+  /// Cached list of open research requests across all (active) research projects.
+  /// Used for the Overview “Research” column and sheet.
+  @Published var overviewOpenResearchRequests: [ResearchRequest] = []
+
+  private var overviewResearchRefreshTask: Task<Void, Never>? = nil
+
   @Published var selectedProjectId: String = "default" {
     didSet {
       var s = settings
@@ -584,6 +603,9 @@ final class AppViewModel: ObservableObject {
           }
         }
 
+        // Refresh cached Overview stats (runs in background)
+        self.refreshOverviewResearchStats()
+
         isGitBusy = false
       }
 
@@ -603,6 +625,61 @@ final class AppViewModel: ObservableObject {
         await self.checkForDashboardUpdateAsync()
         await self.checkControlRepoStatusAsync()
         await self.updatePendingChangesCountAsync()
+      }
+    }
+  }
+
+  // MARK: - Overview Research Stats (cached)
+
+  /// Refresh cached research stats for the Overview screen.
+  /// Runs off the main thread and publishes results back on the MainActor.
+  func refreshOverviewResearchStats() {
+    guard let repoURL else { return }
+
+    let projectsSnapshot = projects.filter { ($0.archived ?? false) == false }
+
+    // Cancel any in-flight refresh to avoid piling up work during rapid refreshes.
+    overviewResearchRefreshTask?.cancel()
+    overviewResearchRefreshTask = Task.detached(priority: .utility) { [repoURL, projectsSnapshot] in
+      let store = LobsControlStore(repoRoot: repoURL)
+      let fm = FileManager.default
+
+      var stats: [String: ResearchOverviewStats] = [:]
+      var openRequests: [ResearchRequest] = []
+
+      for p in projectsSnapshot where p.resolvedType == .research {
+        if Task.isCancelled { return }
+
+        // Requests
+        let reqs: [ResearchRequest] = (try? store.loadRequests(projectId: p.id)) ?? []
+        let open = reqs.filter { $0.status == .open || $0.status == .inProgress }
+        openRequests.append(contentsOf: open)
+
+        // Deliverables — count files without reading contents (much faster).
+        let docsDir = repoURL
+          .appendingPathComponent("state/research")
+          .appendingPathComponent(p.id)
+          .appendingPathComponent("docs")
+        let deliverableCount: Int = {
+          guard fm.fileExists(atPath: docsDir.path) else { return 0 }
+          let files = (try? fm.contentsOfDirectory(at: docsDir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? []
+          return files.filter { $0.pathExtension.lowercased() == "md" }.count
+        }()
+
+        stats[p.id] = ResearchOverviewStats(
+          openRequests: open.count,
+          totalRequests: reqs.count,
+          deliverables: deliverableCount
+        )
+      }
+
+      openRequests.sort { $0.createdAt > $1.createdAt }
+
+      await MainActor.run {
+        // If a new refresh started while we were working, don't publish stale results.
+        guard !Task.isCancelled else { return }
+        self.overviewResearchStatsByProject = stats
+        self.overviewOpenResearchRequests = openRequests
       }
     }
   }
@@ -1040,6 +1117,9 @@ final class AppViewModel: ObservableObject {
         if let store = try? LobsControlStore(repoRoot: repoURL) {
           try? loadArtifactForSelected(store: store)
         }
+
+        // Refresh cached Overview stats (runs in background)
+        self.refreshOverviewResearchStats()
 
         isGitBusy = false
       }

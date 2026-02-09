@@ -79,47 +79,23 @@ struct OverviewView: View {
     }.count
   }
 
-  /// Open research request counts per project.
+  /// Open research request counts per project (cached by AppViewModel).
   private var researchRequestCountsByProject: [String: Int] {
-    guard let repoURL = vm.repoURL else { return [:] }
-    let store = LobsControlStore(repoRoot: repoURL)
-    var counts: [String: Int] = [:]
-    for project in activeProjects where project.resolvedType == .research {
-      if let requests = try? store.loadRequests(projectId: project.id) {
-        counts[project.id] = requests.filter { $0.status == .open || $0.status == .inProgress }.count
-      }
-    }
-    return counts
+    Dictionary(uniqueKeysWithValues: vm.overviewResearchStatsByProject.map { ($0.key, $0.value.openRequests) })
   }
 
-  /// Total (all statuses) research request counts per project.
+  /// Total (all statuses) research request counts per project (cached by AppViewModel).
   private var totalResearchRequestCountsByProject: [String: Int] {
-    guard let repoURL = vm.repoURL else { return [:] }
-    let store = LobsControlStore(repoRoot: repoURL)
-    var counts: [String: Int] = [:]
-    for project in activeProjects where project.resolvedType == .research {
-      if let requests = try? store.loadRequests(projectId: project.id) {
-        counts[project.id] = requests.count
-      }
-    }
-    return counts
+    Dictionary(uniqueKeysWithValues: vm.overviewResearchStatsByProject.map { ($0.key, $0.value.totalRequests) })
   }
 
-  /// Research deliverable counts per project.
+  /// Research deliverable counts per project (cached by AppViewModel).
   private var researchDeliverableCountsByProject: [String: Int] {
-    guard let repoURL = vm.repoURL else { return [:] }
-    let store = LobsControlStore(repoRoot: repoURL)
-    var counts: [String: Int] = [:]
-    for project in activeProjects where project.resolvedType == .research {
-      if let deliverables = try? store.loadResearchDeliverables(projectId: project.id) {
-        counts[project.id] = deliverables.count
-      }
-    }
-    return counts
+    Dictionary(uniqueKeysWithValues: vm.overviewResearchStatsByProject.map { ($0.key, $0.value.deliverables) })
   }
 
   private var openResearchRequests: Int {
-    researchRequestCountsByProject.values.reduce(0, +)
+    vm.overviewOpenResearchRequests.count
   }
 
   private var blockedTasks: Int {
@@ -151,17 +127,9 @@ struct OverviewView: View {
       .sorted { $0.updatedAt > $1.updatedAt }
   }
 
-  /// All open research requests across all research projects.
+  /// All open research requests across all research projects (cached by AppViewModel).
   private var openResearchRequestsList: [ResearchRequest] {
-    guard let repoURL = vm.repoURL else { return [] }
-    let store = LobsControlStore(repoRoot: repoURL)
-    var result: [ResearchRequest] = []
-    for project in activeProjects where project.resolvedType == .research {
-      if let requests = try? store.loadRequests(projectId: project.id) {
-        result.append(contentsOf: requests.filter { $0.status == .open || $0.status == .inProgress })
-      }
-    }
-    return result.sorted { $0.createdAt > $1.createdAt }
+    vm.overviewOpenResearchRequests
   }
 
   /// Tasks completed this week.
@@ -261,6 +229,10 @@ struct OverviewView: View {
       .padding(24)
     }
     .background(OTheme.boardBg)
+    .onAppear {
+      // Ensure cached research stats exist even if the user lands on Overview first.
+      vm.refreshOverviewResearchStats()
+    }
     .sheet(item: $detailTask) { task in
       OverviewTaskDetailSheet(task: task, vm: vm)
         .frame(minWidth: 480, minHeight: 500)
