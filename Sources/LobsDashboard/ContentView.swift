@@ -298,14 +298,25 @@ struct ContentView: View {
           .transition(.opacity)
           .zIndex(200)
 
-        CommandPaletteView(vm: vm, isPresented: $showCommandPalette)
-          .frame(width: 560, height: 420)
-          .clipShape(RoundedRectangle(cornerRadius: 14))
-          .shadow(color: .black.opacity(0.3), radius: 30, y: 10)
-          .padding(.top, 80)
-          .onExitCommand { withAnimation(.easeInOut(duration: 0.25)) { showCommandPalette = false } }
-          .transition(.opacity.combined(with: .move(edge: .top)))
-          .zIndex(201)
+        CommandPaletteView(
+          vm: vm,
+          isPresented: $showCommandPalette,
+          onNewTask: { showAddTask = true },
+          onOpenInbox: { itemId in
+            inboxInitialItemId = itemId
+            withAnimation(.easeInOut(duration: 0.25)) { showInbox = true }
+          },
+          onOpenAIUsage: {
+            withAnimation(.easeInOut(duration: 0.25)) { showAIUsage = true }
+          }
+        )
+        .frame(width: 560, height: 420)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .shadow(color: .black.opacity(0.3), radius: 30, y: 10)
+        .padding(.top, 80)
+        .onExitCommand { withAnimation(.easeInOut(duration: 0.25)) { showCommandPalette = false } }
+        .transition(.opacity.combined(with: .move(edge: .top)))
+        .zIndex(201)
       }
 
       // Help overlay — clicking outside dismisses (Task #2EB50767)
