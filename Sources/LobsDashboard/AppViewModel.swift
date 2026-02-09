@@ -502,7 +502,7 @@ final class AppViewModel: ObservableObject {
         }
 
         // Track GitHub sync status if selected project uses GitHub mode
-        let hasGitHubProject = projects.contains { $0.syncMode == .github && $0.githubConfig?.accessToken != nil }
+        let hasGitHubProject = projects.contains { $0.syncMode == .github && $0.githubConfig != nil }
         if hasGitHubProject {
           isGitHubSyncing = true
         }
@@ -538,7 +538,7 @@ final class AppViewModel: ObservableObject {
       } catch {
         // Silent — don't overwrite errors from user actions.
         // But do capture GitHub sync errors if applicable
-        let hasGitHubProject = projects.contains { $0.syncMode == .github && $0.githubConfig?.accessToken != nil }
+        let hasGitHubProject = projects.contains { $0.syncMode == .github && $0.githubConfig != nil }
         if hasGitHubProject {
           lastGitHubSyncError = error.localizedDescription
           isGitHubSyncing = false
@@ -902,7 +902,7 @@ final class AppViewModel: ObservableObject {
         }
 
         // Track GitHub sync status if any project uses GitHub mode
-        let hasGitHubProject = projects.contains { $0.syncMode == .github && $0.githubConfig?.accessToken != nil }
+        let hasGitHubProject = projects.contains { $0.syncMode == .github && $0.githubConfig != nil }
         if hasGitHubProject {
           isGitHubSyncing = true
         }
@@ -939,7 +939,7 @@ final class AppViewModel: ObservableObject {
       } catch {
         lastError = String(describing: error)
         // Capture GitHub sync errors if applicable
-        let hasGitHubProject = projects.contains { $0.syncMode == .github && $0.githubConfig?.accessToken != nil }
+        let hasGitHubProject = projects.contains { $0.syncMode == .github && $0.githubConfig != nil }
         if hasGitHubProject {
           lastGitHubSyncError = error.localizedDescription
           isGitHubSyncing = false
@@ -1838,31 +1838,8 @@ final class AppViewModel: ObservableObject {
     isGitBusy = true
     Task {
       do {
-        // Check if project uses GitHub sync mode
-        let store = LobsControlStore(repoRoot: repoURL)
-        if let project = projects.first(where: { $0.id == selectedProjectId }),
-           project.syncMode == .github,
-           let token = project.githubConfig?.accessToken, !token.isEmpty {
-          // Create GitHub issues for all tasks
-          for i in 0..<newTasks.count {
-            do {
-              let updatedTask = try await store.saveTaskToGitHub(task: newTasks[i], project: project, token: token)
-              newTasks[i] = updatedTask
-
-              // Update local task with GitHub issue number
-              try store.saveExistingTask(updatedTask)
-
-              // Update UI with GitHub issue number
-              await MainActor.run {
-                if let idx = tasks.firstIndex(where: { $0.id == updatedTask.id }) {
-                  tasks[idx] = updatedTask
-                }
-              }
-            } catch {
-              print("Warning: Failed to create GitHub issue for task \(newTasks[i].id): \(error)")
-            }
-          }
-        }
+        // GitHub sync for template tasks is not yet supported with gh CLI
+        // TODO: Implement gh CLI-based sync for batch task creation
 
         try await asyncCommitAndMaybePush(
           repoURL: repoURL,
@@ -2442,25 +2419,8 @@ final class AppViewModel: ObservableObject {
     isGitBusy = true
     Task {
       do {
-        // Check if project uses GitHub sync mode
-        let store = LobsControlStore(repoRoot: repoURL)
-        if let project = projects.first(where: { $0.id == selectedProjectId }),
-           project.syncMode == .github,
-           let token = project.githubConfig?.accessToken, !token.isEmpty {
-          // Create GitHub issue
-          let updatedTask = try await store.saveTaskToGitHub(task: newTask, project: project, token: token)
-          newTask = updatedTask
-
-          // Update local task with GitHub issue number
-          try store.saveExistingTask(updatedTask)
-
-          // Update UI with GitHub issue number
-          await MainActor.run {
-            if let idx = tasks.firstIndex(where: { $0.id == updatedTask.id }) {
-              tasks[idx] = updatedTask
-            }
-          }
-        }
+        // GitHub sync for new tasks is not yet supported with gh CLI
+        // TODO: Implement gh CLI-based sync for task creation
 
         try await asyncCommitAndMaybePush(
           repoURL: repoURL,
