@@ -175,6 +175,10 @@ final class AppViewModel: ObservableObject {
   @Published var controlRepoAhead: Int = 0
   /// How many commits origin/main is ahead of local HEAD (need to pull).
   @Published var controlRepoBehind: Int = 0
+  /// Last time control repo status was checked (for throttling)
+  private var lastControlRepoStatusCheck: Date? = nil
+  /// Last time pending changes count was updated (for throttling)
+  private var lastPendingChangesUpdate: Date? = nil
 
   // GitHub sync status (for collaborative projects)
   /// Timestamp of the last successful GitHub sync.
@@ -486,82 +490,99 @@ final class AppViewModel: ObservableObject {
         // Run git sync off the main thread to avoid UI lag
         try await syncRepoAsync(repoURL: repoURL)
       } catch {
-        isGitBusy = false
+        await MainActor.run { isGitBusy = false }
         return
       }
 
-      // Back on main actor — load local data (fast file I/O)
-      do {
-        let store = LobsControlStore(repoRoot: repoURL)
+      // Load data off the main thread to avoid blocking UI
+      let loadedData: (projects: [Project], tasks: [DashboardTask], hasGitHubProject: Bool)? = await Task.detached {
+        do {
+          let store = LobsControlStore(repoRoot: repoURL)
 
-        // Projects
-        let pfile = try store.loadProjects()
-        if pfile.projects.map({ $0.id }) != projects.map({ $0.id }) {
-          projects = pfile.projects
+          // Projects
+          let pfile = try store.loadProjects()
+          var loadedProjects = pfile.projects
+          if !loadedProjects.contains(where: { $0.id == "default" }) {
+            let now = Date()
+            loadedProjects.insert(Project(id: "default", title: "Default", createdAt: now, updatedAt: now, notes: nil, archived: false), at: 0)
+          }
+
+          if self.autoArchiveCompleted {
+            try store.archiveCompleted(olderThanDays: self.archiveCompletedAfterDays)
+          }
+
+          if self.autoArchiveReadInbox {
+            try store.archiveReadInboxItems(olderThanDays: self.archiveReadInboxAfterDays, readItemIds: self.readItemIds)
+          }
+
+          // Track GitHub sync status if selected project uses GitHub mode
+          let hasGitHubProject = loadedProjects.contains { $0.syncMode == .github && $0.githubConfig != nil }
+
+          let file = try await store.loadTasks()
+
+          return (loadedProjects, file.tasks, hasGitHubProject)
+        } catch {
+          return nil
         }
-        if !projects.contains(where: { $0.id == "default" }) {
-          let now = Date()
-          projects.insert(Project(id: "default", title: "Default", createdAt: now, updatedAt: now, notes: nil, archived: false), at: 0)
+      }.value
+
+      // Back on main actor — update UI with loaded data
+      await MainActor.run {
+        guard let data = loadedData else {
+          let hasGitHubProject = projects.contains { $0.syncMode == .github && $0.githubConfig != nil }
+          if hasGitHubProject {
+            lastGitHubSyncError = "Failed to load data"
+            isGitHubSyncing = false
+          }
+          isGitBusy = false
+          return
+        }
+
+        // Update projects
+        if data.projects.map({ $0.id }) != projects.map({ $0.id }) {
+          projects = data.projects
         }
         if !projects.contains(where: { $0.id == selectedProjectId }) {
           selectedProjectId = "default"
         }
 
-        if autoArchiveCompleted {
-          try store.archiveCompleted(olderThanDays: archiveCompletedAfterDays)
-        }
-
-        if autoArchiveReadInbox {
-          try store.archiveReadInboxItems(olderThanDays: archiveReadInboxAfterDays, readItemIds: readItemIds)
-        }
-
-        // Track GitHub sync status if selected project uses GitHub mode
-        let hasGitHubProject = projects.contains { $0.syncMode == .github && $0.githubConfig != nil }
-        if hasGitHubProject {
-          isGitHubSyncing = true
-        }
-
-        let file = try await store.loadTasks()
-
         // Update GitHub sync status
-        if hasGitHubProject {
+        if data.hasGitHubProject {
           lastGitHubSyncAt = Date()
           lastGitHubSyncError = nil
           isGitHubSyncing = false
         }
 
         // Only update if something changed (avoid UI flicker).
-        if file.tasks.map({ $0.id }).sorted() != tasks.map({ $0.id }).sorted()
-          || file.tasks.map({ $0.updatedAt }) != tasks.map({ $0.updatedAt })
-          || file.tasks.map({ $0.status.rawValue }) != tasks.map({ $0.status.rawValue }) {
-          tasks = file.tasks
-          try loadArtifactForSelected(store: store)
+        if data.tasks.map({ $0.id }).sorted() != tasks.map({ $0.id }).sorted()
+          || data.tasks.map({ $0.updatedAt }) != tasks.map({ $0.updatedAt })
+          || data.tasks.map({ $0.status.rawValue }) != tasks.map({ $0.status.rawValue }) {
+          tasks = data.tasks
+          if let store = try? LobsControlStore(repoRoot: repoURL) {
+            try? loadArtifactForSelected(store: store)
+          }
         }
 
-        // Refresh research data too
-        loadResearchData(store: store)
-        loadTrackerData(store: store)
-        loadInboxItems(store: store)
-        loadWorkerStatus(store: store)
-
-        // Check for dashboard source updates on every sync
-        checkForDashboardUpdate()
-
-        // Check control repo ahead/behind status
-        checkControlRepoStatus()
-
-        // Update pending changes count
-        updatePendingChangesCount()
-      } catch {
-        // Silent — don't overwrite errors from user actions.
-        // But do capture GitHub sync errors if applicable
-        let hasGitHubProject = projects.contains { $0.syncMode == .github && $0.githubConfig != nil }
-        if hasGitHubProject {
-          lastGitHubSyncError = error.localizedDescription
-          isGitHubSyncing = false
-        }
+        isGitBusy = false
       }
-      isGitBusy = false
+
+      // Load secondary data in background (non-blocking)
+      Task.detached(priority: .utility) {
+        guard let store = try? LobsControlStore(repoRoot: repoURL) else { return }
+        
+        // These can happen async without blocking the main UI
+        await self.loadResearchDataAsync(store: store)
+        await self.loadTrackerDataAsync(store: store)
+        await self.loadInboxItemsAsync(store: store)
+        await self.loadWorkerStatusAsync(store: store)
+      }
+
+      // Check for updates in background (low priority)
+      Task.detached(priority: .utility) {
+        await self.checkForDashboardUpdateAsync()
+        await self.checkControlRepoStatusAsync()
+        await self.updatePendingChangesCountAsync()
+      }
     }
   }
 
@@ -890,79 +911,113 @@ final class AppViewModel: ObservableObject {
         // Run git sync off the main thread to avoid UI lag
         try await syncRepoAsync(repoURL: repoURL)
       } catch {
-        lastError = String(describing: error)
-        isGitBusy = false
+        await MainActor.run {
+          lastError = String(describing: error)
+          isGitBusy = false
+        }
         return
       }
 
-      // Back on main actor — load local data (fast file I/O)
-      do {
-        let store = LobsControlStore(repoRoot: repoURL)
+      // Load data off the main thread to avoid blocking UI
+      let loadedData: (projects: [Project], tasks: [DashboardTask], hasGitHubProject: Bool, githubSyncTime: Date?)? = await Task.detached {
+        do {
+          let store = LobsControlStore(repoRoot: repoURL)
 
-        // Projects
-        let pfile = try store.loadProjects()
-        projects = pfile.projects
-        if !projects.contains(where: { $0.id == "default" }) {
-          let now = Date()
-          projects.insert(Project(id: "default", title: "Default", createdAt: now, updatedAt: now, notes: nil, archived: false), at: 0)
+          // Projects
+          let pfile = try store.loadProjects()
+          var loadedProjects = pfile.projects
+          if !loadedProjects.contains(where: { $0.id == "default" }) {
+            let now = Date()
+            loadedProjects.insert(Project(id: "default", title: "Default", createdAt: now, updatedAt: now, notes: nil, archived: false), at: 0)
+          }
+
+          if self.autoArchiveCompleted {
+            try store.archiveCompleted(olderThanDays: self.archiveCompletedAfterDays)
+          }
+
+          if self.autoArchiveReadInbox {
+            try store.archiveReadInboxItems(olderThanDays: self.archiveReadInboxAfterDays, readItemIds: self.readItemIds)
+          }
+
+          // Track GitHub sync status if any project uses GitHub mode
+          let hasGitHubProject = loadedProjects.contains { $0.tracking == .github && $0.github != nil }
+
+          let file = try await store.loadTasks()
+
+          // Get GitHub sync timestamp
+          let githubSyncTime: Date? = {
+            if hasGitHubProject, let currentProject = loadedProjects.first(where: { $0.id == self.selectedProjectId && $0.tracking == .github }) {
+              return store.getGitHubCacheTimestamp(project: currentProject)
+            }
+            return nil
+          }()
+
+          return (loadedProjects, file.tasks, hasGitHubProject, githubSyncTime)
+        } catch {
+          return nil
         }
+      }.value
+
+      // Back on main actor — update UI with loaded data
+      await MainActor.run {
+        guard let data = loadedData else {
+          let hasGitHubProject = projects.contains { $0.tracking == .github && $0.github != nil }
+          if hasGitHubProject {
+            lastGitHubSyncError = "Failed to load data"
+            isGitHubSyncing = false
+          }
+          lastError = "Failed to load data"
+          isGitBusy = false
+          return
+        }
+
+        // Update projects
+        projects = data.projects
         if !projects.contains(where: { $0.id == selectedProjectId }) {
           selectedProjectId = "default"
         }
 
-        if autoArchiveCompleted {
-          try store.archiveCompleted(olderThanDays: archiveCompletedAfterDays)
-        }
-
-        if autoArchiveReadInbox {
-          try store.archiveReadInboxItems(olderThanDays: archiveReadInboxAfterDays, readItemIds: readItemIds)
-        }
-
-        // Track GitHub sync status if any project uses GitHub mode
-        let hasGitHubProject = projects.contains { $0.tracking == .github && $0.github != nil }
-        if hasGitHubProject {
-          isGitHubSyncing = true
-        }
-
-        let file = try await store.loadTasks()
-
-        // Update GitHub sync status from cache timestamp
-        if hasGitHubProject, let currentProject = projects.first(where: { $0.id == selectedProjectId && $0.tracking == .github }) {
-          lastGitHubSyncAt = store.getGitHubCacheTimestamp(project: currentProject)
+        // Update GitHub sync status
+        if data.hasGitHubProject {
+          lastGitHubSyncAt = data.githubSyncTime
           lastGitHubSyncError = nil
           isGitHubSyncing = false
         }
 
-        tasks = file.tasks
+        // Update tasks
+        tasks = data.tasks
         lastError = nil
-        try loadArtifactForSelected(store: store)
+        
+        if let store = try? LobsControlStore(repoRoot: repoURL) {
+          try? loadArtifactForSelected(store: store)
+        }
 
-        // Load research data if applicable
-        loadResearchData(store: store)
-        loadTrackerData(store: store)
-        loadInboxItems(store: store)
-        loadProjectReadme(store: store)
-        loadTemplates()
-        loadWorkerStatus(store: store)
-        loadTextDumps(store: store)
-        refreshWorkerRequestPending()
+        isGitBusy = false
+      }
 
-        refreshProjectLastCommitAt()
-
-        // Manual refresh should also refresh the dashboard update indicator immediately.
-        checkForDashboardUpdate(force: true)
-        checkControlRepoStatus()
-
-      } catch {
-        lastError = String(describing: error)
-        // Capture GitHub sync errors if applicable
-        let hasGitHubProject = projects.contains { $0.syncMode == .github && $0.githubConfig != nil }
-        if hasGitHubProject {
-          lastGitHubSyncError = error.localizedDescription
-          isGitHubSyncing = false
+      // Load secondary data in background (non-blocking)
+      Task.detached(priority: .utility) {
+        guard let store = try? LobsControlStore(repoRoot: repoURL) else { return }
+        
+        await self.loadResearchDataAsync(store: store)
+        await self.loadTrackerDataAsync(store: store)
+        await self.loadInboxItemsAsync(store: store)
+        await self.loadWorkerStatusAsync(store: store)
+        
+        await MainActor.run {
+          self.loadProjectReadme(store: store)
+          self.loadTemplates()
+          self.loadTextDumps(store: store)
+          self.refreshWorkerRequestPending()
+          self.refreshProjectLastCommitAt()
         }
       }
-      isGitBusy = false
+
+      // Check for updates in background (low priority)
+      Task.detached(priority: .utility) {
+        await self.checkForDashboardUpdateAsync()
+        await self.checkControlRepoStatusAsync()
+      }
     }
   }
 
@@ -4325,4 +4380,207 @@ final class AppViewModel: ObservableObject {
   }
 
   // App icon is bundled in Resources/AppIcon.png (no user customization).
+
+  // MARK: - Async Data Loading Helpers
+
+  /// Load research data asynchronously (off main thread)
+  private func loadResearchDataAsync(store: LobsControlStore) async {
+    guard isResearchProject else { return }
+    
+    let data = await Task.detached {
+      do {
+        try store.migrateResearchTilesToDoc(projectId: self.selectedProjectId)
+        
+        let docContent = try store.loadResearchDoc(projectId: self.selectedProjectId)
+        let sources = try store.loadResearchSources(projectId: self.selectedProjectId)
+        let deliverables = try store.loadResearchDeliverables(projectId: self.selectedProjectId)
+        let tiles = try store.loadTiles(projectId: self.selectedProjectId)
+        let requests = try store.loadRequests(projectId: self.selectedProjectId)
+        
+        return (docContent, sources, deliverables, tiles, requests)
+      } catch {
+        return nil
+      }
+    }.value
+    
+    guard let (docContent, sources, deliverables, tiles, requests) = data else { return }
+    
+    await MainActor.run {
+      self.researchDocContent = docContent
+      self.researchSources = sources
+      self.researchDeliverables = deliverables
+      self.researchTiles = tiles
+      self.researchRequests = requests
+    }
+  }
+
+  /// Load tracker data asynchronously (off main thread)
+  private func loadTrackerDataAsync(store: LobsControlStore) async {
+    guard isTrackerProject else { return }
+    
+    let data = await Task.detached {
+      do {
+        let items = try store.loadTrackerItems(projectId: self.selectedProjectId)
+        let requests = try store.loadTrackerRequests(projectId: self.selectedProjectId)
+        return (items, requests)
+      } catch {
+        return nil
+      }
+    }.value
+    
+    guard let (items, requests) = data else { return }
+    
+    await MainActor.run {
+      self.trackerItems = items
+      self.trackerRequests = requests
+    }
+  }
+
+  /// Load inbox items asynchronously (off main thread)
+  private func loadInboxItemsAsync(store: LobsControlStore) async {
+    let data = await Task.detached {
+      do {
+        let items = try store.loadInboxItems()
+        let threads = try store.loadAllInboxThreads()
+        return (items, threads)
+      } catch {
+        return nil
+      }
+    }.value
+    
+    guard let (items, threads) = data else { return }
+    
+    await MainActor.run {
+      // Merge with pendingThreadWrites to preserve local edits
+      var mergedThreads = threads
+      for (docId, pendingThread) in self.pendingThreadWrites {
+        mergedThreads[docId] = pendingThread
+      }
+      
+      self.inboxItems = items
+      self.inboxThreadsByDocId = mergedThreads
+    }
+  }
+
+  /// Load worker status asynchronously (off main thread)
+  private func loadWorkerStatusAsync(store: LobsControlStore) async {
+    let data = await Task.detached {
+      do {
+        let status = try store.loadWorkerStatus()
+        let history = try store.loadWorkerHistory()
+        let usage = try store.loadMainSessionUsage()
+        return (status, history, usage)
+      } catch {
+        return nil
+      }
+    }.value
+    
+    guard let (status, history, usage) = data else { return }
+    
+    await MainActor.run {
+      self.workerStatus = status
+      self.workerHistory = history
+      self.mainSessionUsage = usage
+    }
+  }
+
+  /// Check for dashboard updates asynchronously
+  private func checkForDashboardUpdateAsync() async {
+    guard let dashURL = dashboardRepoURL else { return }
+    
+    // Throttle checks (don't check more than once per 5 minutes)
+    if let last = lastDashboardUpdateCheckAt,
+       Date().timeIntervalSince(last) < 300 {
+      return
+    }
+    
+    let result = await Task.detached {
+      // Fetch latest from origin (timeout after 10 seconds)
+      let fetch = Git.runWithErrorHandling(["fetch", "origin", "main"], cwd: dashURL)
+      guard fetch.success else { return nil }
+      
+      let localCommit = Git.runWithErrorHandling(["rev-parse", "--short", "HEAD"], cwd: dashURL)
+      let remoteCommit = Git.runWithErrorHandling(["rev-parse", "--short", "origin/main"], cwd: dashURL)
+      let behindRes = Git.runWithErrorHandling(
+        ["rev-list", "--count", "HEAD..origin/main"],
+        cwd: dashURL
+      )
+      
+      let local = localCommit.output.trimmingCharacters(in: .whitespacesAndNewlines)
+      let remote = remoteCommit.output.trimmingCharacters(in: .whitespacesAndNewlines)
+      let behind = Int(behindRes.output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+      
+      return (local, remote, behind)
+    }.value
+    
+    await MainActor.run {
+      self.lastDashboardUpdateCheckAt = Date()
+      
+      guard let (local, remote, behind) = result else { return }
+      
+      self.dashboardLocalCommit = local
+      self.dashboardRemoteCommit = remote
+      self.dashboardCommitsBehind = behind
+      self.dashboardUpdateAvailable = behind > 0
+    }
+  }
+
+  /// Check control repo status asynchronously
+  private func checkControlRepoStatusAsync() async {
+    guard let repoURL else { return }
+    
+    // Throttle: don't check more than once every 10 seconds
+    if let last = await MainActor.run(body: { lastControlRepoStatusCheck }),
+       Date().timeIntervalSince(last) < 10 {
+      return
+    }
+    
+    let result = await Task.detached {
+      let aheadRes = Git.runWithErrorHandling(
+        ["rev-list", "--count", "origin/main..HEAD"],
+        cwd: repoURL
+      )
+      let behindRes = Git.runWithErrorHandling(
+        ["rev-list", "--count", "HEAD..origin/main"],
+        cwd: repoURL
+      )
+      
+      let ahead = Int(aheadRes.output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+      let behind = Int(behindRes.output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+      
+      return (ahead, behind)
+    }.value
+    
+    guard let (ahead, behind) = result else { return }
+    
+    await MainActor.run {
+      self.controlRepoAhead = ahead
+      self.controlRepoBehind = behind
+      self.lastControlRepoStatusCheck = Date()
+    }
+  }
+
+  /// Update pending changes count asynchronously
+  private func updatePendingChangesCountAsync() async {
+    guard let repoURL else { return }
+    
+    // Throttle: don't check more than once every 5 seconds
+    if let last = await MainActor.run(body: { lastPendingChangesUpdate }),
+       Date().timeIntervalSince(last) < 5 {
+      return
+    }
+    
+    let count = await Task.detached {
+      let status = Git.runWithErrorHandling(["status", "--porcelain"], cwd: repoURL)
+      guard status.success else { return 0 }
+      
+      let lines = status.output.split(separator: "\n")
+      return lines.count
+    }.value
+    
+    await MainActor.run {
+      self.pendingChangesCount = count
+      self.lastPendingChangesUpdate = Date()
+    }
+  }
 }
