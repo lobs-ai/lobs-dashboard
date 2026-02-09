@@ -658,47 +658,75 @@ private struct FilterHint: View {
 
 // MARK: - Key Event Handler
 
-/// Intercepts arrow keys and escape for navigation
+/// Intercepts arrow keys and escape for navigation using local event monitor
 private struct KeyEventHandler: NSViewRepresentable {
   let onArrowDown: () -> Void
   let onArrowUp: () -> Void
   let onEscape: () -> Void
   
   func makeNSView(context: Context) -> NSView {
-    let view = KeyHandlerView()
-    view.onArrowDown = onArrowDown
-    view.onArrowUp = onArrowUp
-    view.onEscape = onEscape
+    let view = NSView()
+    
+    // Store closures in coordinator
+    context.coordinator.onArrowDown = onArrowDown
+    context.coordinator.onArrowUp = onArrowUp
+    context.coordinator.onEscape = onEscape
+    
+    // Install local event monitor
+    context.coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+      switch event.keyCode {
+      case 125: // down arrow
+        if let handler = context.coordinator.onArrowDown {
+          DispatchQueue.main.async {
+            handler()
+          }
+        }
+        return nil // consume event
+      case 126: // up arrow
+        if let handler = context.coordinator.onArrowUp {
+          DispatchQueue.main.async {
+            handler()
+          }
+        }
+        return nil // consume event
+      case 53: // escape
+        if let handler = context.coordinator.onEscape {
+          DispatchQueue.main.async {
+            handler()
+          }
+        }
+        return nil // consume event
+      default:
+        return event
+      }
+    }
+    
     return view
   }
   
   func updateNSView(_ nsView: NSView, context: Context) {
-    if let view = nsView as? KeyHandlerView {
-      view.onArrowDown = onArrowDown
-      view.onArrowUp = onArrowUp
-      view.onEscape = onEscape
+    // Update closures in coordinator
+    context.coordinator.onArrowDown = onArrowDown
+    context.coordinator.onArrowUp = onArrowUp
+    context.coordinator.onEscape = onEscape
+  }
+  
+  static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+    // Clean up event monitor
+    if let monitor = coordinator.monitor {
+      NSEvent.removeMonitor(monitor)
     }
   }
   
-  class KeyHandlerView: NSView {
+  func makeCoordinator() -> Coordinator {
+    Coordinator()
+  }
+  
+  class Coordinator {
+    var monitor: Any?
     var onArrowDown: (() -> Void)?
     var onArrowUp: (() -> Void)?
     var onEscape: (() -> Void)?
-    
-    override var acceptsFirstResponder: Bool { true }
-    
-    override func keyDown(with event: NSEvent) {
-      switch event.keyCode {
-      case 125: // down arrow
-        onArrowDown?()
-      case 126: // up arrow
-        onArrowUp?()
-      case 53: // escape
-        onEscape?()
-      default:
-        super.keyDown(with: event)
-      }
-    }
   }
 }
 
