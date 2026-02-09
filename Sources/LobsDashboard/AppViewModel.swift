@@ -2518,6 +2518,7 @@ final class AppViewModel: ObservableObject {
         file.projects.insert(Project(id: "default", title: "Default", createdAt: dnow, updatedAt: dnow, notes: nil, archived: false), at: 0)
       }
       file.projects.append(p)
+      file.generatedAt = Date()
       try store.saveProjects(file)
 
       // Keep README in sync with project notes (they are the same content)
@@ -2766,6 +2767,7 @@ final class AppViewModel: ObservableObject {
         file.projects[idx].archived = false
         file.projects[idx].updatedAt = Date()
       }
+      file.generatedAt = Date()
       try store.saveProjects(file)
     } catch {
       flashError("Failed to unarchive project: \(error.localizedDescription)")
@@ -2819,6 +2821,7 @@ final class AppViewModel: ObservableObject {
           file.projects[idx].updatedAt = Date()
         }
       }
+      file.generatedAt = Date()
       try store.saveProjects(file)
     } catch {
       flashError("Failed to reorder projects: \(error.localizedDescription)")
@@ -2864,7 +2867,7 @@ final class AppViewModel: ObservableObject {
 
     // Persist + git
     do {
-      let store = LobsControlStore(repoRoot: repoURL)
+      let store = LobsControlStore(repoURL)
       var file = try store.loadProjects()
       for (i, project) in sorted.enumerated() {
         if let idx = file.projects.firstIndex(where: { $0.id == project.id }) {
@@ -2872,6 +2875,7 @@ final class AppViewModel: ObservableObject {
           file.projects[idx].updatedAt = Date()
         }
       }
+      file.generatedAt = Date()
       try store.saveProjects(file)
     } catch {
       flashError("Failed to reorder projects: \(error.localizedDescription)")

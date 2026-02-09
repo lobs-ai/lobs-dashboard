@@ -88,9 +88,8 @@ final class LobsControlStore {
   }
 
   func saveProjects(_ file: ProjectsFile) throws {
-    var file = file
-    file.generatedAt = Date()
-
+    // Don't unconditionally update generatedAt - let callers update it when they make changes
+    // This prevents spurious git diffs when nothing actually changed
     try FileManager.default.createDirectory(
       at: projectsURL.deletingLastPathComponent(),
       withIntermediateDirectories: true
@@ -103,8 +102,11 @@ final class LobsControlStore {
   func renameProject(id: String, newTitle: String) throws {
     var file = try loadProjects()
     guard let idx = file.projects.firstIndex(where: { $0.id == id }) else { return }
-    file.projects[idx].title = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+    let newTitleTrimmed = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard file.projects[idx].title != newTitleTrimmed else { return } // No change
+    file.projects[idx].title = newTitleTrimmed
     file.projects[idx].updatedAt = Date()
+    file.generatedAt = Date()
     try saveProjects(file)
   }
 
@@ -112,8 +114,11 @@ final class LobsControlStore {
     var file = try loadProjects()
     guard let idx = file.projects.firstIndex(where: { $0.id == id }) else { return }
     let clean = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
-    file.projects[idx].notes = (clean?.isEmpty == true) ? nil : clean
+    let cleanNotes = (clean?.isEmpty == true) ? nil : clean
+    guard file.projects[idx].notes != cleanNotes else { return } // No change
+    file.projects[idx].notes = cleanNotes
     file.projects[idx].updatedAt = Date()
+    file.generatedAt = Date()
     try saveProjects(file)
   }
 
@@ -123,20 +128,26 @@ final class LobsControlStore {
     file.projects[idx].syncMode = syncMode
     file.projects[idx].githubConfig = githubConfig
     file.projects[idx].updatedAt = Date()
+    file.generatedAt = Date()
     try saveProjects(file)
   }
 
   func deleteProject(id: String) throws {
     var file = try loadProjects()
+    let oldCount = file.projects.count
     file.projects.removeAll { $0.id == id }
+    guard file.projects.count != oldCount else { return } // No change
+    file.generatedAt = Date()
     try saveProjects(file)
   }
 
   func archiveProject(id: String) throws {
     var file = try loadProjects()
     guard let idx = file.projects.firstIndex(where: { $0.id == id }) else { return }
+    guard file.projects[idx].archived != true else { return } // Already archived
     file.projects[idx].archived = true
     file.projects[idx].updatedAt = Date()
+    file.generatedAt = Date()
     try saveProjects(file)
   }
 
