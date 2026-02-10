@@ -14,7 +14,8 @@ enum Shell {
     _ launchPath: String,
     _ args: [String] = [],
     cwd: URL? = nil,
-    env: [String: String] = [:]
+    env: [String: String] = [:],
+    timeoutSeconds: Double? = nil
   ) throws -> Result {
     let proc = Process()
     proc.executableURL = URL(fileURLWithPath: launchPath)
@@ -30,25 +31,44 @@ enum Shell {
     proc.standardOutput = out
     proc.standardError = err
 
+    var didTimeout = false
+    var timer: DispatchSourceTimer? = nil
+
+    if let timeoutSeconds, timeoutSeconds > 0 {
+      let t = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .userInitiated))
+      t.schedule(deadline: .now() + timeoutSeconds)
+      t.setEventHandler {
+        if proc.isRunning {
+          didTimeout = true
+          proc.terminate()
+        }
+      }
+      t.resume()
+      timer = t
+    }
+
     try proc.run()
     proc.waitUntilExit()
+    timer?.cancel()
 
     let stdout = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-    let stderr = String(data: err.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+    let stderrRaw = String(data: err.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+    let stderr = didTimeout ? (stderrRaw + (stderrRaw.isEmpty ? "" : "\n") + "Timed out after \(timeoutSeconds ?? 0)s") : stderrRaw
 
-    return Result(exitCode: proc.terminationStatus, stdout: stdout, stderr: stderr)
+    return Result(exitCode: didTimeout ? 124 : proc.terminationStatus, stdout: stdout, stderr: stderr)
   }
 
   static func runAsync(
     _ launchPath: String,
     _ args: [String] = [],
     cwd: URL? = nil,
-    env: [String: String] = [:]
+    env: [String: String] = [:],
+    timeoutSeconds: Double? = nil
   ) async -> Result {
     await withCheckedContinuation { continuation in
       DispatchQueue.global(qos: .userInitiated).async {
         do {
-          let res = try run(launchPath, args, cwd: cwd, env: env)
+          let res = try run(launchPath, args, cwd: cwd, env: env, timeoutSeconds: timeoutSeconds)
           continuation.resume(returning: res)
         } catch {
           continuation.resume(returning: Result(exitCode: 1, stdout: "", stderr: String(describing: error)))
@@ -62,9 +82,10 @@ enum Shell {
     _ command: String,
     _ args: [String] = [],
     cwd: URL? = nil,
-    env: [String: String] = [:]
+    env: [String: String] = [:],
+    timeoutSeconds: Double? = nil
   ) async -> Result {
-    await runAsync("/usr/bin/env", [command] + args, cwd: cwd, env: env)
+    await runAsync("/usr/bin/env", [command] + args, cwd: cwd, env: env, timeoutSeconds: timeoutSeconds)
   }
 
   static func which(_ command: String) async -> String? {
