@@ -1657,6 +1657,9 @@ private struct SettingsPopover: View {
   @Binding var showPicker: Bool
   // App icon is bundled; no icon picker.
 
+  @State private var showingForcePullConfirm: Bool = false
+  @State private var showingForcePushConfirm: Bool = false
+
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
       Text("Settings")
@@ -1737,6 +1740,66 @@ private struct SettingsPopover: View {
                 .frame(width: 50)
               Text("days")
                 .font(.footnote)
+            }
+          }
+
+          Divider().padding(.vertical, 4)
+
+          VStack(alignment: .leading, spacing: 6) {
+            Text("Git Sync")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+
+            Button(role: .destructive) {
+              showingForcePullConfirm = true
+            } label: {
+              Label("Force Pull (Discard Local)", systemImage: "arrow.down.circle")
+            }
+            .controlSize(.small)
+            .disabled(vm.repoURL == nil || vm.isGitBusy)
+            .confirmationDialog(
+              "Force Pull (Discard Local)",
+              isPresented: $showingForcePullConfirm,
+              titleVisibility: .visible
+            ) {
+              Button("Force Pull", role: .destructive) {
+                vm.forcePullDiscardLocal()
+              }
+              Button("Cancel", role: .cancel) {}
+            } message: {
+              Text("This will stash local changes as a safety backup, then reset your repo to origin/main and delete untracked files.")
+            }
+
+            Button(role: .destructive) {
+              showingForcePushConfirm = true
+            } label: {
+              Label("Force Push (Overwrite Remote)", systemImage: "arrow.up.circle")
+            }
+            .controlSize(.small)
+            .disabled(vm.repoURL == nil || vm.isGitBusy)
+            .confirmationDialog(
+              "Force Push (Overwrite Remote)",
+              isPresented: $showingForcePushConfirm,
+              titleVisibility: .visible
+            ) {
+              Button("Force Push", role: .destructive) {
+                vm.forcePushOverwriteRemote()
+              }
+              Button("Cancel", role: .cancel) {}
+            } message: {
+              Text("This will overwrite remote changes if needed. Are you sure?")
+            }
+            .confirmationDialog(
+              "Force Push Failed — Escalate to --force?",
+              isPresented: $vm.forcePushEscalationPresented,
+              titleVisibility: .visible
+            ) {
+              Button("Push --force", role: .destructive) {
+                vm.forcePushOverwriteRemoteForce()
+              }
+              Button("Cancel", role: .cancel) {}
+            } message: {
+              Text((vm.forcePushEscalationError ?? "Force push (with lease) failed") + "\n\nThis will overwrite remote history. Proceed only if you are sure.")
             }
           }
         }

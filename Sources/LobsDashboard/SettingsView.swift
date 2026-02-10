@@ -7,6 +7,9 @@ struct SettingsView: View {
   @State private var showingChangeRepoConfirmation = false
   @State private var showingResetConfirmation = false
   @State private var showingPersonalityEditor = false
+
+  @State private var showingForcePullConfirm: Bool = false
+  @State private var showingForcePushConfirm: Bool = false
   
   var body: some View {
     VStack(alignment: .leading, spacing: 20) {
@@ -90,6 +93,73 @@ struct SettingsView: View {
             }
             .buttonStyle(.bordered)
             .disabled(config.controlRepoPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+          }
+
+          Divider()
+            .padding(.vertical, 8)
+
+          // Git Sync
+          VStack(alignment: .leading, spacing: 12) {
+            Text("Git Sync")
+              .font(.headline)
+
+            Text("Manual overrides for when automatic sync fails.")
+              .font(.caption)
+              .foregroundColor(.secondary)
+
+            HStack(spacing: 12) {
+              Button(role: .destructive) {
+                showingForcePullConfirm = true
+              } label: {
+                Text("Force Pull (Discard Local)")
+              }
+              .buttonStyle(.bordered)
+              .disabled(vm.repoURL == nil || vm.isGitBusy)
+              .confirmationDialog(
+                "Force Pull (Discard Local)",
+                isPresented: $showingForcePullConfirm,
+                titleVisibility: .visible
+              ) {
+                Button("Force Pull", role: .destructive) {
+                  vm.forcePullDiscardLocal()
+                }
+                Button("Cancel", role: .cancel) {}
+              } message: {
+                Text("This will stash local changes as a safety backup, then reset your repo to origin/main and delete untracked files.")
+              }
+
+              Button(role: .destructive) {
+                showingForcePushConfirm = true
+              } label: {
+                Text("Force Push (Overwrite Remote)")
+              }
+              .buttonStyle(.bordered)
+              .disabled(vm.repoURL == nil || vm.isGitBusy)
+              .confirmationDialog(
+                "Force Push (Overwrite Remote)",
+                isPresented: $showingForcePushConfirm,
+                titleVisibility: .visible
+              ) {
+                Button("Force Push", role: .destructive) {
+                  vm.forcePushOverwriteRemote()
+                }
+                Button("Cancel", role: .cancel) {}
+              } message: {
+                Text("This will overwrite remote changes if needed. Are you sure?")
+              }
+              .confirmationDialog(
+                "Force Push Failed — Escalate to --force?",
+                isPresented: $vm.forcePushEscalationPresented,
+                titleVisibility: .visible
+              ) {
+                Button("Push --force", role: .destructive) {
+                  vm.forcePushOverwriteRemoteForce()
+                }
+                Button("Cancel", role: .cancel) {}
+              } message: {
+                Text((vm.forcePushEscalationError ?? "Force push (with lease) failed") + "\n\nThis will overwrite remote history. Proceed only if you are sure.")
+              }
+            }
           }
 
           Divider()

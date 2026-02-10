@@ -310,6 +310,12 @@ final class AppViewModel: ObservableObject {
   /// Last push error message (if any). When set, UI should treat remote-derived state as potentially stale.
   @Published var lastPushError: String? = nil
 
+  // Manual force-sync UI state
+  /// When true, the UI should prompt the user to confirm escalating from --force-with-lease to --force.
+  @Published var forcePushEscalationPresented: Bool = false
+  /// Error that triggered the escalation prompt (best-effort).
+  @Published var forcePushEscalationError: String? = nil
+
   // Notifications
   @Published var notifications: [DashboardNotification] = []
   @Published var notificationPreferences: NotificationPreferences = .default
