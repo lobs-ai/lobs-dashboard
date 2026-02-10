@@ -149,6 +149,18 @@ See the [lobs-orchestrator README](https://github.com/RafeSymonds/lobs-orchestra
 - Running as a systemd service
 - Troubleshooting common issues
 
+**Optional: guided setup script (server):**
+
+This repository includes a simple interactive wizard you can run on your server to install OpenClaw + clone/configure the orchestrator:
+
+```bash
+# from a checkout of lobs-dashboard
+./bin/server-setup-wizard
+
+# or pass your control repo URL up-front
+LOBS_CONTROL_REPO_URL=git@github.com:YOUR-USER/lobs-control.git ./bin/server-setup-wizard
+```
+
 ### OpenClaw Setup
 
 The orchestrator requires OpenClaw to run the AI worker. See the official documentation:

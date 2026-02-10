@@ -47,26 +47,65 @@ struct OnboardingServerSetupView: View {
                 // Step 2
                 StepBlock(
                     number: 2,
-                    title: "Clone the orchestrator:",
-                    command: "git clone https://github.com/RafeSymonds/lobs-orchestrator.git ~/lobs-orchestrator\ncd ~/lobs-orchestrator && pip install -r requirements.txt",
+                    title: "Install OpenClaw (worker runtime):",
+                    command: "npm install -g openclaw@latest",
                     isCopied: copiedIndex == 2,
                     onCopy: {
-                        copyToClipboard("git clone https://github.com/RafeSymonds/lobs-orchestrator.git ~/lobs-orchestrator\ncd ~/lobs-orchestrator && pip install -r requirements.txt")
+                        copyToClipboard("npm install -g openclaw@latest")
                         copiedIndex = 2
                         resetCopyState(for: 2)
                     }
                 )
-                
+
                 // Step 3
                 StepBlock(
                     number: 3,
-                    title: "Start the orchestrator:",
-                    command: "cd ~/lobs-orchestrator && python3 main.py",
+                    title: "Run OpenClaw onboarding + install the Gateway service:",
+                    command: "openclaw onboard --install-daemon",
                     isCopied: copiedIndex == 3,
                     onCopy: {
-                        copyToClipboard("cd ~/lobs-orchestrator && python3 main.py")
+                        copyToClipboard("openclaw onboard --install-daemon")
                         copiedIndex = 3
                         resetCopyState(for: 3)
+                    }
+                )
+
+                // Step 4
+                StepBlock(
+                    number: 4,
+                    title: "Clone the orchestrator + install dependencies:",
+                    command: "git clone https://github.com/RafeSymonds/lobs-orchestrator.git ~/lobs-orchestrator\ncd ~/lobs-orchestrator && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt",
+                    isCopied: copiedIndex == 4,
+                    onCopy: {
+                        copyToClipboard("git clone https://github.com/RafeSymonds/lobs-orchestrator.git ~/lobs-orchestrator\ncd ~/lobs-orchestrator && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt")
+                        copiedIndex = 4
+                        resetCopyState(for: 4)
+                    }
+                )
+
+                // Step 5
+                StepBlock(
+                    number: 5,
+                    title: "Start the orchestrator (quick test):",
+                    command: "cd ~/lobs-orchestrator && source .venv/bin/activate && python3 main.py",
+                    isCopied: copiedIndex == 5,
+                    onCopy: {
+                        copyToClipboard("cd ~/lobs-orchestrator && source .venv/bin/activate && python3 main.py")
+                        copiedIndex = 5
+                        resetCopyState(for: 5)
+                    }
+                )
+
+                // Step 6
+                StepBlock(
+                    number: 6,
+                    title: "Verify services are running:",
+                    command: "openclaw doctor\nopenclaw gateway status\n# (Linux) journalctl --user -u lobs-orchestrator -f",
+                    isCopied: copiedIndex == 6,
+                    onCopy: {
+                        copyToClipboard("openclaw doctor\nopenclaw gateway status\n# (Linux) journalctl --user -u lobs-orchestrator -f")
+                        copiedIndex = 6
+                        resetCopyState(for: 6)
                     }
                 )
                 
@@ -95,7 +134,7 @@ struct OnboardingServerSetupView: View {
                     Image(systemName: "info.circle")
                         .foregroundColor(.secondary)
                         .font(.system(size: 13))
-                    Text("Make sure OpenClaw is configured on your server before starting the orchestrator.")
+                    Text("Tip: The OpenClaw onboarding step will set up the Gateway service and help you configure providers/keys. Once the orchestrator is running, click Verify Setup.")
                         .font(.system(size: 13))
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -147,9 +186,13 @@ struct OnboardingServerSetupView: View {
     private func copyAllCommands() {
         let allCommands = """
         git clone \(repoUrl) ~/lobs-control
+        npm install -g openclaw@latest
+        openclaw onboard --install-daemon
         git clone https://github.com/RafeSymonds/lobs-orchestrator.git ~/lobs-orchestrator
-        cd ~/lobs-orchestrator && pip install -r requirements.txt
-        cd ~/lobs-orchestrator && python3 main.py
+        cd ~/lobs-orchestrator && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+        cd ~/lobs-orchestrator && source .venv/bin/activate && python3 main.py
+        openclaw doctor
+        openclaw gateway status
         """
         
         copyToClipboard(allCommands)
