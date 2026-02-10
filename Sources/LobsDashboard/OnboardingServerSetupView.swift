@@ -11,22 +11,6 @@ struct OnboardingServerSetupView: View {
     @State private var copiedIndex: Int? = nil
     @State private var copiedAll: Bool = false
     
-    // Prerequisite checks
-    private let commandTimeoutSeconds: Double = 5
-    @State private var isChecking: Bool = false
-    @State private var showPrereqs: Bool = true
-    
-    @State private var nodeOK: Bool = false
-    @State private var pythonOK: Bool = false
-    @State private var nodeDetail: String = ""
-    @State private var pythonDetail: String = ""
-    @State private var nodeError: String? = nil
-    @State private var pythonError: String? = nil
-    @State private var nodeExpanded: Bool = false
-    @State private var pythonExpanded: Bool = false
-    
-    private var prereqsOK: Bool { nodeOK && pythonOK }
-    
     var body: some View {
         VStack(spacing: 32) {
             Spacer()
@@ -57,48 +41,43 @@ struct OnboardingServerSetupView: View {
                 .frame(maxWidth: 560)
             }
             
-            if showPrereqs {
-                // Prerequisites section
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Text("Server Prerequisites")
-                            .font(.system(size: 16, weight: .semibold))
-                        Spacer()
-                        Button(action: { Task { await refreshPrereqs() } }) {
-                            Text(isChecking ? "Checking…" : "Refresh")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(Theme.accent)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(isChecking)
+            // Server Prerequisites Note
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("Server Prerequisites")
+                        .font(.system(size: 16, weight: .semibold))
+                    Spacer()
+                }
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle")
+                            .foregroundColor(.secondary)
+                        Text("Node.js 18+ (required for OpenClaw)")
+                            .font(.system(size: 14))
                     }
                     
-                    prereqDisclosure(
-                        title: "Node.js 18+",
-                        ok: nodeOK,
-                        detail: nodeDetail,
-                        error: nodeError,
-                        expanded: $nodeExpanded,
-                        help: { nodeHelp }
-                    )
-                    
-                    prereqDisclosure(
-                        title: "Python 3.10+",
-                        ok: pythonOK,
-                        detail: pythonDetail,
-                        error: pythonError,
-                        expanded: $pythonExpanded,
-                        help: { pythonHelp }
-                    )
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle")
+                            .foregroundColor(.secondary)
+                        Text("Python 3.10+ (required for orchestrator)")
+                            .font(.system(size: 14))
+                    }
                 }
-                .frame(width: 600)
-                .padding(20)
-                .background(Theme.cardBg)
-                .cornerRadius(12)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12).stroke(Theme.border, lineWidth: 1)
-                )
+                .padding(.leading, 8)
+                
+                Text("Make sure these are installed on your server before running the commands below.")
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+                    .padding(.top, 4)
             }
+            .frame(width: 600)
+            .padding(20)
+            .background(Theme.cardBg)
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12).stroke(Theme.border, lineWidth: 1)
+            )
             
             // Instructions
             VStack(alignment: .leading, spacing: 20) {
@@ -247,9 +226,6 @@ struct OnboardingServerSetupView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.bg)
-        .onAppear {
-            Task { await refreshPrereqs() }
-        }
     }
     
     /// Copy text to clipboard
