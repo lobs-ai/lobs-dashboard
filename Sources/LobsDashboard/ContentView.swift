@@ -433,9 +433,61 @@ struct ContentView: View {
           if showInbox { withAnimation(.easeInOut(duration: 0.25)) { showInbox = false }; return true }
           if showSettings { showSettings = false; return true }
           if showHelp { withAnimation(.easeInOut(duration: 0.25)) { showHelp = false }; return true }
+          if vm.popoverTaskId != nil { vm.popoverTaskId = nil; return true }
           if vm.isMultiSelectActive { withAnimation { vm.clearMultiSelect() }; return true }
           return false
         },
+        onEnter: {
+          // Open task detail for the currently selected task (toggle).
+          guard let id = vm.selectedTaskId else { return }
+          vm.popoverTaskId = (vm.popoverTaskId == id) ? nil : id
+        },
+        onMoveToActive: {
+          if vm.isMultiSelectActive {
+            vm.bulkMoveSelected(to: .active)
+          } else if let id = vm.selectedTaskId {
+            vm.moveTask(taskId: id, to: .active)
+          }
+        },
+        onMoveToWaitingOn: {
+          if vm.isMultiSelectActive {
+            vm.bulkMoveSelected(to: .waitingOn)
+          } else if let id = vm.selectedTaskId {
+            vm.moveTask(taskId: id, to: .waitingOn)
+          }
+        },
+        onComplete: {
+          if vm.isMultiSelectActive {
+            vm.bulkMoveSelected(to: .completed)
+          } else {
+            vm.completeSelected(autoPush: autoPush)
+          }
+        },
+        onReject: {
+          if vm.isMultiSelectActive {
+            vm.bulkMoveSelected(to: .rejected)
+          } else {
+            vm.rejectSelected(autoPush: autoPush)
+          }
+        },
+        onReopen: {
+          if vm.isMultiSelectActive {
+            vm.bulkMoveSelected(to: .active)
+          } else {
+            vm.reopenSelected(autoPush: autoPush)
+          }
+        },
+        onToggleBlock: {
+          if !vm.isMultiSelectActive {
+            vm.toggleBlockSelected(autoPush: autoPush)
+          }
+        },
+        onApprove: {
+          vm.approveSelected(autoPush: autoPush)
+        },
+        onRequestChanges: {
+          vm.requestChangesSelected(autoPush: autoPush)
+        }
       )
     )
   }
@@ -457,6 +509,17 @@ private struct KeyboardShortcutReceiver: View {
   var onOverview: (() -> Void)? = nil
   var onProjectSwitch: ((Int) -> Void)? = nil
   var onEscape: (() -> Bool)? = nil
+
+  // Power-user keyboard actions
+  var onEnter: (() -> Void)? = nil
+  var onMoveToActive: (() -> Void)? = nil
+  var onMoveToWaitingOn: (() -> Void)? = nil
+  var onComplete: (() -> Void)? = nil
+  var onReject: (() -> Void)? = nil
+  var onReopen: (() -> Void)? = nil
+  var onToggleBlock: (() -> Void)? = nil
+  var onApprove: (() -> Void)? = nil
+  var onRequestChanges: (() -> Void)? = nil
 
   var body: some View {
     Group {
@@ -500,7 +563,16 @@ private struct KeyboardShortcutReceiver: View {
         onLeft: onPrevColumn,
         onEscape: onEscape,
         onProjectSwitch: onProjectSwitch,
-        onCommandPalette: onSearch
+        onCommandPalette: onSearch,
+        onEnter: onEnter,
+        onMoveToActive: onMoveToActive,
+        onMoveToWaitingOn: onMoveToWaitingOn,
+        onComplete: onComplete,
+        onReject: onReject,
+        onReopen: onReopen,
+        onToggleBlock: onToggleBlock,
+        onApprove: onApprove,
+        onRequestChanges: onRequestChanges
       )
     )
     #endif
@@ -519,6 +591,17 @@ private struct ArrowKeyMonitor: NSViewRepresentable {
   var onProjectSwitch: ((Int) -> Void)? = nil
   var onCommandPalette: (() -> Void)? = nil
 
+  // Power-user keyboard actions
+  var onEnter: (() -> Void)? = nil
+  var onMoveToActive: (() -> Void)? = nil
+  var onMoveToWaitingOn: (() -> Void)? = nil
+  var onComplete: (() -> Void)? = nil
+  var onReject: (() -> Void)? = nil
+  var onReopen: (() -> Void)? = nil
+  var onToggleBlock: (() -> Void)? = nil
+  var onApprove: (() -> Void)? = nil
+  var onRequestChanges: (() -> Void)? = nil
+
   func makeNSView(context: Context) -> NSView {
     let view = NSView()
     context.coordinator.onEscape = onEscape
@@ -526,6 +609,17 @@ private struct ArrowKeyMonitor: NSViewRepresentable {
     context.coordinator.onLeft = onLeft
     context.coordinator.onProjectSwitch = onProjectSwitch
     context.coordinator.onCommandPalette = onCommandPalette
+
+    context.coordinator.onEnter = onEnter
+    context.coordinator.onMoveToActive = onMoveToActive
+    context.coordinator.onMoveToWaitingOn = onMoveToWaitingOn
+    context.coordinator.onComplete = onComplete
+    context.coordinator.onReject = onReject
+    context.coordinator.onReopen = onReopen
+    context.coordinator.onToggleBlock = onToggleBlock
+    context.coordinator.onApprove = onApprove
+    context.coordinator.onRequestChanges = onRequestChanges
+
     context.coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
       // Escape key — close overlays first (works even when text fields are focused)
       if event.keyCode == 53 { // escape
@@ -561,6 +655,73 @@ private struct ArrowKeyMonitor: NSViewRepresentable {
          responder is NSTextView || responder is NSTextField {
         return event
       }
+
+      // Enter/Return: open/select
+      if event.keyCode == 36 || event.keyCode == 76 {
+        if let handler = context.coordinator.onEnter {
+          DispatchQueue.main.async { handler() }
+          return nil
+        }
+      }
+
+      // Quick actions (no modifiers)
+      if event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
+         let chars = event.charactersIgnoringModifiers?.lowercased(),
+         chars.count == 1 {
+        switch chars {
+        case "a":
+          // Approve (Inbox → Active)
+          if let handler = context.coordinator.onApprove {
+            DispatchQueue.main.async { handler() }
+            return nil
+          }
+        case "t":
+          // Move to Active (status only)
+          if let handler = context.coordinator.onMoveToActive {
+            DispatchQueue.main.async { handler() }
+            return nil
+          }
+        case "s":
+          // Move to Waiting On
+          if let handler = context.coordinator.onMoveToWaitingOn {
+            DispatchQueue.main.async { handler() }
+            return nil
+          }
+        case "c", "d":
+          // Complete / Done
+          if let handler = context.coordinator.onComplete {
+            DispatchQueue.main.async { handler() }
+            return nil
+          }
+        case "x":
+          // Reject
+          if let handler = context.coordinator.onReject {
+            DispatchQueue.main.async { handler() }
+            return nil
+          }
+        case "r":
+          // Reopen
+          if let handler = context.coordinator.onReopen {
+            DispatchQueue.main.async { handler() }
+            return nil
+          }
+        case "b":
+          // Toggle blocked
+          if let handler = context.coordinator.onToggleBlock {
+            DispatchQueue.main.async { handler() }
+            return nil
+          }
+        case "m":
+          // Request changes
+          if let handler = context.coordinator.onRequestChanges {
+            DispatchQueue.main.async { handler() }
+            return nil
+          }
+        default:
+          break
+        }
+      }
+
       switch event.keyCode {
       case 125: // down arrow
         DispatchQueue.main.async { self.onDown() }
@@ -599,6 +760,16 @@ private struct ArrowKeyMonitor: NSViewRepresentable {
     context.coordinator.onLeft = onLeft
     context.coordinator.onProjectSwitch = onProjectSwitch
     context.coordinator.onCommandPalette = onCommandPalette
+
+    context.coordinator.onEnter = onEnter
+    context.coordinator.onMoveToActive = onMoveToActive
+    context.coordinator.onMoveToWaitingOn = onMoveToWaitingOn
+    context.coordinator.onComplete = onComplete
+    context.coordinator.onReject = onReject
+    context.coordinator.onReopen = onReopen
+    context.coordinator.onToggleBlock = onToggleBlock
+    context.coordinator.onApprove = onApprove
+    context.coordinator.onRequestChanges = onRequestChanges
   }
 
   static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
@@ -616,6 +787,16 @@ private struct ArrowKeyMonitor: NSViewRepresentable {
     var onLeft: (() -> Void)?
     var onProjectSwitch: ((Int) -> Void)?
     var onCommandPalette: (() -> Void)?
+
+    var onEnter: (() -> Void)?
+    var onMoveToActive: (() -> Void)?
+    var onMoveToWaitingOn: (() -> Void)?
+    var onComplete: (() -> Void)?
+    var onReject: (() -> Void)?
+    var onReopen: (() -> Void)?
+    var onToggleBlock: (() -> Void)?
+    var onApprove: (() -> Void)?
+    var onRequestChanges: (() -> Void)?
   }
 }
 #endif
@@ -2183,9 +2364,21 @@ private struct TaskTile: View {
   @Binding var autoPush: Bool
 
   @State private var isHovering = false
-  @State private var showDetail = false
   @State private var isEditingTitle = false
   @State private var inlineTitle = ""
+
+  private var showDetailBinding: Binding<Bool> {
+    Binding(
+      get: { vm.popoverTaskId == task.id },
+      set: { presented in
+        if presented {
+          vm.popoverTaskId = task.id
+        } else if vm.popoverTaskId == task.id {
+          vm.popoverTaskId = nil
+        }
+      }
+    )
+  }
 
   private var isSelected: Bool { vm.selectedTaskId == task.id }
   private var isMultiSelected: Bool { vm.multiSelectedTaskIds.contains(task.id) }
@@ -2396,16 +2589,16 @@ private struct TaskTile: View {
         return
       }
       vm.selectTask(task)
-      showDetail = true
+      vm.popoverTaskId = task.id
     }
     .simultaneousGesture(
       TapGesture().modifiers(.command).onEnded {
         vm.toggleMultiSelect(taskId: task.id)
       }
     )
-    .popover(isPresented: $showDetail, arrowEdge: .trailing) {
+    .popover(isPresented: showDetailBinding, arrowEdge: .trailing) {
       TaskDetailPopover(task: task, vm: vm, autoPush: $autoPush, artifactText: vm.artifactText) {
-        showDetail = false
+        vm.popoverTaskId = nil
         TaskDetailWindowController.open(task: task, vm: vm, artifactText: vm.artifactText)
       }
       .frame(width: 400, height: 500)

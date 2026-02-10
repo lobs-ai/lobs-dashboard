@@ -354,6 +354,12 @@ private struct InboxArrowKeyMonitor: NSViewRepresentable {
       case 126: // up arrow
         DispatchQueue.main.async { self.onUp() }
         return nil
+      case 38: // j (vim-style down)
+        DispatchQueue.main.async { self.onDown() }
+        return nil
+      case 40: // k (vim-style up)
+        DispatchQueue.main.async { self.onUp() }
+        return nil
       case 53: // escape
         DispatchQueue.main.async { self.onEscape() }
         return nil

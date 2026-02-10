@@ -2460,7 +2460,6 @@ final class AppViewModel: ObservableObject {
 
   func selectTask(_ task: DashboardTask) {
     selectedTaskId = task.id
-    popoverTaskId = task.id
     loadArtifactForSelected()
   }
 

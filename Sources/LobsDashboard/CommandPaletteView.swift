@@ -675,14 +675,14 @@ private struct KeyEventHandler: NSViewRepresentable {
     // Install local event monitor
     context.coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
       switch event.keyCode {
-      case 125: // down arrow
+      case 125, 38: // down arrow / j
         if let handler = context.coordinator.onArrowDown {
           DispatchQueue.main.async {
             handler()
           }
         }
         return nil // consume event
-      case 126: // up arrow
+      case 126, 40: // up arrow / k
         if let handler = context.coordinator.onArrowUp {
           DispatchQueue.main.async {
             handler()
