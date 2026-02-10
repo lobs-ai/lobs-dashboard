@@ -47,6 +47,18 @@ final class MenuBarController: NSObject {
     refresh()
   }
 
+  func detach() {
+    cancellables.removeAll()
+    vm = nil
+
+    if let item = statusItem {
+      NSStatusBar.system.removeStatusItem(item)
+    }
+
+    statusItem = nil
+    menu = nil
+  }
+
   private func refresh() {
     guard let statusItem, let menu else { return }
 
@@ -56,7 +68,8 @@ final class MenuBarController: NSObject {
     let title: String
     if let current {
       title = truncateTitle(current.title, max: 26)
-      statusItem.button?.toolTip = current.title
+      let nextText = next?.title ?? "(none)"
+      statusItem.button?.toolTip = "Current: \(current.title)\nNext: \(nextText)"
     } else {
       title = "No tasks"
       statusItem.button?.toolTip = "No active tasks"

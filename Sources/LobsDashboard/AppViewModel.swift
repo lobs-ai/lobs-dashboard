@@ -45,6 +45,17 @@ final class AppViewModel: ObservableObject {
     }
   }
 
+  // MARK: - User preference helpers
+
+  var menuBarWidgetEnabled: Bool {
+    get { settings.menuBarWidgetEnabled }
+    set {
+      var s = settings
+      s.menuBarWidgetEnabled = newValue
+      settings = s
+    }
+  }
+
   /// Whether onboarding is needed (config not set, incomplete, or repo missing)
   ///
   /// We consider onboarding required if:

@@ -45,6 +45,22 @@ struct SettingsView: View {
           
           Divider()
             .padding(.vertical, 8)
+
+          // Preferences
+          VStack(alignment: .leading, spacing: 12) {
+            Text("Interface")
+              .font(.headline)
+
+            Toggle("Show menu bar widget", isOn: Binding(
+              get: { vm.menuBarWidgetEnabled },
+              set: { vm.menuBarWidgetEnabled = $0 }
+            ))
+            .toggleStyle(.switch)
+            .help("Shows the current/next task in the macOS menu bar for ambient awareness.")
+          }
+
+          Divider()
+            .padding(.vertical, 8)
           
           // Action Buttons
           VStack(spacing: 12) {

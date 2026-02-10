@@ -21,12 +21,16 @@ struct LobsDashboardApp: App {
       .onAppear {
         // Register global quick capture hotkey (⌘⇧Space)
         QuickCapturePanel.shared.setup(vm: vm)
+
         // Menu bar widget for ambient awareness
-        appDelegate.menuBar.attach(viewModel: vm)
+        syncMenuBarWidget()
+
         // Ensure the app becomes key so keyboard input goes to fields.
         NSApp.activate(ignoringOtherApps: true)
+
         // Request notification permissions for worker event alerts
         vm.requestNotificationPermissions()
+
         // Set app icon from bundled resource.
         // NOTE: This project is SwiftPM-based, so resources are accessed via `Bundle.module`.
         // Prefer the rounded variant so the Dock icon matches typical macOS icon shape.
@@ -36,6 +40,7 @@ struct LobsDashboardApp: App {
            let img = NSImage(contentsOf: url) {
           NSApplication.shared.applicationIconImage = img
         }
+
         // Enable macOS native spell checking globally for all text views.
         // NSSpellChecker is the system spell checker; enabling continuous
         // spell checking and automatic spelling correction covers all
@@ -46,6 +51,10 @@ struct LobsDashboardApp: App {
         // respects the user's global preference. We nudge it here.
         UserDefaults.standard.set(true, forKey: "NSAllowsContinuousSpellChecking")
         UserDefaults.standard.set(true, forKey: "WebContinuousSpellCheckingEnabled")
+      }
+      .onReceive(vm.$config) { _ in
+        // Keep the menu bar widget in sync with user settings changes.
+        syncMenuBarWidget()
       }
     }
     // Set a reasonable initial window size; the `.frame(minWidth/minHeight)` only
@@ -64,6 +73,14 @@ struct LobsDashboardApp: App {
     Settings {
       SettingsView()
         .environmentObject(vm)
+    }
+  }
+
+  private func syncMenuBarWidget() {
+    if vm.menuBarWidgetEnabled {
+      appDelegate.menuBar.attach(viewModel: vm)
+    } else {
+      appDelegate.menuBar.detach()
     }
   }
 }
