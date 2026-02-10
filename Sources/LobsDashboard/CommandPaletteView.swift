@@ -385,8 +385,88 @@ struct CommandPaletteView: View {
       ))
     }
     
-    // TODO: Add research tiles/docs when we have access to them
-    // For now, just show research projects
+    // Add research tiles (link, note, finding, comparison)
+    let activeTiles = vm.researchTiles.filter { $0.resolvedStatus == .active }
+    for tile in activeTiles {
+      // Get project name for context
+      let projectName = vm.projects.first(where: { $0.id == tile.projectId })?.title ?? "Unknown"
+      
+      // Icon based on tile type
+      let icon: String
+      let typeLabel: String
+      switch tile.type {
+      case .link:
+        icon = "link"
+        typeLabel = "Link"
+      case .note:
+        icon = "note.text"
+        typeLabel = "Note"
+      case .finding:
+        icon = "lightbulb"
+        typeLabel = "Finding"
+      case .comparison:
+        icon = "list.bullet.rectangle"
+        typeLabel = "Comparison"
+      }
+      
+      results.append(CommandResult(
+        id: "tile:\(tile.id)",
+        icon: icon,
+        title: tile.title,
+        subtitle: "\(typeLabel) in \(projectName)",
+        category: "Research",
+        action: {
+          // Navigate to the project containing this tile
+          vm.selectedProjectId = tile.projectId
+          vm.showOverview = false
+          // Note: Could add selectedTileId to vm if needed for direct navigation
+        }
+      ))
+    }
+    
+    // Add research requests
+    let activeRequests = vm.researchRequests.filter { $0.status != .completed && $0.status != .done }
+    for request in activeRequests {
+      // Get project name for context
+      let projectName = vm.projects.first(where: { $0.id == request.projectId })?.title ?? "Unknown"
+      
+      // Icon and status label based on request status
+      let icon: String
+      let statusLabel: String
+      switch request.status {
+      case .open:
+        icon = "doc.badge.plus"
+        statusLabel = "Open"
+      case .inProgress:
+        icon = "gearshape"
+        statusLabel = "In Progress"
+      case .blocked:
+        icon = "exclamationmark.triangle"
+        statusLabel = "Blocked"
+      default:
+        icon = "doc.text"
+        statusLabel = request.status.rawValue.capitalized
+      }
+      
+      // Use first ~60 chars of prompt as title
+      let title = request.prompt.count > 60
+        ? String(request.prompt.prefix(60)) + "..."
+        : request.prompt
+      
+      results.append(CommandResult(
+        id: "request:\(request.id)",
+        icon: icon,
+        title: title,
+        subtitle: "\(statusLabel) research request in \(projectName)",
+        category: "Research",
+        action: {
+          // Navigate to the project containing this request
+          vm.selectedProjectId = request.projectId
+          vm.showOverview = false
+          // Note: Could add selectedRequestId to vm if needed for direct navigation
+        }
+      ))
+    }
     
     return results
   }
