@@ -296,7 +296,7 @@ struct SetupStatusView: View {
     do {
       if var config = vm.config {
         config.onboardingComplete = false
-        try ConfigManager.save(config: config)
+        try ConfigManager.save(config)
         vm.config = config
       }
       
