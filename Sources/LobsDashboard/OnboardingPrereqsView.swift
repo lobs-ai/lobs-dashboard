@@ -12,26 +12,24 @@ struct OnboardingPrereqsView: View {
   @State private var gitOK: Bool = false
   @State private var nodeOK: Bool = false
   @State private var ghOK: Bool = false
-  @State private var apiKeyOK: Bool = false
+  @State private var pythonOK: Bool = false
 
   @State private var gitDetail: String = ""
   @State private var nodeDetail: String = ""
   @State private var ghDetail: String = ""
-  @State private var apiKeyDetail: String = ""
+  @State private var pythonDetail: String = ""
 
   @State private var gitError: String? = nil
   @State private var nodeError: String? = nil
   @State private var ghError: String? = nil
-  @State private var apiKeyError: String? = nil
+  @State private var pythonError: String? = nil
 
   @State private var gitExpanded: Bool = false
   @State private var nodeExpanded: Bool = false
   @State private var ghExpanded: Bool = false
-  @State private var apiExpanded: Bool = false
+  @State private var pythonExpanded: Bool = false
 
-  @State private var apiKeyInput: String = ""
-
-  private var allOK: Bool { gitOK && nodeOK && ghOK && apiKeyOK }
+  private var allOK: Bool { gitOK && nodeOK && ghOK && pythonOK }
 
   var body: some View {
     VStack(spacing: 28) {
@@ -76,12 +74,12 @@ struct OnboardingPrereqsView: View {
         )
 
         prereqDisclosure(
-          title: "Anthropic/OpenRouter API key",
-          ok: apiKeyOK,
-          detail: apiKeyDetail,
-          error: apiKeyError,
-          expanded: $apiExpanded,
-          help: apiHelp
+          title: "Python 3.10+",
+          ok: pythonOK,
+          detail: pythonDetail,
+          error: pythonError,
+          expanded: $pythonExpanded,
+          help: pythonHelp
         )
       }
       .frame(width: 600)
@@ -118,15 +116,6 @@ struct OnboardingPrereqsView: View {
     }
     .onChange(of: allOK) { ok in
       wizard.updateNextEnabled(ok)
-    }
-    .onChange(of: apiKeyInput) { _ in
-      // Allow "prompting" for an API key to satisfy this check.
-      let trimmed = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
-      if !trimmed.isEmpty {
-        apiKeyOK = true
-        apiKeyDetail = "Provided (you’ll use this during OpenClaw config)"
-        apiKeyError = nil
-      }
     }
   }
 
@@ -252,48 +241,28 @@ struct OnboardingPrereqsView: View {
     }
   }
 
-  private var apiHelp: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Text("Add an API key")
+  private var pythonHelp: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("Install Python 3.10+")
         .font(.system(size: 12, weight: .semibold))
 
-      Text("You can either set an environment variable, or paste a key here to proceed (you’ll enter it again during OpenClaw config).")
+      Text("The orchestrator uses Python. We require Python 3.10 or newer.")
         .font(.system(size: 12))
         .foregroundColor(.secondary)
 
-      VStack(alignment: .leading, spacing: 6) {
-        Text("Paste key")
-          .font(.system(size: 12, weight: .medium))
-          .foregroundColor(.secondary)
-
-        SecureField("sk-…", text: $apiKeyInput)
-          .textFieldStyle(.plain)
-          .font(.system(size: 13, design: .monospaced))
-          .padding(10)
-          .background(Theme.cardBg)
-          .cornerRadius(8)
-          .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border, lineWidth: 1))
-      }
-
-      VStack(alignment: .leading, spacing: 6) {
-        Text("Environment variables")
-          .font(.system(size: 12, weight: .medium))
-          .foregroundColor(.secondary)
-
-        Text("ANTHROPIC_API_KEY=…\nOPENROUTER_API_KEY=…")
-          .font(.system(size: 12, design: .monospaced))
-          .textSelection(.enabled)
-          .padding(8)
-          .background(Theme.bg.opacity(0.35))
-          .cornerRadius(8)
-      }
-
       HStack(spacing: 12) {
-        Link("Anthropic keys", destination: URL(string: "https://console.anthropic.com/settings/keys")!)
+        Link("python.org", destination: URL(string: "https://www.python.org/downloads/")!)
           .font(.system(size: 12))
-        Link("OpenRouter keys", destination: URL(string: "https://openrouter.ai/keys")!)
+        Link("Homebrew", destination: URL(string: "https://brew.sh")!)
           .font(.system(size: 12))
       }
+
+      Text("python3 --version")
+        .font(.system(size: 12, design: .monospaced))
+        .textSelection(.enabled)
+        .padding(8)
+        .background(Theme.bg.opacity(0.35))
+        .cornerRadius(8)
     }
   }
 
@@ -303,13 +272,13 @@ struct OnboardingPrereqsView: View {
       gitError = nil
       nodeError = nil
       ghError = nil
-      apiKeyError = nil
+      pythonError = nil
 
       // Default details while checking.
       gitDetail = "Checking…"
       nodeDetail = "Checking…"
       ghDetail = "Checking…"
-      apiKeyDetail = "Checking…"
+      pythonDetail = "Checking…"
     }
 
     // Git
@@ -375,44 +344,25 @@ struct OnboardingPrereqsView: View {
       }
     }
 
-    // API key
+    // Python
     do {
-      let env = ProcessInfo.processInfo.environment
-      let anthropic = (env["ANTHROPIC_API_KEY"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-      let openrouter = (env["OPENROUTER_API_KEY"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-
-      var foundDetail: String? = nil
-      if !anthropic.isEmpty {
-        foundDetail = "Detected ANTHROPIC_API_KEY in environment"
-      } else if !openrouter.isEmpty {
-        foundDetail = "Detected OPENROUTER_API_KEY in environment"
-      }
-
-      // Best-effort check OpenClaw config if OpenClaw is installed.
-      if foundDetail == nil {
-        let openclawPath = await Shell.which("openclaw")
-        if openclawPath != nil {
-          let a = await Shell.envAsync("openclaw", ["config", "get", "auth.anthropicApiKey", "--no-color"], timeoutSeconds: commandTimeoutSeconds)
-          if a.ok && !looksEmptyConfigValue(a.stdout) {
-            foundDetail = "Detected Anthropic key in OpenClaw config"
-          }
-
-          if foundDetail == nil {
-            let o = await Shell.envAsync("openclaw", ["config", "get", "auth.openrouterApiKey", "--no-color"], timeoutSeconds: commandTimeoutSeconds)
-            if o.ok && !looksEmptyConfigValue(o.stdout) {
-              foundDetail = "Detected OpenRouter key in OpenClaw config"
-            }
-          }
+      let pyPath = await Shell.which("python3")
+      if pyPath == nil {
+        await MainActor.run {
+          pythonOK = false
+          pythonDetail = "Not found in PATH"
+          pythonExpanded = true
         }
-      }
-
-      let trimmedInput = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
-      let ok = (foundDetail != nil) || !trimmedInput.isEmpty
-
-      await MainActor.run {
-        apiKeyOK = ok
-        apiKeyDetail = foundDetail ?? (trimmedInput.isEmpty ? "Not found" : "Provided (you’ll use this during OpenClaw config)")
-        apiExpanded = !ok
+      } else {
+        let res = await Shell.envAsync("python3", ["--version"], timeoutSeconds: commandTimeoutSeconds)
+        let ver = (res.stdout.isEmpty ? res.stderr : res.stdout).trimmingCharacters(in: .whitespacesAndNewlines)
+        let ok = res.ok && pythonVersionAtLeast3_10(ver)
+        await MainActor.run {
+          pythonOK = ok
+          pythonDetail = res.ok ? "Detected \(ver.isEmpty ? \"(unknown)\" : ver)" : "python3 command failed"
+          pythonError = (res.ok && ok) ? nil : (!res.ok ? cleanError(res) : "Python must be version 3.10 or newer")
+          pythonExpanded = !ok
+        }
       }
     }
 
@@ -429,15 +379,6 @@ struct OnboardingPrereqsView: View {
     return "Command failed (exit code \(res.exitCode))"
   }
 
-  private func looksEmptyConfigValue(_ s: String) -> Bool {
-    let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
-    if t.isEmpty { return true }
-    if t == "null" { return true }
-    if t == "(null)" { return true }
-    if t.lowercased() == "undefined" { return true }
-    return false
-  }
-
   private func nodeVersionAtLeast18(_ v: String) -> Bool {
     // v like "v20.11.0" or "20.11.0"
     let cleaned = v.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -445,6 +386,19 @@ struct OnboardingPrereqsView: View {
     let parts = cleaned.split(separator: ".")
     guard let majorStr = parts.first, let major = Int(majorStr) else { return false }
     return major >= 18
+  }
+
+  private func pythonVersionAtLeast3_10(_ v: String) -> Bool {
+    // "Python 3.11.7" or "3.11.7"
+    let trimmed = v.trimmingCharacters(in: .whitespacesAndNewlines)
+    let cleaned = trimmed.hasPrefix("Python ") ? String(trimmed.dropFirst("Python ".count)) : trimmed
+    let parts = cleaned.split(separator: ".")
+    guard parts.count >= 2,
+          let major = Int(parts[0]),
+          let minor = Int(parts[1]) else { return false }
+    if major > 3 { return true }
+    if major < 3 { return false }
+    return minor >= 10
   }
 }
 
