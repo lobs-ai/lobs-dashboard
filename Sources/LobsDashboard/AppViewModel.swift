@@ -4893,13 +4893,22 @@ final class AppViewModel: ObservableObject {
     let hasOrigin = remotes.output.split(separator: "\n").map(String.init).contains("origin")
     if !hasOrigin { return }
 
-    // Auto-commit local changes so sync can proceed (instead of silently skipping).
+    // If the working tree is dirty, stash changes (including untracked) so we can safely rebase/reset.
+    // This avoids creating "auto-save" commits and prevents pull/rebase from failing on a dirty tree.
     let status = Git.runWithErrorHandling(["status", "--porcelain"], cwd: repoURL)
     let hasLocalChanges = status.success
       && !status.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
+    let stashMessage = "dashboard-sync-backup \(ISO8601DateFormatter().string(from: Date()))"
+    var didCreateStash = false
     if hasLocalChanges {
-      try autoCommitLocalChanges(repoURL: repoURL)
+      let stash = Git.runWithErrorHandling(["stash", "push", "-u", "-m", stashMessage], cwd: repoURL)
+      if !stash.success {
+        syncBlockedByUncommitted = true
+        print("[sync] git stash failed: \(stash.error?.errorDescription ?? "Unknown error")")
+        return
+      }
+      didCreateStash = true
     }
     syncBlockedByUncommitted = false
 
@@ -4922,6 +4931,9 @@ final class AppViewModel: ObservableObject {
       let rebase = Git.runWithErrorHandling(["rebase", "origin/main"], cwd: repoURL)
       if !rebase.success {
         _ = Git.runWithErrorHandling(["rebase", "--abort"], cwd: repoURL)
+        if didCreateStash {
+          _ = Git.runWithErrorHandling(["stash", "pop"], cwd: repoURL)
+        }
         syncBlockedByUncommitted = true
         print("[sync] rebase conflict: \(rebase.error?.errorDescription ?? "Unknown error")")
         return
@@ -4929,10 +4941,22 @@ final class AppViewModel: ObservableObject {
     } else if behindCount > 0 {
       let resetResult = Git.runWithErrorHandling(["reset", "--hard", "origin/main"], cwd: repoURL)
       if !resetResult.success {
+        if didCreateStash {
+          _ = Git.runWithErrorHandling(["stash", "pop"], cwd: repoURL)
+        }
         print("[sync] git reset failed: \(resetResult.error?.errorDescription ?? "Unknown error")")
         return
       }
       _ = Git.runWithErrorHandling(["clean", "-fd"], cwd: repoURL)
+    }
+
+    if didCreateStash {
+      let pop = Git.runWithErrorHandling(["stash", "pop"], cwd: repoURL)
+      if !pop.success {
+        syncBlockedByUncommitted = true
+        print("[sync] git stash pop had conflicts: \(pop.error?.errorDescription ?? "Unknown error")")
+        return
+      }
     }
   }
 
@@ -4964,13 +4988,24 @@ final class AppViewModel: ObservableObject {
     let hasOrigin = remotes.output.split(separator: "\n").map(String.init).contains("origin")
     if !hasOrigin { return }
 
-    // Auto-commit local changes so sync can proceed.
+    // If the working tree is dirty, stash changes (including untracked) so we can safely rebase/reset.
+    // This avoids creating "auto-save" commits and prevents pull/rebase from failing on a dirty tree.
     let status = await Git.runAsyncWithErrorHandling(["status", "--porcelain"], cwd: repoURL)
     let hasLocalChanges = status.success
       && !status.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
+    let stashMessage = "dashboard-sync-backup \(ISO8601DateFormatter().string(from: Date()))"
+    var didCreateStash = false
     if hasLocalChanges {
-      try await autoCommitLocalChangesAsync(repoURL: repoURL)
+      let stash = await Git.runAsyncWithErrorHandling(["stash", "push", "-u", "-m", stashMessage], cwd: repoURL)
+      if !stash.success {
+        await MainActor.run {
+          self.syncBlockedByUncommitted = true
+        }
+        print("[sync] git stash failed: \(stash.error?.errorDescription ?? "Unknown error")")
+        return
+      }
+      didCreateStash = true
     }
     syncBlockedByUncommitted = false
 
@@ -4993,6 +5028,9 @@ final class AppViewModel: ObservableObject {
       let rebase = await Git.runAsyncWithErrorHandling(["rebase", "origin/main"], cwd: repoURL)
       if !rebase.success {
         _ = await Git.runAsyncWithErrorHandling(["rebase", "--abort"], cwd: repoURL)
+        if didCreateStash {
+          _ = await Git.runAsyncWithErrorHandling(["stash", "pop"], cwd: repoURL)
+        }
         syncBlockedByUncommitted = true
         print("[sync] rebase conflict — sync blocked: \(rebase.error?.errorDescription ?? "Unknown error")")
         return
@@ -5000,10 +5038,22 @@ final class AppViewModel: ObservableObject {
     } else if behindCount > 0 {
       let reset = await Git.runAsyncWithErrorHandling(["reset", "--hard", "origin/main"], cwd: repoURL)
       if !reset.success {
+        if didCreateStash {
+          _ = await Git.runAsyncWithErrorHandling(["stash", "pop"], cwd: repoURL)
+        }
         print("[sync] git reset failed: \(reset.error?.errorDescription ?? "Unknown error")")
         return
       }
       _ = await Git.runAsyncWithErrorHandling(["clean", "-fd"], cwd: repoURL)
+    }
+
+    if didCreateStash {
+      let pop = await Git.runAsyncWithErrorHandling(["stash", "pop"], cwd: repoURL)
+      if !pop.success {
+        syncBlockedByUncommitted = true
+        print("[sync] git stash pop had conflicts: \(pop.error?.errorDescription ?? "Unknown error")")
+        return
+      }
     }
   }
 

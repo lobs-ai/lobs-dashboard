@@ -84,13 +84,50 @@ actor GitAutoPushQueue {
       owner?.lastPushAttemptAt = Date()
     }
 
+    // If there are uncommitted (or untracked) changes, stash them so pull --rebase can run safely.
+    // This avoids dirty-tree failures and prevents "auto-save" commits just to unblock rebase.
+    let status = await Git.runAsyncWithErrorHandling(["status", "--porcelain"], cwd: repoURL)
+    let hasLocalChanges = status.success
+      && !status.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+    let stashMessage = "dashboard-sync-backup (auto-push) \(ISO8601DateFormatter().string(from: Date()))"
+    var didCreateStash = false
+    if hasLocalChanges {
+      let stash = await Git.runAsyncWithErrorHandling(["stash", "push", "-u", "-m", stashMessage], cwd: repoURL)
+      if !stash.success {
+        let msg = stash.error?.errorDescription ?? "Failed to stash local changes"
+        await MainActor.run {
+          owner?.lastPushError = msg
+        }
+        return
+      }
+      didCreateStash = true
+    }
+
     let pull = await Git.runWithRetry(["pull", "--rebase"], cwd: repoURL, maxRetries: 2)
     if !pull.success {
+      // Bring the user back to where they started.
+      _ = await Git.runAsyncWithErrorHandling(["rebase", "--abort"], cwd: repoURL)
+      if didCreateStash {
+        _ = await Git.runAsyncWithErrorHandling(["stash", "pop"], cwd: repoURL)
+      }
+
       let msg = pull.error?.errorDescription ?? "Pull --rebase failed"
       await MainActor.run {
         owner?.lastPushError = msg
       }
       return
+    }
+
+    if didCreateStash {
+      let pop = await Git.runAsyncWithErrorHandling(["stash", "pop"], cwd: repoURL)
+      if !pop.success {
+        let msg = pop.error?.errorDescription ?? "Stash pop had conflicts — resolve manually (stash kept)"
+        await MainActor.run {
+          owner?.lastPushError = msg
+        }
+        return
+      }
     }
 
     let addResult = await Git.runAsyncWithErrorHandling(["add", "-A"], cwd: repoURL)
