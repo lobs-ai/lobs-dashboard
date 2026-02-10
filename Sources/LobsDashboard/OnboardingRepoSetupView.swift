@@ -7,6 +7,7 @@ struct OnboardingRepoSetupView: View {
     @EnvironmentObject private var wizard: OnboardingWizardContext
 
     let onComplete: (String, Bool) -> Void
+    let onSkip: (() -> Void)?
     
     @State private var repoChoice: RepoChoice = .existing
     @State private var sshUrl: String = ""
@@ -36,6 +37,15 @@ struct OnboardingRepoSetupView: View {
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 520)
+                
+                // Skip hint
+                if onSkip != nil {
+                    Text("You can skip this for now and add repositories later from Settings.")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary.opacity(0.8))
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 520)
+                }
             }
             
             VStack(spacing: 24) {
@@ -158,7 +168,13 @@ struct OnboardingRepoSetupView: View {
           ) {
             handleContinue()
           }
-          wizard.configureSkip(shown: false)
+          wizard.configureSkip(
+            shown: onSkip != nil,
+            title: "Skip for now",
+            enabled: true
+          ) {
+            onSkip?()
+          }
         }
         .onChange(of: sshUrl) { _ in
           wizard.updateNextEnabled(!sshUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -252,6 +268,9 @@ struct RadioOption: View {
     OnboardingRepoSetupView(
         onComplete: { url, isNew in
             print("Continue with URL: \(url), isNew: \(isNew)")
+        },
+        onSkip: {
+            print("Skip repo setup")
         }
     )
     .environmentObject(AppViewModel())

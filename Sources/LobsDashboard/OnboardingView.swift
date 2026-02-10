@@ -268,14 +268,21 @@ struct OnboardingView: View {
     case .cloneRepos:
       Group {
         if controlRepoUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-          OnboardingRepoSetupView { url, isNew in
-            controlRepoUrl = url
-            isNewControlRepo = isNew
-            // Stay on this step; next view will be clone UI.
-            wizard.configureNext(title: "Next", enabled: true) {
-              // No-op; OnboardingRepoSetupView drives completion.
+          OnboardingRepoSetupView(
+            onComplete: { url, isNew in
+              controlRepoUrl = url
+              isNewControlRepo = isNew
+              // Stay on this step; next view will be clone UI.
+              wizard.configureNext(title: "Next", enabled: true) {
+                // No-op; OnboardingRepoSetupView drives completion.
+              }
+            },
+            onSkip: {
+              // User chose to skip repo setup - mark complete and advance.
+              markCompleted(.cloneCoreRepos)
+              advance()
             }
-          }
+          )
         } else {
           OnboardingCloneCoreReposView(
             workspacePath: workspacePath,
