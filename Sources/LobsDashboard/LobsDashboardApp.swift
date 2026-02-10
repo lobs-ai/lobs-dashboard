@@ -4,6 +4,7 @@ import SwiftUI
 @main
 struct LobsDashboardApp: App {
   @StateObject private var vm = AppViewModel()
+  @NSApplicationDelegateAdaptor(LobsDashboardAppDelegate.self) private var appDelegate
 
   var body: some Scene {
     WindowGroup {
@@ -20,6 +21,8 @@ struct LobsDashboardApp: App {
       .onAppear {
         // Register global quick capture hotkey (⌘⇧Space)
         QuickCapturePanel.shared.setup(vm: vm)
+        // Menu bar widget for ambient awareness
+        appDelegate.menuBar.attach(viewModel: vm)
         // Ensure the app becomes key so keyboard input goes to fields.
         NSApp.activate(ignoringOtherApps: true)
         // Request notification permissions for worker event alerts
@@ -56,7 +59,7 @@ struct LobsDashboardApp: App {
         .keyboardShortcut(",", modifiers: .command)
       }
     }
-    
+
     // Settings Window
     Settings {
       SettingsView()
