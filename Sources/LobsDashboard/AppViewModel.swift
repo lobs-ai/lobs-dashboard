@@ -2863,17 +2863,69 @@ final class AppViewModel: ObservableObject {
       return
     }
 
+    // Check if the selected project uses GitHub tracking
+    let project = projects.first(where: { $0.id == selectedProjectId })
+    let isGitHubProject = project?.resolvedTracking == .github
+    let githubConfig = project?.github
+
     isGitBusy = true
     Task {
       do {
-        // GitHub sync for template tasks is not yet supported with gh CLI
-        // TODO: Implement gh CLI-based sync for batch task creation
-
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: stamp template \(template.name) (\(newTasks.count) tasks)",
-          autoPush: autoPush
-        )
+        // For GitHub projects, create issues for each task
+        if isGitHubProject, let config = githubConfig {
+          let store = LobsControlStore(repoRoot: repoURL)
+          var issueNumbers: [String: Int] = [:]
+          
+          for task in newTasks {
+            do {
+              let issueNumber = try await createGitHubIssue(
+                repo: config.repo,
+                title: task.title,
+                body: task.notes ?? "",
+                labels: config.labelFilter
+              )
+              issueNumbers[task.id] = issueNumber
+              
+              // Update task in memory
+              await MainActor.run {
+                if let idx = self.tasks.firstIndex(where: { $0.id == task.id }) {
+                  self.tasks[idx].githubIssueNumber = issueNumber
+                }
+              }
+              
+              // Update task with GitHub issue number and save to cache
+              var updatedTask = task
+              updatedTask.githubIssueNumber = issueNumber
+              try store.saveExistingTask(updatedTask)
+            } catch {
+              await MainActor.run {
+                self.flashError("Failed to create GitHub issue for '\(task.title)': \(error.localizedDescription)")
+              }
+            }
+          }
+          
+          // Build commit message with issue numbers
+          let issueNumbersStr = issueNumbers.values.map { "#\($0)" }.joined(separator: ", ")
+          let message = "Lobs: stamp template \(template.name) (\(newTasks.count) tasks) \(issueNumbersStr)"
+          
+          try await asyncCommitAndMaybePush(
+            repoURL: repoURL,
+            message: message,
+            autoPush: autoPush
+          )
+          
+          await MainActor.run {
+            self.flashSuccess("Created \(issueNumbers.count) GitHub issues")
+            self.silentReload()
+          }
+        } else {
+          // Non-GitHub projects: just commit the local cache
+          try await asyncCommitAndMaybePush(
+            repoURL: repoURL,
+            message: "Lobs: stamp template \(template.name) (\(newTasks.count) tasks)",
+            autoPush: autoPush
+          )
+        }
       } catch {
         flashError("Git push failed: \(error.localizedDescription)")
       }
