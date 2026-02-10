@@ -162,7 +162,7 @@ struct ContentView: View {
         .padding(.top, 52)
       }
 
-      // Sync blocked warning — uncommitted changes in local repo
+      // Sync blocked warning — rebase conflict
       if vm.syncBlockedByUncommitted {
         HStack(spacing: 8) {
           Image(systemName: "exclamationmark.triangle.fill")
@@ -170,6 +170,25 @@ struct ContentView: View {
           Text("Sync conflict — local changes couldn't be rebased automatically")
             .font(.footnote.weight(.medium))
           Spacer()
+
+          Button("Keep Mine") {
+            vm.recoverSyncConflictKeepMine()
+          }
+          .buttonStyle(.plain)
+          .font(.footnote)
+
+          Button("Use Remote") {
+            vm.recoverSyncConflictUseRemote()
+          }
+          .buttonStyle(.plain)
+          .font(.footnote)
+
+          Button("Details…") {
+            vm.showSyncConflictDetails()
+          }
+          .buttonStyle(.plain)
+          .font(.footnote)
+
           Button("Dismiss") {
             vm.syncBlockedByUncommitted = false
           }
@@ -405,6 +424,9 @@ struct ContentView: View {
         openNewTaskSheet: { showAddTask = true },
         openInbox: { withAnimation(.easeInOut(duration: 0.25)) { showInbox = true } }
       )
+    }
+    .sheet(isPresented: $vm.syncConflictDetailsPresented) {
+      SyncConflictDetailsView(vm: vm)
     }
     .onAppear {
       // Check if onboarding is needed on first launch

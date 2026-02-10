@@ -276,8 +276,13 @@ final class AppViewModel: ObservableObject {
   /// Whether a background git operation is in flight.
   @Published var isGitBusy: Bool = false
 
-  /// Whether sync is blocked because the local repo has uncommitted changes.
+  /// Whether sync is blocked because the local repo couldn't be rebased cleanly onto origin.
   @Published var syncBlockedByUncommitted: Bool = false
+
+  // Sync conflict recovery UI
+  @Published var syncConflictDetailsPresented: Bool = false
+  @Published var syncConflictFiles: [String] = []
+  @Published var syncConflictLastError: String? = nil
 
   /// Number of pending local changes not yet pushed.
   @Published var pendingChangesCount: Int = 0
@@ -1411,6 +1416,351 @@ final class AppViewModel: ObservableObject {
         self.isGitBusy = false
       }
     }
+  }
+
+  // MARK: - Sync Conflict Recovery
+
+  /// Option 1: Keep My Changes
+  /// - Abort any in-progress rebase
+  /// - Stash local changes
+  /// - Reset hard to origin/main
+  /// - Pop stash
+  /// - Commit + push
+  func recoverSyncConflictKeepMine() {
+    guard let repoURL else {
+      flashError("Repo path not set")
+      return
+    }
+    guard !isGitBusy else { return }
+
+    isGitBusy = true
+    syncConflictLastError = nil
+
+    Task {
+      // Best-effort abort (may fail if no rebase in progress)
+      _ = await Git.runAsyncWithErrorHandling(["rebase", "--abort"], cwd: repoURL)
+
+      let stash = await Git.runAsyncWithErrorHandling(["stash"], cwd: repoURL)
+      if !stash.success {
+        await MainActor.run {
+          self.syncConflictLastError = stash.error?.errorDescription ?? "Failed to stash changes"
+          self.flashError(self.syncConflictLastError ?? "Sync recovery failed")
+          self.isGitBusy = false
+        }
+        return
+      }
+
+      let fetch = await Git.runAsyncWithErrorHandling(["fetch", "origin"], cwd: repoURL)
+      if !fetch.success {
+        await MainActor.run {
+          self.syncConflictLastError = fetch.error?.errorDescription ?? "Fetch failed"
+          self.flashError(self.syncConflictLastError ?? "Sync recovery failed")
+          self.isGitBusy = false
+        }
+        return
+      }
+
+      let reset = await Git.runAsyncWithErrorHandling(["reset", "--hard", "origin/main"], cwd: repoURL)
+      if !reset.success {
+        await MainActor.run {
+          self.syncConflictLastError = reset.error?.errorDescription ?? "Reset failed"
+          self.flashError(self.syncConflictLastError ?? "Sync recovery failed")
+          self.isGitBusy = false
+        }
+        return
+      }
+
+      // Best-effort pop (may fail if there was nothing to stash)
+      _ = await Git.runAsyncWithErrorHandling(["stash", "pop"], cwd: repoURL)
+
+      let add = await Git.runAsyncWithErrorHandling(["add", "-A"], cwd: repoURL)
+      if !add.success {
+        await MainActor.run {
+          self.syncConflictLastError = add.error?.errorDescription ?? "Failed to stage changes"
+          self.flashError(self.syncConflictLastError ?? "Sync recovery failed")
+          self.isGitBusy = false
+        }
+        return
+      }
+
+      let author = "Lobs <thelobsbot@gmail.com>"
+      let committerEnv: [String: String] = [
+        "GIT_COMMITTER_NAME": "Lobs",
+        "GIT_COMMITTER_EMAIL": "thelobsbot@gmail.com",
+      ]
+      let commit = await Git.runAsyncWithErrorHandling(
+        ["commit", "--author", author, "-m", "Sync recovery: keep local changes"],
+        cwd: repoURL,
+        env: committerEnv
+      )
+      if !commit.success {
+        await MainActor.run {
+          self.syncConflictLastError = commit.error?.errorDescription ?? "Commit failed"
+          self.flashError(self.syncConflictLastError ?? "Sync recovery failed")
+          self.isGitBusy = false
+        }
+        return
+      }
+
+      let push = await Git.runAsyncWithErrorHandling(["push"], cwd: repoURL)
+      if !push.success {
+        await MainActor.run {
+          self.syncConflictLastError = push.error?.errorDescription ?? "Push failed"
+          self.lastPushError = self.syncConflictLastError
+          self.flashError(self.syncConflictLastError ?? "Push failed")
+          self.isGitBusy = false
+        }
+        return
+      }
+
+      await MainActor.run {
+        self.syncBlockedByUncommitted = false
+        self.syncConflictDetailsPresented = false
+        self.syncConflictFiles = []
+        self.flashSuccess("Recovered sync: kept local changes")
+        self.isGitBusy = false
+        self.reload()
+      }
+    }
+  }
+
+  /// Option 2: Use Remote Version
+  /// - Abort any in-progress rebase
+  /// - Reset hard to origin/main
+  /// - Clean untracked
+  /// - Reload from disk
+  func recoverSyncConflictUseRemote() {
+    guard let repoURL else {
+      flashError("Repo path not set")
+      return
+    }
+    guard !isGitBusy else { return }
+
+    isGitBusy = true
+    syncConflictLastError = nil
+
+    Task {
+      _ = await Git.runAsyncWithErrorHandling(["rebase", "--abort"], cwd: repoURL)
+
+      let fetch = await Git.runAsyncWithErrorHandling(["fetch", "origin"], cwd: repoURL)
+      if !fetch.success {
+        await MainActor.run {
+          self.syncConflictLastError = fetch.error?.errorDescription ?? "Fetch failed"
+          self.flashError(self.syncConflictLastError ?? "Sync recovery failed")
+          self.isGitBusy = false
+        }
+        return
+      }
+
+      let reset = await Git.runAsyncWithErrorHandling(["reset", "--hard", "origin/main"], cwd: repoURL)
+      if !reset.success {
+        await MainActor.run {
+          self.syncConflictLastError = reset.error?.errorDescription ?? "Reset failed"
+          self.flashError(self.syncConflictLastError ?? "Sync recovery failed")
+          self.isGitBusy = false
+        }
+        return
+      }
+
+      _ = await Git.runAsyncWithErrorHandling(["clean", "-fd"], cwd: repoURL)
+
+      await MainActor.run {
+        self.syncBlockedByUncommitted = false
+        self.syncConflictDetailsPresented = false
+        self.syncConflictFiles = []
+        self.flashSuccess("Recovered sync: using remote version")
+        self.isGitBusy = false
+        self.reload()
+      }
+    }
+  }
+
+  /// Option 3: Show details / per-file resolution.
+  /// Attempts a rebase and (if it conflicts) leaves the rebase in-progress so the user can resolve per-file.
+  func showSyncConflictDetails() {
+    guard let repoURL else {
+      flashError("Repo path not set")
+      return
+    }
+    guard !isGitBusy else { return }
+
+    isGitBusy = true
+    syncConflictLastError = nil
+
+    Task {
+      let fetch = await Git.runAsyncWithErrorHandling(["fetch", "origin"], cwd: repoURL)
+      if !fetch.success {
+        await MainActor.run {
+          self.syncConflictLastError = fetch.error?.errorDescription ?? "Fetch failed"
+          self.flashError(self.syncConflictLastError ?? "Failed to fetch")
+          self.isGitBusy = false
+        }
+        return
+      }
+
+      let rebase = await Git.runAsyncWithErrorHandling(["rebase", "origin/main"], cwd: repoURL)
+      if rebase.success {
+        await MainActor.run {
+          self.syncBlockedByUncommitted = false
+          self.syncConflictDetailsPresented = false
+          self.syncConflictFiles = []
+          self.flashSuccess("Sync conflict resolved")
+          self.isGitBusy = false
+          self.reload()
+        }
+        return
+      }
+
+      // Rebase conflicted; keep it in-progress for the details UI.
+      let files = await self.loadCurrentConflictFiles(repoURL: repoURL)
+      await MainActor.run {
+        self.syncBlockedByUncommitted = true
+        self.syncConflictFiles = files
+        self.syncConflictDetailsPresented = true
+        self.syncConflictLastError = rebase.error?.errorDescription
+        self.isGitBusy = false
+      }
+    }
+  }
+
+  func syncConflictResolveFileKeepingMine(_ path: String) {
+    syncConflictResolveFile(path, useTheirs: false)
+  }
+
+  func syncConflictResolveFileUsingRemote(_ path: String) {
+    syncConflictResolveFile(path, useTheirs: true)
+  }
+
+  private func syncConflictResolveFile(_ path: String, useTheirs: Bool) {
+    guard let repoURL else { return }
+    guard !isGitBusy else { return }
+
+    isGitBusy = true
+    syncConflictLastError = nil
+
+    Task {
+      let checkoutArgs = useTheirs
+        ? ["checkout", "--theirs", "--", path]
+        : ["checkout", "--ours", "--", path]
+      let checkout = await Git.runAsyncWithErrorHandling(checkoutArgs, cwd: repoURL)
+      if !checkout.success {
+        await MainActor.run {
+          self.syncConflictLastError = checkout.error?.errorDescription ?? "Failed to update file"
+          self.flashError(self.syncConflictLastError ?? "Resolve failed")
+          self.isGitBusy = false
+        }
+        return
+      }
+
+      let add = await Git.runAsyncWithErrorHandling(["add", "--", path], cwd: repoURL)
+      if !add.success {
+        await MainActor.run {
+          self.syncConflictLastError = add.error?.errorDescription ?? "Failed to stage file"
+          self.flashError(self.syncConflictLastError ?? "Resolve failed")
+          self.isGitBusy = false
+        }
+        return
+      }
+
+      let files = await self.loadCurrentConflictFiles(repoURL: repoURL)
+      await MainActor.run {
+        self.syncConflictFiles = files
+        self.isGitBusy = false
+      }
+    }
+  }
+
+  func syncConflictContinueRebase() {
+    guard let repoURL else { return }
+    guard !isGitBusy else { return }
+
+    isGitBusy = true
+    syncConflictLastError = nil
+
+    Task {
+      let cont = await Git.runAsyncWithErrorHandling(["rebase", "--continue"], cwd: repoURL)
+      if cont.success {
+        // Either finished, or moved to next commit.
+        let files = await self.loadCurrentConflictFiles(repoURL: repoURL)
+        await MainActor.run {
+          self.syncConflictFiles = files
+          if files.isEmpty {
+            self.syncBlockedByUncommitted = false
+            self.syncConflictDetailsPresented = false
+            self.flashSuccess("Rebase complete")
+            self.reload()
+          }
+          self.isGitBusy = false
+        }
+        return
+      }
+
+      // Still conflicted.
+      let files = await self.loadCurrentConflictFiles(repoURL: repoURL)
+      await MainActor.run {
+        self.syncConflictFiles = files
+        self.syncBlockedByUncommitted = true
+        self.syncConflictLastError = cont.error?.errorDescription
+        self.isGitBusy = false
+      }
+    }
+  }
+
+  func syncConflictAbortRebase() {
+    guard let repoURL else { return }
+    guard !isGitBusy else { return }
+
+    isGitBusy = true
+    syncConflictLastError = nil
+
+    Task {
+      _ = await Git.runAsyncWithErrorHandling(["rebase", "--abort"], cwd: repoURL)
+      await MainActor.run {
+        self.syncConflictFiles = []
+        self.syncConflictDetailsPresented = false
+        self.syncBlockedByUncommitted = false
+        self.isGitBusy = false
+        self.flashSuccess("Rebase aborted")
+        self.reload()
+      }
+    }
+  }
+
+  func syncConflictRefreshFiles() {
+    guard let repoURL else { return }
+    Task {
+      let files = await self.loadCurrentConflictFiles(repoURL: repoURL)
+      await MainActor.run {
+        self.syncConflictFiles = files
+      }
+    }
+  }
+
+  private func loadCurrentConflictFiles(repoURL: URL) async -> [String] {
+    let diff = await Git.runAsyncWithErrorHandling(["diff", "--name-only", "--diff-filter=U"], cwd: repoURL)
+    if diff.success {
+      return diff.output
+        .split(separator: "\n")
+        .map(String.init)
+        .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    // Fallback: parse git status for unmerged entries
+    let status = await Git.runAsyncWithErrorHandling(["status", "--porcelain"], cwd: repoURL)
+    guard status.success else { return [] }
+
+    // Unmerged lines usually start with UU/AA/DU/UD/etc.
+    return status.output
+      .split(separator: "\n")
+      .map(String.init)
+      .compactMap { line in
+        guard line.count >= 4 else { return nil }
+        let prefix = line.prefix(2)
+        if prefix.contains("U") || prefix == "AA" || prefix == "DD" {
+          return String(line.dropFirst(3))
+        }
+        return nil
+      }
   }
 
   /// Refresh per-project last git commit times by querying the lobs-control git history for
