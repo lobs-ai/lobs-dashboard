@@ -12,6 +12,7 @@ struct OnboardingView: View {
         case welcome
         case repoSetup
         case cloneAndValidate
+        case personality
         case serverSetup
         case verification
     }
@@ -45,6 +46,13 @@ struct OnboardingView: View {
                 )
                 .transition(.opacity)
             
+            case .personality:
+                OnboardingPersonalityView(
+                    onBack: goBackToPreviousStep,
+                    onContinue: advanceToNextStep
+                )
+                .transition(.opacity)
+
             case .serverSetup:
                 OnboardingServerSetupView(
                     repoUrl: repoUrl,
@@ -73,6 +81,8 @@ struct OnboardingView: View {
         case .repoSetup:
             currentStep = .cloneAndValidate
         case .cloneAndValidate:
+            currentStep = .personality
+        case .personality:
             currentStep = .serverSetup
         case .serverSetup:
             currentStep = .verification
@@ -91,8 +101,10 @@ struct OnboardingView: View {
             currentStep = .welcome
         case .cloneAndValidate:
             currentStep = .repoSetup
-        case .serverSetup:
+        case .personality:
             currentStep = .cloneAndValidate
+        case .serverSetup:
+            currentStep = .personality
         case .verification:
             currentStep = .serverSetup
         }

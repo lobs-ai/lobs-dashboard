@@ -6,6 +6,7 @@ struct SettingsView: View {
   
   @State private var showingChangeRepoConfirmation = false
   @State private var showingResetConfirmation = false
+  @State private var showingPersonalityEditor = false
   
   var body: some View {
     VStack(alignment: .leading, spacing: 20) {
@@ -61,6 +62,25 @@ struct SettingsView: View {
 
           Divider()
             .padding(.vertical, 8)
+
+          // Agent Personality
+          VStack(alignment: .leading, spacing: 12) {
+            Text("Agent")
+              .font(.headline)
+
+            Text("Customize the worker persona (SOUL.md, USER.md, IDENTITY.md) stored in your control repo.")
+              .font(.caption)
+              .foregroundColor(.secondary)
+
+            Button("Edit Agent Personality…") {
+              showingPersonalityEditor = true
+            }
+            .buttonStyle(.bordered)
+            .disabled(config.controlRepoPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+          }
+
+          Divider()
+            .padding(.vertical, 8)
           
           // Action Buttons
           VStack(spacing: 12) {
@@ -110,7 +130,12 @@ struct SettingsView: View {
       Spacer()
     }
     .padding(24)
-    .frame(width: 600, height: 400)
+    .frame(width: 600, height: 460)
+    .sheet(isPresented: $showingPersonalityEditor) {
+      AgentPersonalitySheet()
+        .environmentObject(vm)
+        .frame(width: 760, height: 560)
+    }
   }
   
   private func changeRepository() {
@@ -141,6 +166,21 @@ struct SettingsView: View {
     } catch {
       print("⚠️ Failed to reset config: \(error)")
     }
+  }
+}
+
+private struct AgentPersonalitySheet: View {
+  @EnvironmentObject var vm: AppViewModel
+  @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    OnboardingPersonalityView(
+      onBack: nil,
+      onContinue: { dismiss() },
+      continueTitle: "Save",
+      showBackButton: false
+    )
+    .environmentObject(vm)
   }
 }
 
