@@ -78,7 +78,7 @@ struct Git {
     }
   }
   
-  /// Retry a git operation with exponential backoff
+  /// Retry a git operation with exponential backoff (async).
   static func runWithRetry(
     _ args: [String],
     cwd: URL,
@@ -88,19 +88,19 @@ struct Git {
   ) async -> GitOperationResult {
     var attempt = 0
     var delay = initialDelay
-    
+
     while attempt < maxRetries {
       let result = await runAsyncWithErrorHandling(args, cwd: cwd, env: env)
-      
+
       if result.success {
         return result
       }
-      
-      // Only retry if the error is retryable
+
+      // Only retry if the error is retryable.
       guard let error = result.error, error.isRetryable else {
         return result
       }
-      
+
       attempt += 1
       if attempt < maxRetries {
         print("Git operation failed (attempt \(attempt)/\(maxRetries)), retrying in \(delay)s...")
@@ -108,9 +108,44 @@ struct Git {
         delay *= 2 // Exponential backoff
       }
     }
-    
-    // Return the last result after exhausting retries
+
+    // Return the last result after exhausting retries.
     return await runAsyncWithErrorHandling(args, cwd: cwd, env: env)
+  }
+
+  /// Retry a git operation with exponential backoff (synchronous).
+  ///
+  /// Useful in non-async code paths; blocks the current thread.
+  static func runWithRetrySync(
+    _ args: [String],
+    cwd: URL,
+    env: [String: String] = [:],
+    maxRetries: Int = 3,
+    initialDelay: TimeInterval = 1.0
+  ) -> GitOperationResult {
+    var attempt = 0
+    var delay = initialDelay
+
+    while attempt < maxRetries {
+      let result = runWithErrorHandling(args, cwd: cwd, env: env)
+
+      if result.success {
+        return result
+      }
+
+      guard let error = result.error, error.isRetryable else {
+        return result
+      }
+
+      attempt += 1
+      if attempt < maxRetries {
+        print("Git operation failed (attempt \(attempt)/\(maxRetries)), retrying in \(delay)s...")
+        Thread.sleep(forTimeInterval: delay)
+        delay *= 2
+      }
+    }
+
+    return runWithErrorHandling(args, cwd: cwd, env: env)
   }
   
   // MARK: - Logging

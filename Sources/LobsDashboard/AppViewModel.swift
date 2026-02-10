@@ -1305,11 +1305,10 @@ final class AppViewModel: ObservableObject {
         }
       }
 
-      // Attempt push
-      let push = await Git.runAsyncWithErrorHandling(["push"], cwd: repoURL)
-      if !push.success {
-        // If push failed, check if we should pull first
-        if push.suggestsPull {
+      // Attempt push; retry transient failures before surfacing UI error.
+      let pushAttempt = await Git.runAsyncWithErrorHandling(["push"], cwd: repoURL)
+      if !pushAttempt.success {
+        if pushAttempt.suggestsPull {
           let pull = await Git.runWithRetry(["pull", "--rebase"], cwd: repoURL, maxRetries: 2)
           if !pull.success {
             await MainActor.run {
@@ -1321,11 +1320,21 @@ final class AppViewModel: ObservableObject {
             return
           }
 
-          // Retry push after successful pull
-          let retry = await Git.runAsyncWithErrorHandling(["push"], cwd: repoURL)
-          if !retry.success {
+          let retryPush = await Git.runWithRetry(["push"], cwd: repoURL, maxRetries: 3, initialDelay: 2.0)
+          if !retryPush.success {
             await MainActor.run {
-              let errorMsg = retry.error?.errorDescription ?? "Push failed"
+              let errorMsg = retryPush.error?.errorDescription ?? "Push failed"
+              self.lastPushError = errorMsg
+              self.flashError(self.lastPushError ?? "Push failed")
+              self.isGitBusy = false
+            }
+            return
+          }
+        } else if pushAttempt.canRetry {
+          let retryPush = await Git.runWithRetry(["push"], cwd: repoURL, maxRetries: 3, initialDelay: 2.0)
+          if !retryPush.success {
+            await MainActor.run {
+              let errorMsg = retryPush.error?.errorDescription ?? "Push failed"
               self.lastPushError = errorMsg
               self.flashError(self.lastPushError ?? "Push failed")
               self.isGitBusy = false
@@ -1333,9 +1342,8 @@ final class AppViewModel: ObservableObject {
             return
           }
         } else {
-          // Push failed for a non-recoverable reason
           await MainActor.run {
-            let errorMsg = push.error?.errorDescription ?? "Push failed"
+            let errorMsg = pushAttempt.error?.errorDescription ?? "Push failed"
             self.lastPushError = errorMsg
             self.flashError(self.lastPushError ?? "Push failed")
             self.isGitBusy = false
@@ -4434,23 +4442,30 @@ final class AppViewModel: ObservableObject {
     }
 
     if autoPush {
-      let push = Git.runWithErrorHandling(["push"], cwd: repoURL)
-      if !push.success {
-        // Push failed — pull --rebase and retry once if suggested.
-        if push.suggestsPull {
-          let pull = Git.runWithErrorHandling(["pull", "--rebase"], cwd: repoURL)
+      let pushAttempt = Git.runWithErrorHandling(["push"], cwd: repoURL)
+      if !pushAttempt.success {
+        // Push failed — pull --rebase and retry if suggested.
+        if pushAttempt.suggestsPull {
+          let pull = Git.runWithRetrySync(["pull", "--rebase"], cwd: repoURL, maxRetries: 2)
           if !pull.success {
             throw NSError(domain: "Git", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: pull.error?.errorDescription ?? "Pull failed"])
           }
-          let retry = Git.runWithErrorHandling(["push"], cwd: repoURL)
-          if !retry.success {
+
+          let retryPush = Git.runWithRetrySync(["push"], cwd: repoURL, maxRetries: 3, initialDelay: 2.0)
+          if !retryPush.success {
             throw NSError(domain: "Git", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: retry.error?.errorDescription ?? "Push failed"])
+                          userInfo: [NSLocalizedDescriptionKey: retryPush.error?.errorDescription ?? "Push failed"])
+          }
+        } else if pushAttempt.canRetry {
+          let retryPush = Git.runWithRetrySync(["push"], cwd: repoURL, maxRetries: 3, initialDelay: 2.0)
+          if !retryPush.success {
+            throw NSError(domain: "Git", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: retryPush.error?.errorDescription ?? "Push failed"])
           }
         } else {
           throw NSError(domain: "Git", code: 1,
-                        userInfo: [NSLocalizedDescriptionKey: push.error?.errorDescription ?? "Push failed"])
+                        userInfo: [NSLocalizedDescriptionKey: pushAttempt.error?.errorDescription ?? "Push failed"])
         }
       }
     }

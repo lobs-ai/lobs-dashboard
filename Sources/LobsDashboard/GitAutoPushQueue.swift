@@ -126,10 +126,10 @@ actor GitAutoPushQueue {
       return
     }
 
-    let push = await Git.runAsyncWithErrorHandling(["push"], cwd: repoURL)
-    if !push.success {
-      // If suggested, pull --rebase and retry.
-      if push.suggestsPull {
+    // Attempt push; retry transient failures before surfacing UI error.
+    let pushAttempt = await Git.runAsyncWithErrorHandling(["push"], cwd: repoURL)
+    if !pushAttempt.success {
+      if pushAttempt.suggestsPull {
         let repull = await Git.runWithRetry(["pull", "--rebase"], cwd: repoURL, maxRetries: 2)
         if !repull.success {
           let msg = repull.error?.errorDescription ?? "Pull failed"
@@ -139,16 +139,25 @@ actor GitAutoPushQueue {
           return
         }
 
-        let retry = await Git.runAsyncWithErrorHandling(["push"], cwd: repoURL)
-        if !retry.success {
-          let msg = retry.error?.errorDescription ?? "Push failed"
+        let retryPush = await Git.runWithRetry(["push"], cwd: repoURL, maxRetries: 3, initialDelay: 2.0)
+        if !retryPush.success {
+          let msg = retryPush.error?.errorDescription ?? "Push failed"
+          await MainActor.run {
+            owner?.lastPushError = msg
+          }
+          return
+        }
+      } else if pushAttempt.canRetry {
+        let retryPush = await Git.runWithRetry(["push"], cwd: repoURL, maxRetries: 3, initialDelay: 2.0)
+        if !retryPush.success {
+          let msg = retryPush.error?.errorDescription ?? "Push failed"
           await MainActor.run {
             owner?.lastPushError = msg
           }
           return
         }
       } else {
-        let msg = push.error?.errorDescription ?? "Push failed"
+        let msg = pushAttempt.error?.errorDescription ?? "Push failed"
         await MainActor.run {
           owner?.lastPushError = msg
         }
