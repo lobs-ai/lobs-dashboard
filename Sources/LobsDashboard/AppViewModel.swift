@@ -6,7 +6,7 @@ import UserNotifications
 enum GitHubCLIError: Error, LocalizedError {
   case commandFailed(stderr: String)
   case parseError(output: String)
-  
+
   var errorDescription: String? {
     switch self {
     case .commandFailed(let stderr):
@@ -15,6 +15,16 @@ enum GitHubCLIError: Error, LocalizedError {
       return "Failed to parse issue number from gh output: \(output)"
     }
   }
+}
+
+// MARK: - Git Rebase Recovery
+
+enum RebaseState {
+  case none
+  /// A rebase is in progress. If `conflictFiles` is non-empty, it likely needs resolution.
+  case inProgress(conflictFiles: [String])
+  /// A rebase is in progress but we couldn't reliably determine conflict state.
+  case needsResolution
 }
 
 @MainActor
@@ -283,6 +293,11 @@ final class AppViewModel: ObservableObject {
   @Published var syncConflictDetailsPresented: Bool = false
   @Published var syncConflictFiles: [String] = []
   @Published var syncConflictLastError: String? = nil
+
+  // Rebase recovery UI (stuck rebase on crash/force quit)
+  @Published var rebaseRecoveryPresented: Bool = false
+  @Published var rebaseRecoveryConflictFiles: [String] = []
+  @Published var rebaseRecoveryLastError: String? = nil
 
   /// Number of pending local changes not yet pushed.
   @Published var pendingChangesCount: Int = 0
@@ -1142,6 +1157,13 @@ final class AppViewModel: ObservableObject {
       return
     }
 
+    // If a previous sync crashed mid-rebase, prompt for recovery before doing anything else.
+    promptRebaseRecoveryIfNeeded(context: "startup/reload")
+    if rebaseRecoveryPresented {
+      isGitBusy = false
+      return
+    }
+
     isGitBusy = true
     Task {
       do {
@@ -1573,6 +1595,179 @@ final class AppViewModel: ObservableObject {
         self.reload()
       }
     }
+  }
+
+  // MARK: - Rebase Recovery
+
+  /// Check whether the repo is currently in a stuck/in-progress rebase state.
+  ///
+  /// This detects the common on-disk markers Git uses:
+  /// - .git/rebase-merge
+  /// - .git/rebase-apply
+  func checkRebaseState() -> RebaseState {
+    guard let repoURL else { return .none }
+    return checkRebaseState(repoURL: repoURL)
+  }
+
+  private func checkRebaseState(repoURL: URL) -> RebaseState {
+    guard let gitDir = gitDirURL(for: repoURL) else { return .none }
+
+    let fm = FileManager.default
+    let merge = gitDir.appendingPathComponent("rebase-merge")
+    let apply = gitDir.appendingPathComponent("rebase-apply")
+    guard fm.fileExists(atPath: merge.path) || fm.fileExists(atPath: apply.path) else {
+      return .none
+    }
+
+    // Attempt to detect conflicted files (unmerged paths).
+    // If the command fails, still treat it as "needsResolution" so we can present recovery UI.
+    let res = Git.runWithErrorHandling(["diff", "--name-only", "--diff-filter=U"], cwd: repoURL)
+    guard res.success else {
+      return .needsResolution
+    }
+
+    let files = res.output
+      .split(separator: "\n")
+      .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty }
+
+    return .inProgress(conflictFiles: files)
+  }
+
+  /// Present the rebase recovery dialog if a rebase is currently in progress.
+  /// Call this on startup and before git operations.
+  private func promptRebaseRecoveryIfNeeded(context: String) {
+    let state = checkRebaseState()
+    guard case .none = state else {
+      switch state {
+      case .inProgress(let files):
+        rebaseRecoveryConflictFiles = files
+      case .needsResolution:
+        rebaseRecoveryConflictFiles = []
+      case .none:
+        break
+      }
+      rebaseRecoveryLastError = nil
+      syncConflictLastError = nil
+      syncBlockedByUncommitted = true
+      rebaseRecoveryPresented = true
+      print("[rebase] Recovery prompt shown (context: \(context))")
+      return
+    }
+  }
+
+  var rebaseRecoveryDialogMessage: String {
+    if let err = rebaseRecoveryLastError, !err.isEmpty {
+      return err
+    }
+
+    if !rebaseRecoveryConflictFiles.isEmpty {
+      let preview = rebaseRecoveryConflictFiles.prefix(6).joined(separator: "\n")
+      let more = rebaseRecoveryConflictFiles.count > 6 ? "\n… (+\(rebaseRecoveryConflictFiles.count - 6) more)" : ""
+      return "A git rebase is currently in progress and has unresolved conflicts:\n\n\(preview)\(more)"
+    }
+
+    return "A git rebase is currently in progress. If you already resolved conflicts, choose Continue Rebase. Otherwise you can Abort or Skip the current commit."
+  }
+
+  func rebaseRecoveryContinue() {
+    runRebaseRecoveryCommand(["rebase", "--continue"], successMessage: "Rebase continued")
+  }
+
+  func rebaseRecoveryAbort() {
+    runRebaseRecoveryCommand(["rebase", "--abort"], successMessage: "Rebase aborted")
+  }
+
+  func rebaseRecoverySkip() {
+    runRebaseRecoveryCommand(["rebase", "--skip"], successMessage: "Rebase skipped")
+  }
+
+  private func runRebaseRecoveryCommand(_ args: [String], successMessage: String) {
+    guard let repoURL else {
+      flashError("Repo path not set")
+      return
+    }
+    guard !isGitBusy else { return }
+
+    isGitBusy = true
+    rebaseRecoveryLastError = nil
+
+    Task {
+      let res = await Git.runAsyncWithErrorHandling(args, cwd: repoURL)
+
+      if !res.success {
+        let files = await self.loadCurrentConflictFiles(repoURL: repoURL)
+        await MainActor.run {
+          self.rebaseRecoveryConflictFiles = files
+          self.rebaseRecoveryLastError = res.error?.errorDescription ?? "Git operation failed"
+          self.syncBlockedByUncommitted = true
+          self.flashError(self.rebaseRecoveryLastError ?? "Git operation failed")
+          // If there are conflicts, offer the per-file resolution sheet.
+          if !files.isEmpty {
+            self.syncConflictFiles = files
+            self.syncConflictDetailsPresented = true
+          }
+          self.isGitBusy = false
+        }
+        return
+      }
+
+      // Command succeeded. If the rebase is still in progress, keep the dialog open and refresh state.
+      let stateAfter = await MainActor.run { self.checkRebaseState(repoURL: repoURL) }
+      await MainActor.run {
+        switch stateAfter {
+        case .none:
+          self.rebaseRecoveryPresented = false
+          self.rebaseRecoveryConflictFiles = []
+          self.syncBlockedByUncommitted = false
+          self.flashSuccess(successMessage)
+          self.isGitBusy = false
+          self.reload()
+        case .inProgress(let files):
+          self.rebaseRecoveryConflictFiles = files
+          self.syncBlockedByUncommitted = true
+          self.rebaseRecoveryPresented = true
+          self.flashSuccess(successMessage)
+          self.isGitBusy = false
+        case .needsResolution:
+          self.rebaseRecoveryConflictFiles = []
+          self.syncBlockedByUncommitted = true
+          self.rebaseRecoveryPresented = true
+          self.flashSuccess(successMessage)
+          self.isGitBusy = false
+        }
+      }
+    }
+  }
+
+  private func gitDirURL(for repoURL: URL) -> URL? {
+    let dotGit = repoURL.appendingPathComponent(".git")
+    var isDir: ObjCBool = false
+
+    // Standard layout: .git is a directory
+    if FileManager.default.fileExists(atPath: dotGit.path, isDirectory: &isDir), isDir.boolValue {
+      return dotGit
+    }
+
+    // Worktrees/submodules: .git is a file containing "gitdir: <path>"
+    if FileManager.default.fileExists(atPath: dotGit.path, isDirectory: &isDir), !isDir.boolValue {
+      if let content = try? String(contentsOf: dotGit, encoding: .utf8) {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.lowercased().hasPrefix("gitdir:") {
+          let pathPart = trimmed.dropFirst("gitdir:".count).trimmingCharacters(in: .whitespaces)
+          let gitdirPath = String(pathPart)
+          let resolved: URL
+          if gitdirPath.hasPrefix("/") {
+            resolved = URL(fileURLWithPath: gitdirPath)
+          } else {
+            resolved = repoURL.appendingPathComponent(gitdirPath)
+          }
+          return resolved
+        }
+      }
+    }
+
+    return nil
   }
 
   /// Option 3: Show details / per-file resolution.
@@ -4673,6 +4868,26 @@ final class AppViewModel: ObservableObject {
   }
 
   private func syncRepo(repoURL: URL) throws {
+    // Detect and recover from a stuck rebase state before doing any other git work.
+    let state = checkRebaseState(repoURL: repoURL)
+    if case .none = state {
+      // ok
+    } else {
+      // Present recovery UI and stop this sync attempt.
+      switch state {
+      case .inProgress(let files):
+        rebaseRecoveryConflictFiles = files
+      case .needsResolution:
+        rebaseRecoveryConflictFiles = []
+      case .none:
+        break
+      }
+      rebaseRecoveryLastError = nil
+      rebaseRecoveryPresented = true
+      syncBlockedByUncommitted = true
+      return
+    }
+
     let remotes = Git.runWithErrorHandling(["remote"], cwd: repoURL)
     if !remotes.success { return }
     let hasOrigin = remotes.output.split(separator: "\n").map(String.init).contains("origin")
@@ -4723,6 +4938,27 @@ final class AppViewModel: ObservableObject {
 
   /// Async version of syncRepo — runs git commands off the main thread to avoid UI lag.
   private func syncRepoAsync(repoURL: URL) async throws {
+    // Detect and recover from a stuck rebase state before doing any other git work.
+    let state = await MainActor.run { self.checkRebaseState(repoURL: repoURL) }
+    if case .none = state {
+      // ok
+    } else {
+      await MainActor.run {
+        switch state {
+        case .inProgress(let files):
+          self.rebaseRecoveryConflictFiles = files
+        case .needsResolution:
+          self.rebaseRecoveryConflictFiles = []
+        case .none:
+          break
+        }
+        self.rebaseRecoveryLastError = nil
+        self.rebaseRecoveryPresented = true
+        self.syncBlockedByUncommitted = true
+      }
+      return
+    }
+
     let remotes = await Git.runAsyncWithErrorHandling(["remote"], cwd: repoURL)
     if !remotes.success { return }
     let hasOrigin = remotes.output.split(separator: "\n").map(String.init).contains("origin")

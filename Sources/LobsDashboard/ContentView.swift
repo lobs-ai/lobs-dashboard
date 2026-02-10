@@ -428,6 +428,18 @@ struct ContentView: View {
     .sheet(isPresented: $vm.syncConflictDetailsPresented) {
       SyncConflictDetailsView(vm: vm)
     }
+    .confirmationDialog(
+      "A previous sync was interrupted. How do you want to proceed?",
+      isPresented: $vm.rebaseRecoveryPresented,
+      titleVisibility: .visible
+    ) {
+      Button("Continue Rebase") { vm.rebaseRecoveryContinue() }
+      Button("Skip This Commit") { vm.rebaseRecoverySkip() }
+      Button("Abort Rebase", role: .destructive) { vm.rebaseRecoveryAbort() }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text(vm.rebaseRecoveryDialogMessage)
+    }
     .onAppear {
       // Check if onboarding is needed on first launch
       if vm.needsOnboarding {
