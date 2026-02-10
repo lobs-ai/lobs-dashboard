@@ -65,22 +65,69 @@ final class AppViewModel: ObservableObject {
     }
   }
 
-  /// Whether onboarding is needed (config not set, incomplete, or repo missing)
+  /// Whether onboarding is needed.
   ///
-  /// We consider onboarding required if:
+  /// We consider onboarding required if any of the "first run" conditions are unmet:
   /// - Config is missing
   /// - Onboarding hasn't been completed
-  /// - No control repo path is set
-  /// - The configured repo path does not exist on disk
-  /// - The configured path isn't a git repository
+  /// - Workspace is missing
+  /// - Core repos are missing (lobs-control, lobs-orchestrator, lobs-workspace)
+  /// - OpenClaw is not configured
   var needsOnboarding: Bool {
     guard let config else { return true }
 
     if !config.onboardingComplete { return true }
-    if config.controlRepoPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return true }
 
-    // Detect missing/moved repo and force re-onboarding.
-    return !Self.isGitRepo(atPath: config.controlRepoPath)
+    // Control repo is our anchor; if it is missing/moved, re-onboard.
+    let controlPath = config.controlRepoPath.trimmingCharacters(in: .whitespacesAndNewlines)
+    if controlPath.isEmpty { return true }
+    if !Self.isGitRepo(atPath: controlPath) { return true }
+
+    let workspacePath = Self.detectWorkspacePath(controlRepoPath: controlPath)
+    if !Self.directoryExists(atPath: workspacePath) { return true }
+
+    // Core repos expected by the orchestrator/dashboard.
+    let orchestratorPath = (workspacePath as NSString).appendingPathComponent("lobs-orchestrator")
+    let lobsWorkspacePath = (workspacePath as NSString).appendingPathComponent("lobs-workspace")
+
+    if !Self.isGitRepo(atPath: orchestratorPath) { return true }
+    if !Self.isGitRepo(atPath: lobsWorkspacePath) { return true }
+
+    if !Self.isOpenClawConfigured() { return true }
+
+    return false
+  }
+
+  fileprivate static func detectWorkspacePath(controlRepoPath: String) -> String {
+    // Prefer explicit onboarding state (if present), otherwise fall back to
+    // the parent directory of the configured control repo path.
+    let s = OnboardingStateManager.load()
+    if let ws = s.workspace?.trimmingCharacters(in: .whitespacesAndNewlines), !ws.isEmpty {
+      return ws
+    }
+
+    let url = URL(fileURLWithPath: controlRepoPath)
+    return url.deletingLastPathComponent().path
+  }
+
+  fileprivate static func directoryExists(atPath path: String) -> Bool {
+    var isDir: ObjCBool = false
+    return FileManager.default.fileExists(atPath: path, isDirectory: &isDir) && isDir.boolValue
+  }
+
+  fileprivate static func isOpenClawConfigured() -> Bool {
+    let fm = FileManager.default
+    let home = fm.homeDirectoryForCurrentUser
+    let openclawDir = home.appendingPathComponent(".openclaw")
+
+    // OpenClaw's config format has changed over time; accept any of these.
+    let candidates: [URL] = [
+      openclawDir.appendingPathComponent("config.json"),
+      openclawDir.appendingPathComponent("config.yaml"),
+      openclawDir.appendingPathComponent("config.yml")
+    ]
+
+    return candidates.contains { fm.fileExists(atPath: $0.path) }
   }
 
   fileprivate static func isGitRepo(atPath path: String) -> Bool {
