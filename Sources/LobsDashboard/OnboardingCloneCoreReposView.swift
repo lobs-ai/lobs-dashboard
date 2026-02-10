@@ -8,9 +8,13 @@ struct OnboardingCloneCoreReposView: View {
   let onComplete: (URL) -> Void
 
   @State private var isRunning: Bool = false
+  @State private var isFinished: Bool = false
   @State private var steps: [Step] = []
   @State private var errorMessage: String? = nil
   @State private var canRetry: Bool = false
+
+  // Existing-repo choice UI
+  @State private var pendingDecision: PendingDecision? = nil
 
   struct Step: Identifiable {
     let id = UUID()
@@ -46,9 +50,27 @@ struct OnboardingCloneCoreReposView: View {
     }
   }
 
+  enum ExistingRepoAction {
+    case skip
+    case pullLatest
+    case reclone
+  }
+
+  struct PendingDecision: Identifiable {
+    let id = UUID()
+    let repoName: String
+    let repoPath: URL
+    let continuation: CheckedContinuation<ExistingRepoAction, Never>
+  }
+
+  private let orchestratorRepoUrl = "git@github.com:RafeSymonds/lobs-orchestrator.git"
+  private let workspaceRepoUrl = "git@github.com:RafeSymonds/lobs-workspace.git"
+
   private var controlPath: URL { URL(fileURLWithPath: workspacePath).appendingPathComponent("lobs-control") }
   private var orchestratorPath: URL { URL(fileURLWithPath: workspacePath).appendingPathComponent("lobs-orchestrator") }
   private var lobsWorkspacePath: URL { URL(fileURLWithPath: workspacePath).appendingPathComponent("lobs-workspace") }
+
+  // MARK: - View
 
   var body: some View {
     VStack(spacing: 28) {
@@ -125,7 +147,20 @@ struct OnboardingCloneCoreReposView: View {
         .cornerRadius(8)
         .disabled(isRunning && !canRetry)
 
-        if canRetry {
+        if isFinished {
+          Button(action: completeIfPossible) {
+            Text("Continue")
+              .font(.system(size: 14, weight: .medium))
+              .foregroundColor(.white)
+              .frame(width: 120)
+              .padding(.vertical, 10)
+          }
+          .buttonStyle(.plain)
+          .background(Theme.accent)
+          .cornerRadius(8)
+          .disabled(!canContinue)
+          .opacity(canContinue ? 1.0 : 0.5)
+        } else if canRetry {
           Button(action: start) {
             Text("Try Again")
               .font(.system(size: 14, weight: .medium))
@@ -164,67 +199,171 @@ struct OnboardingCloneCoreReposView: View {
         ]
       }
     }
+    .confirmationDialog(
+      pendingDecision?.repoName ?? "Repository exists",
+      isPresented: Binding(
+        get: { pendingDecision != nil },
+        set: { if !$0 { pendingDecision = nil } }
+      ),
+      titleVisibility: .visible
+    ) {
+      Button("Skip") {
+        pendingDecision?.continuation.resume(returning: .skip)
+        pendingDecision = nil
+      }
+      Button("Pull latest") {
+        pendingDecision?.continuation.resume(returning: .pullLatest)
+        pendingDecision = nil
+      }
+      Button("Re-clone") {
+        pendingDecision?.continuation.resume(returning: .reclone)
+        pendingDecision = nil
+      }
+      Button("Cancel", role: .cancel) {
+        pendingDecision?.continuation.resume(returning: .skip)
+        pendingDecision = nil
+      }
+    } message: {
+      if let p = pendingDecision {
+        Text("\(p.repoPath.path) already exists. What do you want to do?")
+      }
+    }
   }
+
+  private var canContinue: Bool {
+    // Require control repo clone + validation to proceed; other repos may fail.
+    guard steps.indices.contains(0), steps.indices.contains(1) else { return false }
+    if case .error = steps[0].status { return false }
+    if case .error = steps[1].status { return false }
+    return true
+  }
+
+  // MARK: - Actions
 
   private func start() {
     isRunning = true
+    isFinished = false
     errorMessage = nil
     canRetry = false
+
+    // Reset step statuses.
+    for idx in steps.indices {
+      steps[idx].status = .pending
+    }
 
     Task {
       await runAll()
     }
   }
 
+  private func completeIfPossible() {
+    guard canContinue else { return }
+    onComplete(controlPath)
+  }
+
   private func runAll() async {
-    // 1) lobs-control
+    // Clone all repos in parallel for speed.
     await updateStep(0, .inProgress)
-    let controlCloneOK = await ensureCloned(url: controlRepoUrl, dest: controlPath)
-    if !controlCloneOK { return }
-    await updateStep(0, .completed)
-
-    // 2) validate structure
-    await updateStep(1, .inProgress)
-    let validateOK = await validateControlStructure(at: controlPath)
-    if !validateOK { return }
-    await updateStep(1, .completed)
-
-    // 3) orchestrator
     await updateStep(2, .inProgress)
-    let orchOK = await ensureCloned(url: "https://github.com/RafeSymonds/lobs-orchestrator.git", dest: orchestratorPath)
-    if !orchOK { return }
-    await updateStep(2, .completed)
-
-    // 4) lobs-workspace
     await updateStep(3, .inProgress)
-    let wsOK = await ensureCloned(url: "https://github.com/RafeSymonds/lobs-workspace.git", dest: lobsWorkspacePath)
-    if !wsOK { return }
-    await updateStep(3, .completed)
+
+    async let controlRes = ensureCloned(repoName: "lobs-control", url: controlRepoUrl, dest: controlPath)
+    async let orchRes = ensureCloned(repoName: "lobs-orchestrator", url: orchestratorRepoUrl, dest: orchestratorPath)
+    async let wsRes = ensureCloned(repoName: "lobs-workspace", url: workspaceRepoUrl, dest: lobsWorkspacePath)
+
+    let controlOK = await controlRes
+    let orchOK = await orchRes
+    let wsOK = await wsRes
+
+    // If a step already has a warning (e.g., "Exists, skipped"), preserve it.
+    await MainActor.run {
+      if controlOK {
+        if case .inProgress = steps[0].status { steps[0].status = .completed }
+      }
+      if orchOK {
+        if case .inProgress = steps[2].status { steps[2].status = .completed }
+      }
+      if wsOK {
+        if case .inProgress = steps[3].status { steps[3].status = .completed }
+      }
+
+      if !controlOK, case .inProgress = steps[0].status { steps[0].status = .error("Clone failed") }
+      if !orchOK, case .inProgress = steps[2].status { steps[2].status = .error("Clone failed") }
+      if !wsOK, case .inProgress = steps[3].status { steps[3].status = .error("Clone failed") }
+    }
+
+    // Validate structure (depends on control repo).
+    if controlOK {
+      await updateStep(1, .inProgress)
+      let validateOK = await validateControlStructure(at: controlPath)
+      if validateOK {
+        // validateControlStructure may set warning text; don't override.
+        await MainActor.run {
+          if case .inProgress = steps[1].status {
+            steps[1].status = .completed
+          }
+        }
+      }
+    } else {
+      await updateStep(1, .error("Cannot validate until lobs-control is cloned"))
+    }
 
     await MainActor.run {
       isRunning = false
-      onComplete(controlPath)
+      isFinished = true
+      canRetry = steps.contains(where: { if case .error = $0.status { return true } else { return false } })
+
+      if !canContinue {
+        errorMessage = errorMessage ?? "Some required steps failed. Fix the errors above, then try again."
+      }
     }
   }
 
-  private func ensureCloned(url: String, dest: URL) async -> Bool {
+  // MARK: - Git ops
+
+  private func ensureCloned(repoName: String, url: String, dest: URL) async -> Bool {
     let fm = FileManager.default
+
+    // Existing folder handling.
     if fm.fileExists(atPath: dest.path) {
-      // If it's already a git repo, keep going.
       let gitDir = dest.appendingPathComponent(".git")
       if fm.fileExists(atPath: gitDir.path) {
-        await updateCurrentStepWarning("Exists, using current checkout")
-        return true
+        let action = await askExistingRepoAction(repoName: repoName, repoPath: dest)
+        switch action {
+        case .skip:
+          await updateStepWarning(forRepo: repoName, msg: "Exists, skipped")
+          return true
+        case .pullLatest:
+          let pull = await Shell.envAsync("git", ["pull", "--rebase"], cwd: dest)
+          if pull.ok {
+            await updateStepWarning(forRepo: repoName, msg: "Pulled latest")
+            return true
+          }
+          await updateStepError(forRepo: repoName, message: formatGitFailureMessage(pull, hint: hintForAuthOrNetwork(pull)))
+          return false
+        case .reclone:
+          do {
+            let backup = dest.deletingLastPathComponent().appendingPathComponent("\(dest.lastPathComponent).backup-\(Int(Date().timeIntervalSince1970))")
+            try fm.moveItem(at: dest, to: backup)
+            await updateStepWarning(forRepo: repoName, msg: "Moved existing to \(backup.lastPathComponent)")
+          } catch {
+            await updateStepError(forRepo: repoName, message: "Failed to move existing folder: \(error.localizedDescription)")
+            return false
+          }
+          // Fallthrough to clone.
+        }
+      } else {
+        await updateStepError(forRepo: repoName, message: "Folder exists but is not a git repo: \(dest.path)")
+        return false
       }
-      await finishWithError("Folder exists but is not a git repo: \(dest.path)")
-      return false
     }
 
     let res = await Shell.envAsync("git", ["clone", url, dest.path])
     if !res.ok {
-      await finishWithError("git clone failed for \(url): \(res.stderr.isEmpty ? res.stdout : res.stderr)")
+      await updateStepError(forRepo: repoName, message: formatGitFailureMessage(res, hint: hintForAuthOrNetwork(res)))
       return false
     }
+
     return true
   }
 
@@ -246,6 +385,7 @@ struct OnboardingCloneCoreReposView: View {
           try fm.createDirectory(at: p, withIntermediateDirectories: true)
           created.append(d + "/")
         } catch {
+          await updateStepError(index: 1, message: "Failed to create \(d): \(error.localizedDescription)")
           await finishWithError("Failed to create \(d): \(error.localizedDescription)")
           return false
         }
@@ -269,6 +409,7 @@ struct OnboardingCloneCoreReposView: View {
           try f.content.write(to: p, atomically: true, encoding: .utf8)
           created.append(f.rel)
         } catch {
+          await updateStepError(index: 1, message: "Failed to create \(f.rel): \(error.localizedDescription)")
           await finishWithError("Failed to create \(f.rel): \(error.localizedDescription)")
           return false
         }
@@ -285,13 +426,42 @@ struct OnboardingCloneCoreReposView: View {
     return true
   }
 
-  private func updateCurrentStepWarning(_ msg: String) async {
-    // Apply to the last in-progress step.
-    await MainActor.run {
-      if let idx = steps.firstIndex(where: { if case .inProgress = $0.status { return true } else { return false } }) {
-        steps[idx].status = .warning(msg)
+  // MARK: - Existing repo prompt
+
+  private func askExistingRepoAction(repoName: String, repoPath: URL) async -> ExistingRepoAction {
+    await withCheckedContinuation { cont in
+      Task { @MainActor in
+        pendingDecision = PendingDecision(repoName: repoName, repoPath: repoPath, continuation: cont)
       }
     }
+  }
+
+  // MARK: - Step updates
+
+  private func updateStepWarning(forRepo repoName: String, msg: String) async {
+    if repoName == "lobs-control" {
+      await updateStep(0, .warning(msg))
+    } else if repoName == "lobs-orchestrator" {
+      await updateStep(2, .warning(msg))
+    } else if repoName == "lobs-workspace" {
+      await updateStep(3, .warning(msg))
+    }
+  }
+
+  private func updateStepError(forRepo repoName: String, message: String) async {
+    if repoName == "lobs-control" {
+      await updateStep(0, .error(message))
+    } else if repoName == "lobs-orchestrator" {
+      await updateStep(2, .error(message))
+    } else if repoName == "lobs-workspace" {
+      await updateStep(3, .error(message))
+    }
+
+    await finishWithError(message)
+  }
+
+  private func updateStepError(index: Int, message: String) async {
+    await updateStep(index, .error(message))
   }
 
   private func updateStep(_ index: Int, _ status: Step.Status) async {
@@ -306,11 +476,34 @@ struct OnboardingCloneCoreReposView: View {
       errorMessage = message
       isRunning = false
       canRetry = true
-
-      if let idx = steps.firstIndex(where: { if case .inProgress = $0.status { return true } else { return false } }) {
-        steps[idx].status = .error(message)
-      }
     }
+  }
+
+  // MARK: - Error formatting
+
+  private func formatGitFailureMessage(_ res: Shell.Result, hint: String?) -> String {
+    let raw = (res.stderr.isEmpty ? res.stdout : res.stderr).trimmingCharacters(in: .whitespacesAndNewlines)
+    if let hint, !hint.isEmpty {
+      return raw.isEmpty ? hint : (raw + "\n\n" + hint)
+    }
+    return raw.isEmpty ? "git failed." : raw
+  }
+
+  private func hintForAuthOrNetwork(_ res: Shell.Result) -> String? {
+    let s = (res.stderr + "\n" + res.stdout).lowercased()
+    if s.contains("permission denied") || s.contains("publickey") || s.contains("authentication failed") {
+      return "Auth failure. Try running: gh auth login"
+    }
+    if s.contains("could not resolve host") || s.contains("network is unreachable") || s.contains("timed out") {
+      return "Network error. Check your connection and try again."
+    }
+    return nil
+  }
+}
+
+private extension Array {
+  subscript(safe index: Int) -> Element? {
+    indices.contains(index) ? self[index] : nil
   }
 }
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct OnboardingWorkspaceView: View {
   let initialWorkspace: String
@@ -35,7 +36,7 @@ struct OnboardingWorkspaceView: View {
           .foregroundColor(.secondary)
 
         HStack(spacing: 8) {
-          TextField("~/lobs", text: $workspacePath)
+          TextField("~/lobs/", text: $workspacePath)
             .textFieldStyle(.plain)
             .font(.system(size: 14, design: .monospaced))
             .padding(10)
@@ -44,10 +45,10 @@ struct OnboardingWorkspaceView: View {
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border, lineWidth: 1))
 
           Button(action: chooseFolder) {
-            Image(systemName: "folder")
-              .font(.system(size: 14))
+            Text("Browse")
+              .font(.system(size: 13, weight: .medium))
               .foregroundColor(.primary)
-              .frame(width: 36, height: 36)
+              .frame(width: 84, height: 36)
           }
           .buttonStyle(.plain)
           .background(Theme.cardBg)
@@ -55,7 +56,7 @@ struct OnboardingWorkspaceView: View {
           .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border, lineWidth: 1))
         }
 
-        Text("Default: ~/lobs (we’ll create it if needed)")
+        Text("Default: ~/lobs/ (we’ll create it if needed)")
           .font(.system(size: 12))
           .foregroundColor(.secondary)
       }
@@ -114,6 +115,20 @@ struct OnboardingWorkspaceView: View {
 
     do {
       try FileManager.default.createDirectory(atPath: expanded, withIntermediateDirectories: true)
+
+      // Validate that the folder is writable.
+      if !isWritableDirectory(expanded) {
+        error = "Workspace folder is not writable: \(expanded)"
+        return
+      }
+
+      // Validate available disk space (best-effort).
+      let requiredBytes: Int64 = 1_000_000_000 // ~1 GB should be plenty for initial clones
+      if let available = availableCapacityBytes(at: expanded), available < requiredBytes {
+        error = "Not enough free space in workspace volume (need ~1GB available)."
+        return
+      }
+
       // Create a few standard subfolders (core repos are cloned later).
       try FileManager.default.createDirectory(atPath: (expanded as NSString).appendingPathComponent("projects"), withIntermediateDirectories: true)
     } catch {
@@ -143,6 +158,36 @@ struct OnboardingWorkspaceView: View {
       return NSHomeDirectory() + s.dropFirst()
     }
     return s
+  }
+
+  private func isWritableDirectory(_ path: String) -> Bool {
+    var isDir: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue else { return false }
+
+    let testFile = (path as NSString).appendingPathComponent(".lobs_write_test_\(UUID().uuidString)")
+    do {
+      try Data().write(to: URL(fileURLWithPath: testFile), options: .atomic)
+      try FileManager.default.removeItem(atPath: testFile)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  private func availableCapacityBytes(at path: String) -> Int64? {
+    // Best-effort on macOS: try URL resource values first, then fallback to FS attributes.
+    let url = URL(fileURLWithPath: path)
+    if let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
+       let cap = values.volumeAvailableCapacityForImportantUsage {
+      return cap
+    }
+
+    if let attrs = try? FileManager.default.attributesOfFileSystem(forPath: path),
+       let free = attrs[.systemFreeSize] as? NSNumber {
+      return free.int64Value
+    }
+
+    return nil
   }
 }
 
