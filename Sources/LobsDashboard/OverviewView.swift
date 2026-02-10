@@ -35,8 +35,14 @@ private struct ProjectDropDelegate: DropDelegate {
 struct OverviewView: View {
   @ObservedObject var vm: AppViewModel
   var onSelectProject: (String) -> Void
+
+  // Optional navigation callbacks owned by ContentView (sheets/overlays live there)
+  var onNewTask: (() -> Void)? = nil
   var onOpenInbox: ((String?) -> Void)? = nil
   var onOpenAIUsage: (() -> Void)? = nil
+  var onOpenHelp: (() -> Void)? = nil
+  var onOpenOnboarding: (() -> Void)? = nil
+  var onOpenCommandPalette: (() -> Void)? = nil
 
   @State private var detailTask: DashboardTask? = nil
   @State private var showDetailedStats: Bool = false
@@ -46,6 +52,8 @@ struct OverviewView: View {
   @State private var showAllCompletedThisWeekSheet: Bool = false
   @State private var showAllActiveTasksSheet: Bool = false
   @State private var showAllResearchRequestsSheet: Bool = false
+
+  @State private var showAllActivitySheet: Bool = false
 
   private var allTasks: [DashboardTask] { vm.tasks }
 
@@ -217,7 +225,11 @@ struct OverviewView: View {
     ScrollView {
       VStack(alignment: .leading, spacing: 24) {
         headerSection
+        onboardingStatusSection
+        quickActionsSection
+        systemHealthSection
         statsSection
+        activitySection
         velocitySection
         detailedStatsSection
         workerStatusSection
@@ -225,6 +237,7 @@ struct OverviewView: View {
         projectCardsSection
         columnsSection
         inboxColumnsSection
+        tipsAndDocsSection
       }
       .padding(24)
     }
@@ -280,6 +293,20 @@ struct OverviewView: View {
       )
       .frame(minWidth: 600, minHeight: 620)
     }
+    .sheet(isPresented: $showAllActivitySheet) {
+      OverviewActivitySheet(
+        vm: vm,
+        events: activityFeed,
+        onOpenTask: { task in
+          vm.selectTask(task)
+          detailTask = task
+        },
+        onOpenInbox: { itemId in
+          if let onOpenInbox { onOpenInbox(itemId) }
+        }
+      )
+      .frame(minWidth: 640, minHeight: 620)
+    }
   }
 
   private var headerSection: some View {
@@ -291,12 +318,480 @@ struct OverviewView: View {
           startPoint: .topLeading,
           endPoint: .bottomTrailing
         ))
-      Text("Overview")
+      Text("Dashboard")
         .font(.title2)
         .fontWeight(.bold)
       Spacer()
     }
     .padding(.bottom, 4)
+  }
+
+  // MARK: - Dashboard Sections
+
+  private struct OnboardingStep: Identifiable {
+    var id: String { title }
+    let title: String
+    let isComplete: Bool
+    let detail: String?
+  }
+
+  private var onboardingSteps: [OnboardingStep] {
+    let repoSet = (vm.repoURL != nil)
+    let onboardingComplete = (vm.config?.onboardingComplete ?? false)
+    let walkthroughComplete = vm.firstTaskWalkthroughComplete
+
+    return [
+      OnboardingStep(
+        title: "Connect lobs-control repo",
+        isComplete: repoSet,
+        detail: repoSet ? nil : "Choose your lobs-control checkout so tasks/projects can load."
+      ),
+      OnboardingStep(
+        title: "Finish onboarding",
+        isComplete: onboardingComplete && !vm.needsOnboarding,
+        detail: (onboardingComplete && !vm.needsOnboarding) ? nil : "Run the setup wizard to validate your repo + server settings."
+      ),
+      OnboardingStep(
+        title: "First task walkthrough",
+        isComplete: walkthroughComplete,
+        detail: walkthroughComplete ? nil : "Optional, but recommended for a smooth workflow."
+      ),
+    ]
+  }
+
+  private var onboardingProgress: Double {
+    let steps = onboardingSteps
+    guard !steps.isEmpty else { return 1.0 }
+    let complete = steps.filter { $0.isComplete }.count
+    return Double(complete) / Double(steps.count)
+  }
+
+  private var onboardingStatusSection: some View {
+    let steps = onboardingSteps
+    let incomplete = steps.contains(where: { !$0.isComplete })
+
+    return VStack(alignment: .leading, spacing: 12) {
+      HStack {
+        Image(systemName: incomplete ? "sparkles" : "checkmark.seal.fill")
+          .foregroundStyle(incomplete ? .purple : .green)
+        Text("Onboarding")
+          .font(.headline)
+          .fontWeight(.bold)
+        Spacer()
+        Text("\(Int(onboardingProgress * 100))%")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+
+      ProgressView(value: onboardingProgress)
+        .progressViewStyle(.linear)
+
+      VStack(alignment: .leading, spacing: 8) {
+        ForEach(steps) { step in
+          HStack(alignment: .top, spacing: 8) {
+            Image(systemName: step.isComplete ? "checkmark.circle.fill" : "circle")
+              .foregroundStyle(step.isComplete ? .green : .secondary)
+              .font(.footnote)
+              .padding(.top, 1)
+
+            VStack(alignment: .leading, spacing: 2) {
+              Text(step.title)
+                .font(.callout)
+                .fontWeight(step.isComplete ? .regular : .semibold)
+              if let detail = step.detail, !step.isComplete {
+                Text(detail)
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+              }
+            }
+
+            Spacer()
+          }
+        }
+      }
+
+      if incomplete {
+        HStack(spacing: 10) {
+          if vm.needsOnboarding {
+            Button {
+              onOpenOnboarding?()
+            } label: {
+              HStack(spacing: 6) {
+                Image(systemName: "wand.and.stars")
+                Text("Open Setup")
+              }
+              .font(.footnote.weight(.semibold))
+              .padding(.horizontal, 10)
+              .padding(.vertical, 6)
+              .background(Color.accentColor.opacity(0.15))
+              .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+          }
+
+          Button {
+            vm.showOverview = true
+            onOpenHelp?()
+          } label: {
+            HStack(spacing: 6) {
+              Image(systemName: "questionmark.circle")
+              Text("Help")
+            }
+            .font(.footnote.weight(.semibold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(OTheme.subtle)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+          }
+          .buttonStyle(.plain)
+
+          Spacer()
+        }
+      }
+    }
+    .padding(16)
+    .background(
+      RoundedRectangle(cornerRadius: OTheme.cardRadius)
+        .fill(OTheme.cardBg)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: OTheme.cardRadius)
+        .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
+    )
+  }
+
+  private var quickActionsSection: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack {
+        Image(systemName: "bolt.circle.fill")
+          .foregroundStyle(.orange)
+        Text("Quick Actions")
+          .font(.headline)
+          .fontWeight(.bold)
+        Spacer()
+      }
+
+      HStack(spacing: 10) {
+        Button {
+          onNewTask?()
+        } label: {
+          quickActionLabel(icon: "plus", title: "New Task", subtitle: "⌘N")
+        }
+        .buttonStyle(.plain)
+
+        Button {
+          if let onOpenInbox {
+            onOpenInbox(nil)
+          }
+        } label: {
+          quickActionLabel(icon: "tray.full.fill", title: "Inbox", subtitle: "⌘I")
+        }
+        .buttonStyle(.plain)
+
+        Button {
+          onOpenCommandPalette?()
+        } label: {
+          quickActionLabel(icon: "magnifyingglass", title: "Command Palette", subtitle: "⌘K")
+        }
+        .buttonStyle(.plain)
+
+        Button {
+          vm.requestWorker()
+        } label: {
+          quickActionLabel(icon: "sparkles", title: "Request Worker", subtitle: "⌘W")
+        }
+        .buttonStyle(.plain)
+
+        Button {
+          onOpenAIUsage?()
+        } label: {
+          quickActionLabel(icon: "chart.line.uptrend.xyaxis", title: "AI Usage", subtitle: "")
+        }
+        .buttonStyle(.plain)
+
+        Button {
+          onOpenHelp?()
+        } label: {
+          quickActionLabel(icon: "questionmark.circle", title: "Help", subtitle: "⌘/")
+        }
+        .buttonStyle(.plain)
+
+        Spacer()
+      }
+    }
+    .padding(16)
+    .background(
+      RoundedRectangle(cornerRadius: OTheme.cardRadius)
+        .fill(OTheme.cardBg)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: OTheme.cardRadius)
+        .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
+    )
+  }
+
+  private func quickActionLabel(icon: String, title: String, subtitle: String) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+      HStack(spacing: 8) {
+        Image(systemName: icon)
+          .foregroundStyle(Color.accentColor)
+        Text(title)
+          .font(.callout)
+          .fontWeight(.semibold)
+      }
+      if !subtitle.isEmpty {
+        Text(subtitle)
+          .font(.system(size: 11, weight: .medium, design: .monospaced))
+          .foregroundStyle(.secondary)
+      }
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 10)
+    .background(OTheme.subtle)
+    .clipShape(RoundedRectangle(cornerRadius: 10))
+  }
+
+  private var systemHealthSection: some View {
+    let workerStale: Bool = {
+      if let ws = vm.workerStatus { return isWorkerStatusStale(ws) }
+      return false
+    }()
+
+    let healthItems: [(String, String, Color, String)] = {
+      var out: [(String, String, Color, String)] = []
+
+      // Worker
+      if vm.workerStatus == nil {
+        out.append(("Worker", "unknown", .secondary, "Worker status file not found yet"))
+      } else if workerStale {
+        out.append(("Worker", "stale", .orange, "Worker looks active but hasn't heartbeated recently"))
+      } else if vm.workerStatus?.active == true {
+        out.append(("Worker", "running", .purple, "Worker is currently active"))
+      } else {
+        out.append(("Worker", "idle", .green, "Worker is idle"))
+      }
+
+      // Sync
+      if vm.syncBlockedByUncommitted {
+        out.append(("Sync", "blocked", .orange, "Local uncommitted changes are preventing sync"))
+      } else if vm.pendingChangesCount > 0 {
+        out.append(("Sync", "pending", .orange, "You have local commits waiting to push"))
+      } else {
+        out.append(("Sync", "ok", .green, "Repo is clean / pushed"))
+      }
+
+      // Remote drift
+      if vm.controlRepoBehind > 0 {
+        out.append(("Remote", "behind", .blue, "Origin has \(vm.controlRepoBehind) newer commit(s)"))
+      } else {
+        out.append(("Remote", "up to date", .green, "Local matches origin"))
+      }
+
+      // Push errors
+      if let err = vm.lastPushError, !err.isEmpty {
+        out.append(("Push", "failed", .red, err))
+      }
+
+      return out
+    }()
+
+    let overall: (label: String, color: Color) = {
+      if vm.syncBlockedByUncommitted { return ("Needs attention", .orange) }
+      if vm.lastPushError != nil { return ("Needs attention", .orange) }
+      if workerStale { return ("Needs attention", .orange) }
+      if vm.controlRepoBehind > 0 { return ("Updates available", .blue) }
+      return ("Healthy", .green)
+    }()
+
+    return VStack(alignment: .leading, spacing: 12) {
+      HStack {
+        Image(systemName: "heart.text.square.fill")
+          .foregroundStyle(overall.color)
+        Text("System Health")
+          .font(.headline)
+          .fontWeight(.bold)
+        Spacer()
+        Text(overall.label)
+          .font(.caption)
+          .foregroundStyle(overall.color)
+          .padding(.horizontal, 8)
+          .padding(.vertical, 4)
+          .background(overall.color.opacity(0.12))
+          .clipShape(Capsule())
+      }
+
+      VStack(alignment: .leading, spacing: 8) {
+        ForEach(Array(healthItems.enumerated()), id: \.offset) { _, item in
+          let (k, v, c, hint) = item
+          HStack(spacing: 10) {
+            Text(k)
+              .font(.callout)
+              .foregroundStyle(.secondary)
+              .frame(width: 64, alignment: .leading)
+            Text(v)
+              .font(.callout)
+              .fontWeight(.semibold)
+              .foregroundStyle(c)
+            Spacer()
+          }
+          .help(hint)
+        }
+      }
+
+      HStack(spacing: 10) {
+        Button {
+          vm.reloadIfPossible()
+        } label: {
+          HStack(spacing: 6) {
+            Image(systemName: "arrow.clockwise")
+            Text("Refresh")
+          }
+          .font(.footnote.weight(.semibold))
+          .padding(.horizontal, 10)
+          .padding(.vertical, 6)
+          .background(OTheme.subtle)
+          .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+
+        if vm.pendingChangesCount > 0 || (vm.lastPushError != nil) {
+          Button {
+            vm.pushNow()
+          } label: {
+            HStack(spacing: 6) {
+              Image(systemName: "arrow.up.circle.fill")
+              Text("Push Now")
+            }
+            .font(.footnote.weight(.semibold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.orange.opacity(0.15))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+          }
+          .buttonStyle(.plain)
+        }
+
+        Spacer()
+      }
+    }
+    .padding(16)
+    .background(
+      RoundedRectangle(cornerRadius: OTheme.cardRadius)
+        .fill(OTheme.cardBg)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: OTheme.cardRadius)
+        .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
+    )
+  }
+
+  private var activitySection: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack {
+        Image(systemName: "clock.arrow.circlepath")
+          .foregroundStyle(.indigo)
+        Text("Recent Activity")
+          .font(.headline)
+          .fontWeight(.bold)
+        Spacer()
+        if !activityFeed.isEmpty {
+          Button {
+            showAllActivitySheet = true
+          } label: {
+            Text("View all")
+              .font(.footnote.weight(.semibold))
+              .foregroundStyle(.secondary)
+          }
+          .buttonStyle(.plain)
+        }
+      }
+
+      if activityFeed.isEmpty {
+        Text("No activity in the last 7 days")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+          .padding(.vertical, 8)
+      } else {
+        VStack(spacing: 0) {
+          ForEach(Array(activityFeed.prefix(8).enumerated()), id: \.element.id) { idx, event in
+            ActivityEventRow(
+              vm: vm,
+              event: event,
+              onOpenTask: { task in
+                vm.selectTask(task)
+                detailTask = task
+              },
+              onOpenInbox: { itemId in
+                if let onOpenInbox { onOpenInbox(itemId) }
+              }
+            )
+            if idx < min(7, activityFeed.count - 1) {
+              Divider().padding(.leading, 36)
+            }
+          }
+        }
+        .background(OTheme.cardBg)
+        .clipShape(RoundedRectangle(cornerRadius: OTheme.cardRadius))
+        .overlay(
+          RoundedRectangle(cornerRadius: OTheme.cardRadius)
+            .stroke(OTheme.border, lineWidth: 0.5)
+        )
+      }
+    }
+  }
+
+  private var tipsAndDocsSection: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack {
+        Image(systemName: "lightbulb.fill")
+          .foregroundStyle(.yellow)
+        Text("Tips & Docs")
+          .font(.headline)
+          .fontWeight(.bold)
+        Spacer()
+        Button {
+          onOpenHelp?()
+        } label: {
+          Text("Open help")
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+      }
+
+      VStack(alignment: .leading, spacing: 10) {
+        tipRow(icon: "house.fill", title: "Home base", detail: "Use this Dashboard as your hub: onboarding, quick actions, health, and activity.")
+        tipRow(icon: "magnifyingglass", title: "Command palette (⌘K)", detail: "Jump to projects/tasks, run actions, and search across Lobs.")
+        tipRow(icon: "bolt.fill", title: "Request worker (⌘W)", detail: "Create priority work — the orchestrator should pick it up within the next poll cycle.")
+        tipRow(icon: "tray.full.fill", title: "Inbox triage", detail: "Treat Inbox like your assistant's output stream: read, respond, and convert to tasks.")
+      }
+      .padding(16)
+      .background(
+        RoundedRectangle(cornerRadius: OTheme.cardRadius)
+          .fill(OTheme.cardBg)
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: OTheme.cardRadius)
+          .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
+      )
+    }
+  }
+
+  private func tipRow(icon: String, title: String, detail: String) -> some View {
+    HStack(alignment: .top, spacing: 10) {
+      Image(systemName: icon)
+        .foregroundStyle(Color.accentColor)
+        .frame(width: 22)
+      VStack(alignment: .leading, spacing: 2) {
+        Text(title)
+          .font(.callout)
+          .fontWeight(.semibold)
+        Text(detail)
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+      }
+      Spacer()
+    }
   }
 
   private var statsSection: some View {
@@ -1277,6 +1772,69 @@ private struct ActivityEventRow: View {
     if s < 60 { return "\(Int(s))s" }
     if s < 3600 { return "\(Int(s/60))m" }
     return String(format: "%.1fh", s/3600)
+  }
+}
+
+// MARK: - Activity Sheet
+
+private struct OverviewActivitySheet: View {
+  @ObservedObject var vm: AppViewModel
+  let events: [OverviewView.ActivityEvent]
+  let onOpenTask: (DashboardTask) -> Void
+  let onOpenInbox: (String?) -> Void
+
+  @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      HStack {
+        Text("Recent Activity")
+          .font(.title3)
+          .fontWeight(.bold)
+        Spacer()
+        Button { dismiss() } label: {
+          Image(systemName: "xmark.circle.fill")
+            .font(.title3)
+            .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+      }
+      .padding(16)
+
+      Divider()
+
+      ScrollView {
+        VStack(spacing: 0) {
+          if events.isEmpty {
+            Text("No activity")
+              .font(.callout)
+              .foregroundStyle(.secondary)
+              .padding(20)
+              .frame(maxWidth: .infinity, alignment: .center)
+          } else {
+            ForEach(Array(events.enumerated()), id: \.element.id) { idx, event in
+              ActivityEventRow(
+                vm: vm,
+                event: event,
+                onOpenTask: { t in
+                  onOpenTask(t)
+                  dismiss()
+                },
+                onOpenInbox: { itemId in
+                  onOpenInbox(itemId)
+                  dismiss()
+                }
+              )
+              if idx < events.count - 1 {
+                Divider().padding(.leading, 36)
+              }
+            }
+          }
+        }
+        .padding(16)
+      }
+    }
+    .background(Theme.boardBg)
   }
 }
 

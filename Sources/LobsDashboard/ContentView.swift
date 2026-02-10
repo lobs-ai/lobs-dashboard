@@ -96,15 +96,32 @@ struct ContentView: View {
         // Content fills remaining space below the pinned header
         Group {
           if vm.showOverview {
-            OverviewView(vm: vm, onSelectProject: { projectId in
-              vm.selectedProjectId = projectId
-              vm.showOverview = false
-            }, onOpenInbox: { itemId in
-              inboxInitialItemId = itemId
-              withAnimation(.easeInOut(duration: 0.25)) { showInbox = true }
-            }, onOpenAIUsage: {
-              withAnimation(.easeInOut(duration: 0.25)) { showAIUsage = true }
-            })
+            OverviewView(
+              vm: vm,
+              onSelectProject: { projectId in
+                vm.selectedProjectId = projectId
+                vm.showOverview = false
+              },
+              onNewTask: {
+                showAddTask = true
+              },
+              onOpenInbox: { itemId in
+                inboxInitialItemId = itemId
+                withAnimation(.easeInOut(duration: 0.25)) { showInbox = true }
+              },
+              onOpenAIUsage: {
+                withAnimation(.easeInOut(duration: 0.25)) { showAIUsage = true }
+              },
+              onOpenHelp: {
+                withAnimation(.easeInOut(duration: 0.25)) { showHelp = true }
+              },
+              onOpenOnboarding: {
+                showOnboarding = true
+              },
+              onOpenCommandPalette: {
+                withAnimation(.easeInOut(duration: 0.25)) { showCommandPalette = true }
+              }
+            )
           } else if vm.isResearchProject {
             ResearchDocView(vm: vm)
               .id("research-\(vm.selectedProjectId)")
