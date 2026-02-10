@@ -77,17 +77,18 @@ actor GitAutoPushQueue {
     defer { isFlushing = false }
 
     let commitMessage = Self.bundleCommitMessage(from: messages)
+    let owner = self.owner
 
     // Pull first to reduce conflicts.
     await MainActor.run {
-      self.owner?.lastPushAttemptAt = Date()
+      owner?.lastPushAttemptAt = Date()
     }
 
     let pull = await Git.runWithRetry(["pull", "--rebase"], cwd: repoURL, maxRetries: 2)
     if !pull.success {
       let msg = pull.error?.errorDescription ?? "Pull --rebase failed"
       await MainActor.run {
-        self.owner?.lastPushError = msg
+        owner?.lastPushError = msg
       }
       return
     }
@@ -96,7 +97,7 @@ actor GitAutoPushQueue {
     if !addResult.success {
       let msg = addResult.error?.errorDescription ?? "Failed to stage changes"
       await MainActor.run {
-        self.owner?.lastPushError = msg
+        owner?.lastPushError = msg
       }
       return
     }
@@ -120,7 +121,7 @@ actor GitAutoPushQueue {
     if !commit.success {
       let msg = commit.error?.errorDescription ?? "Commit failed"
       await MainActor.run {
-        self.owner?.lastPushError = msg
+        owner?.lastPushError = msg
       }
       return
     }
@@ -133,7 +134,7 @@ actor GitAutoPushQueue {
         if !repull.success {
           let msg = repull.error?.errorDescription ?? "Pull failed"
           await MainActor.run {
-            self.owner?.lastPushError = msg
+            owner?.lastPushError = msg
           }
           return
         }
@@ -142,14 +143,14 @@ actor GitAutoPushQueue {
         if !retry.success {
           let msg = retry.error?.errorDescription ?? "Push failed"
           await MainActor.run {
-            self.owner?.lastPushError = msg
+            owner?.lastPushError = msg
           }
           return
         }
       } else {
         let msg = push.error?.errorDescription ?? "Push failed"
         await MainActor.run {
-          self.owner?.lastPushError = msg
+          owner?.lastPushError = msg
         }
         return
       }
@@ -160,9 +161,9 @@ actor GitAutoPushQueue {
     let commitHash = hashResult.success ? hashResult.output.trimmingCharacters(in: .whitespacesAndNewlines) : nil
 
     await MainActor.run {
-      self.owner?.lastSuccessfulPushAt = Date()
-      self.owner?.lastPushedCommitHash = commitHash
-      self.owner?.lastPushError = nil
+      owner?.lastSuccessfulPushAt = Date()
+      owner?.lastPushedCommitHash = commitHash
+      owner?.lastPushError = nil
     }
   }
 
