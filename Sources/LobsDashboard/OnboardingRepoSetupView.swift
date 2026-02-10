@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Repository setup screen of the onboarding wizard
 struct OnboardingRepoSetupView: View {
@@ -16,6 +17,8 @@ struct OnboardingRepoSetupView: View {
         case new
     }
     
+    private let templateRepoWebURL = URL(string: "https://github.com/RafeSymonds/lobs-control")
+
     var body: some View {
         VStack(spacing: 32) {
             Spacer()
@@ -27,11 +30,11 @@ struct OnboardingRepoSetupView: View {
                     .foregroundColor(.primary)
                 
                 // Subtitle
-                Text("Set up your control repository to store configuration and task data.")
+                Text("Set up your \"lobs-control\" repository. This is where tasks, projects, and state live.")
                     .font(.system(size: 14))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
-                    .frame(maxWidth: 480)
+                    .frame(maxWidth: 520)
             }
             
             VStack(spacing: 24) {
@@ -47,7 +50,7 @@ struct OnboardingRepoSetupView: View {
                     )
                     
                     RadioOption(
-                        title: "I need to create a new one",
+                        title: "I want to fork a new control repo (recommended)",
                         isSelected: repoChoice == .new,
                         action: {
                             repoChoice = .new
@@ -59,15 +62,45 @@ struct OnboardingRepoSetupView: View {
                 
                 // Instructions for new repo
                 if repoChoice == .new {
-                    HStack(spacing: 8) {
-                        Image(systemName: "info.circle")
-                            .foregroundColor(.secondary)
-                        Text("Create an empty repository on GitHub, then paste the SSH URL below")
-                            .font(.system(size: 13))
-                            .foregroundColor(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "info.circle")
+                                .foregroundColor(.secondary)
+                            Text("Recommended: fork the template repo on GitHub, then paste your fork's SSH URL below.")
+                                .font(.system(size: 13))
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("How to fork")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.primary)
+
+                            Text("1) Open the template repo\n2) Click Fork\n3) Copy your fork's SSH URL (Code → SSH)")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                        }
+
+                        if let url = templateRepoWebURL {
+                            Button {
+                                NSWorkspace.shared.open(url)
+                            } label: {
+                                Label("Open template on GitHub", systemImage: "arrow.up.right.square")
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(Theme.accent)
+                        }
                     }
                     .frame(maxWidth: 450, alignment: .leading)
+                    .padding(12)
+                    .background(Theme.cardBg)
+                    .cornerRadius(10)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Theme.border, lineWidth: 1)
+                    )
                 }
                 
                 // SSH URL input field
@@ -148,7 +181,7 @@ struct OnboardingRepoSetupView: View {
         case .existing:
             return "Enter the SSH URL of your existing control repository"
         case .new:
-            return "We will initialize the required structure for you"
+            return "We'll clone your fork and verify the required structure"
         }
     }
     

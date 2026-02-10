@@ -45,10 +45,36 @@ final class AppViewModel: ObservableObject {
     }
   }
 
-  /// Whether onboarding is needed (config not set or incomplete)
+  /// Whether onboarding is needed (config not set, incomplete, or repo missing)
+  ///
+  /// We consider onboarding required if:
+  /// - Config is missing
+  /// - Onboarding hasn't been completed
+  /// - No control repo path is set
+  /// - The configured repo path does not exist on disk
+  /// - The configured path isn't a git repository
   var needsOnboarding: Bool {
-    guard let config = config else { return true }
-    return !config.onboardingComplete || config.controlRepoPath.isEmpty
+    guard let config else { return true }
+
+    if !config.onboardingComplete { return true }
+    if config.controlRepoPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return true }
+
+    // Detect missing/moved repo and force re-onboarding.
+    return !Self.isGitRepo(atPath: config.controlRepoPath)
+  }
+
+  fileprivate static func isGitRepo(atPath path: String) -> Bool {
+    let repoPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !repoPath.isEmpty else { return false }
+
+    var isDir: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: repoPath, isDirectory: &isDir), isDir.boolValue else {
+      return false
+    }
+
+    let gitDir = (repoPath as NSString).appendingPathComponent(".git")
+    var isGitDir: ObjCBool = false
+    return FileManager.default.fileExists(atPath: gitDir, isDirectory: &isGitDir) && isGitDir.boolValue
   }
 
   @Published var tasks: [DashboardTask] = []
@@ -398,6 +424,22 @@ final class AppViewModel: ObservableObject {
       // No config yet (fresh install or migration failed)
       repoPath = ""
       // Properties will use their default values from UserSettings()
+    }
+
+    // Auto-detect a default lobs-control checkout on fresh installs.
+    // If ~/lobs-control exists and is a git repo, adopt it so the app can launch
+    // without forcing onboarding.
+    let defaultRepoPath = (NSHomeDirectory() as NSString).appendingPathComponent("lobs-control")
+    if repoPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      if Self.isGitRepo(atPath: defaultRepoPath) {
+        _ = setControlRepo(path: defaultRepoPath, repoUrl: config?.controlRepoUrl, onboardingComplete: true)
+      }
+    } else {
+      // If config points at a path that no longer exists, clear the in-memory repoPath
+      // so downstream code doesn't try to read from it.
+      if !Self.isGitRepo(atPath: repoPath) {
+        repoPath = ""
+      }
     }
     
     applyAppearance()
