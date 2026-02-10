@@ -1,9 +1,10 @@
 import SwiftUI
 
 struct OnboardingOrchestratorView: View {
+  @EnvironmentObject private var wizard: OnboardingWizardContext
+
   let workspacePath: String
-  let onBack: () -> Void
-  let onContinue: () -> Void
+  let onComplete: () -> Void
 
   @State private var isWorking: Bool = false
   @State private var log: String = ""
@@ -74,18 +75,6 @@ struct OnboardingOrchestratorView: View {
       Spacer()
 
       HStack(spacing: 12) {
-        Button(action: onBack) {
-          Text("Back")
-            .font(.system(size: 14, weight: .medium))
-            .foregroundColor(.primary)
-            .frame(width: 120)
-            .padding(.vertical, 10)
-        }
-        .buttonStyle(.plain)
-        .background(Theme.cardBg)
-        .cornerRadius(8)
-        .disabled(isWorking)
-
         Button(action: { Task { await setupAndStart() } }) {
           Text(isWorking ? "Starting…" : "Start")
             .font(.system(size: 14, weight: .medium))
@@ -110,25 +99,26 @@ struct OnboardingOrchestratorView: View {
         .cornerRadius(8)
         .disabled(isWorking)
 
-        Button(action: onContinue) {
-          Text("Next")
-            .font(.system(size: 14, weight: .medium))
-            .foregroundColor(.white)
-            .frame(width: 120)
-            .padding(.vertical, 10)
+        if statusText.contains("Running") {
+          Text("Running — use Next")
+            .font(.system(size: 12))
+            .foregroundColor(.secondary)
         }
-        .buttonStyle(.plain)
-        .background(Theme.accent)
-        .cornerRadius(8)
-        .disabled(!statusText.contains("Running"))
-        .opacity(statusText.contains("Running") ? 1.0 : 0.5)
       }
-      .padding(.bottom, 60)
+      .padding(.bottom, 20)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Theme.bg)
     .onAppear {
+      wizard.configureNext(title: "Next", enabled: statusText.contains("Running")) {
+        onComplete()
+      }
+      wizard.configureSkip(shown: false)
+
       Task { await refreshStatus() }
+    }
+    .onChange(of: statusText) { _ in
+      wizard.updateNextEnabled(statusText.contains("Running"))
     }
   }
 
@@ -253,6 +243,7 @@ struct OnboardingOrchestratorView: View {
 }
 
 #Preview {
-  OnboardingOrchestratorView(workspacePath: NSHomeDirectory() + "/lobs", onBack: {}, onContinue: {})
+  OnboardingOrchestratorView(workspacePath: NSHomeDirectory() + "/lobs", onComplete: {})
+    .environmentObject(OnboardingWizardContext())
     .frame(width: 800, height: 600)
 }

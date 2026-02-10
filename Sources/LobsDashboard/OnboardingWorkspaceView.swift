@@ -2,18 +2,22 @@ import SwiftUI
 import AppKit
 
 struct OnboardingWorkspaceView: View {
+  @EnvironmentObject private var wizard: OnboardingWizardContext
+
   let initialWorkspace: String
-  let onBack: () -> Void
-  let onContinue: (String) -> Void
+  let onComplete: (String) -> Void
 
   @State private var workspacePath: String
   @State private var error: String? = nil
 
-  init(initialWorkspace: String, onBack: @escaping () -> Void, onContinue: @escaping (String) -> Void) {
+  init(initialWorkspace: String, onComplete: @escaping (String) -> Void) {
     self.initialWorkspace = initialWorkspace
-    self.onBack = onBack
-    self.onContinue = onContinue
+    self.onComplete = onComplete
     self._workspacePath = State(initialValue: initialWorkspace)
+  }
+
+  private var canProceed: Bool {
+    !workspacePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
   var body: some View {
@@ -74,37 +78,21 @@ struct OnboardingWorkspaceView: View {
       }
 
       Spacer()
-
-      HStack(spacing: 12) {
-        Button(action: onBack) {
-          Text("Back")
-            .font(.system(size: 14, weight: .medium))
-            .foregroundColor(.primary)
-            .frame(width: 120)
-            .padding(.vertical, 10)
-        }
-        .buttonStyle(.plain)
-        .background(Theme.cardBg)
-        .cornerRadius(8)
-
-        Button(action: validateAndContinue) {
-          Text("Next")
-            .font(.system(size: 14, weight: .medium))
-            .foregroundColor(.white)
-            .frame(width: 120)
-            .padding(.vertical, 10)
-        }
-        .buttonStyle(.plain)
-        .background(Theme.accent)
-        .cornerRadius(8)
-      }
-      .padding(.bottom, 60)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Theme.bg)
+    .onAppear {
+      wizard.configureNext(title: "Next", enabled: canProceed) {
+        validateAndComplete()
+      }
+      wizard.configureSkip(shown: false)
+    }
+    .onChange(of: workspacePath) { _ in
+      wizard.updateNextEnabled(canProceed)
+    }
   }
 
-  private func validateAndContinue() {
+  private func validateAndComplete() {
     let expanded = expandTilde(workspacePath)
       .trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -116,20 +104,17 @@ struct OnboardingWorkspaceView: View {
     do {
       try FileManager.default.createDirectory(atPath: expanded, withIntermediateDirectories: true)
 
-      // Validate that the folder is writable.
       if !isWritableDirectory(expanded) {
         error = "Workspace folder is not writable: \(expanded)"
         return
       }
 
-      // Validate available disk space (best-effort).
-      let requiredBytes: Int64 = 1_000_000_000 // ~1 GB should be plenty for initial clones
+      let requiredBytes: Int64 = 1_000_000_000 // ~1 GB
       if let available = availableCapacityBytes(at: expanded), available < requiredBytes {
         error = "Not enough free space in workspace volume (need ~1GB available)."
         return
       }
 
-      // Create a few standard subfolders (core repos are cloned later).
       try FileManager.default.createDirectory(atPath: (expanded as NSString).appendingPathComponent("projects"), withIntermediateDirectories: true)
     } catch {
       self.error = "Failed to create workspace: \(error.localizedDescription)"
@@ -137,7 +122,7 @@ struct OnboardingWorkspaceView: View {
     }
 
     error = nil
-    onContinue(expanded)
+    onComplete(expanded)
   }
 
   private func chooseFolder() {
@@ -175,7 +160,6 @@ struct OnboardingWorkspaceView: View {
   }
 
   private func availableCapacityBytes(at path: String) -> Int64? {
-    // Best-effort on macOS: try URL resource values first, then fallback to FS attributes.
     let url = URL(fileURLWithPath: path)
     if let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
        let cap = values.volumeAvailableCapacityForImportantUsage {
@@ -192,6 +176,7 @@ struct OnboardingWorkspaceView: View {
 }
 
 #Preview {
-  OnboardingWorkspaceView(initialWorkspace: NSHomeDirectory() + "/lobs", onBack: {}, onContinue: { _ in })
+  OnboardingWorkspaceView(initialWorkspace: NSHomeDirectory() + "/lobs", onComplete: { _ in })
+    .environmentObject(OnboardingWizardContext())
     .frame(width: 800, height: 600)
 }

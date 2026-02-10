@@ -2,7 +2,7 @@ import Foundation
 
 /// Persistent, resumable onboarding state.
 ///
-/// Stored at: ~/.lobs/.onboarding-state.json (primary)
+/// Stored at: ~/lobs/.onboarding-state.json (primary)
 /// and also written into the chosen workspace as: <workspace>/.onboarding-state.json
 struct OnboardingState: Codable, Equatable {
   var completedSteps: [String]
@@ -49,7 +49,7 @@ enum OnboardingStepID: String, CaseIterable {
 enum OnboardingStateManager {
   private static let configDirectory: URL = {
     FileManager.default.homeDirectoryForCurrentUser
-      .appendingPathComponent(".lobs")
+      .appendingPathComponent("lobs")
   }()
 
   static let stateFile: URL = {

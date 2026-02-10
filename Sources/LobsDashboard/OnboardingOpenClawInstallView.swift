@@ -1,14 +1,17 @@
 import SwiftUI
 
 struct OnboardingOpenClawInstallView: View {
-  let onBack: () -> Void
-  let onContinue: () -> Void
+  @EnvironmentObject private var wizard: OnboardingWizardContext
+
+  let onComplete: () -> Void
 
   @State private var isInstalling: Bool = false
   @State private var logLines: [String] = []
   @State private var error: String? = nil
   @State private var installedVersion: String? = nil
   @State private var npmAvailable: Bool = true
+
+  private var canProceed: Bool { installedVersion != nil }
 
   var body: some View {
     VStack(spacing: 28) {
@@ -62,6 +65,27 @@ struct OnboardingOpenClawInstallView: View {
           }
         }
 
+        HStack(spacing: 12) {
+          Button(action: { Task { await installIfNeeded() } }) {
+            Text(isInstalling ? "Installing…" : (installedVersion == nil ? "Install" : "Reinstall"))
+              .font(.system(size: 14, weight: .medium))
+              .foregroundColor(.white)
+              .frame(width: 140)
+              .padding(.vertical, 10)
+          }
+          .buttonStyle(.plain)
+          .background(Theme.accent)
+          .cornerRadius(8)
+          .disabled(isInstalling || !npmAvailable)
+          .opacity((isInstalling || !npmAvailable) ? 0.5 : 1.0)
+
+          if installedVersion != nil {
+            Text("Installed — use Next")
+              .font(.system(size: 12))
+              .foregroundColor(.secondary)
+          }
+        }
+
         if !logLines.isEmpty {
           ScrollView {
             Text(logLines.joined(separator: "\n"))
@@ -80,55 +104,25 @@ struct OnboardingOpenClawInstallView: View {
       .frame(width: 560)
 
       Spacer()
-
-      HStack(spacing: 12) {
-        Button(action: onBack) {
-          Text("Back")
-            .font(.system(size: 14, weight: .medium))
-            .foregroundColor(.primary)
-            .frame(width: 120)
-            .padding(.vertical, 10)
-        }
-        .buttonStyle(.plain)
-        .background(Theme.cardBg)
-        .cornerRadius(8)
-        .disabled(isInstalling)
-
-        Button(action: { Task { await installIfNeeded() } }) {
-          Text(isInstalling ? "Installing…" : (installedVersion == nil ? "Install" : "Reinstall"))
-            .font(.system(size: 14, weight: .medium))
-            .foregroundColor(.white)
-            .frame(width: 120)
-            .padding(.vertical, 10)
-        }
-        .buttonStyle(.plain)
-        .background(Theme.accent)
-        .cornerRadius(8)
-        .disabled(isInstalling || !npmAvailable)
-        .opacity((isInstalling || !npmAvailable) ? 0.5 : 1.0)
-
-        Button(action: onContinue) {
-          Text("Next")
-            .font(.system(size: 14, weight: .medium))
-            .foregroundColor(.white)
-            .frame(width: 120)
-            .padding(.vertical, 10)
-        }
-        .buttonStyle(.plain)
-        .background(Theme.accent)
-        .cornerRadius(8)
-        .disabled(installedVersion == nil)
-        .opacity(installedVersion == nil ? 0.5 : 1.0)
-      }
-      .padding(.bottom, 60)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Theme.bg)
     .onAppear {
+      wizard.configureNext(title: "Next", enabled: canProceed) {
+        onComplete()
+      }
+      wizard.configureSkip(shown: false)
+
       Task {
         await detectPrereqs()
         await detectVersion()
+        await MainActor.run {
+          wizard.updateNextEnabled(canProceed)
+        }
       }
+    }
+    .onChange(of: installedVersion) { _ in
+      wizard.updateNextEnabled(canProceed)
     }
   }
 
@@ -155,7 +149,6 @@ struct OnboardingOpenClawInstallView: View {
 
   private func installIfNeeded() async {
     await detectVersion()
-    // If already installed, we still allow a reinstall via the button.
     await install()
   }
 
@@ -166,7 +159,6 @@ struct OnboardingOpenClawInstallView: View {
       logLines = []
     }
 
-    // Run install.
     let res = await Shell.envAsync("npm", ["install", "-g", "openclaw"])
 
     await MainActor.run {
@@ -191,6 +183,7 @@ struct OnboardingOpenClawInstallView: View {
 }
 
 #Preview {
-  OnboardingOpenClawInstallView(onBack: {}, onContinue: {})
+  OnboardingOpenClawInstallView(onComplete: {})
+    .environmentObject(OnboardingWizardContext())
     .frame(width: 800, height: 600)
 }

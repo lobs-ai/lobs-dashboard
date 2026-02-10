@@ -1,11 +1,12 @@
 import SwiftUI
 
 struct OnboardingAgentSetupView: View {
+  @EnvironmentObject private var wizard: OnboardingWizardContext
+
   let workspacePath: String
   let initialAgentName: String
   let initialUserName: String
-  let onBack: () -> Void
-  let onContinue: (String, String) -> Void
+  let onComplete: (String, String) -> Void
 
   @State private var agentName: String
   @State private var userName: String
@@ -13,18 +14,22 @@ struct OnboardingAgentSetupView: View {
 
   @State private var error: String? = nil
 
+  private var canProceed: Bool {
+    !agentName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      && !userName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      && !timezone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  }
+
   init(
     workspacePath: String,
     initialAgentName: String,
     initialUserName: String,
-    onBack: @escaping () -> Void,
-    onContinue: @escaping (String, String) -> Void
+    onComplete: @escaping (String, String) -> Void
   ) {
     self.workspacePath = workspacePath
     self.initialAgentName = initialAgentName
     self.initialUserName = initialUserName
-    self.onBack = onBack
-    self.onContinue = onContinue
+    self.onComplete = onComplete
 
     self._agentName = State(initialValue: initialAgentName)
     self._userName = State(initialValue: initialUserName)
@@ -83,33 +88,22 @@ struct OnboardingAgentSetupView: View {
 
       Spacer()
 
-      HStack(spacing: 12) {
-        Button(action: onBack) {
-          Text("Back")
-            .font(.system(size: 14, weight: .medium))
-            .foregroundColor(.primary)
-            .frame(width: 120)
-            .padding(.vertical, 10)
-        }
-        .buttonStyle(.plain)
-        .background(Theme.cardBg)
-        .cornerRadius(8)
-
-        Button(action: writeAndContinue) {
-          Text("Next")
-            .font(.system(size: 14, weight: .medium))
-            .foregroundColor(.white)
-            .frame(width: 120)
-            .padding(.vertical, 10)
-        }
-        .buttonStyle(.plain)
-        .background(Theme.accent)
-        .cornerRadius(8)
-      }
-      .padding(.bottom, 60)
+      Text("Use Next to write these files")
+        .font(.system(size: 13))
+        .foregroundColor(.secondary)
+        .padding(.bottom, 20)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Theme.bg)
+    .onAppear {
+      wizard.configureNext(title: "Next", enabled: canProceed) {
+        writeAndContinue()
+      }
+      wizard.configureSkip(shown: false)
+    }
+    .onChange(of: canProceed) { ok in
+      wizard.updateNextEnabled(ok)
+    }
   }
 
   private func field(label: String, text: Binding<String>, placeholder: String) -> some View {
@@ -174,7 +168,7 @@ struct OnboardingAgentSetupView: View {
       try soul.write(to: lobsWorkspaceURL.appendingPathComponent("SOUL.md"), atomically: true, encoding: .utf8)
 
       error = nil
-      onContinue(agent, user)
+      onComplete(agent, user)
     } catch {
       self.error = "Failed to write agent files: \(error.localizedDescription)"
     }
@@ -182,6 +176,7 @@ struct OnboardingAgentSetupView: View {
 }
 
 #Preview {
-  OnboardingAgentSetupView(workspacePath: NSHomeDirectory() + "/lobs", initialAgentName: "Lobs", initialUserName: "Rafe", onBack: {}, onContinue: { _, _ in })
+  OnboardingAgentSetupView(workspacePath: NSHomeDirectory() + "/lobs", initialAgentName: "Lobs", initialUserName: "Rafe", onComplete: { _, _ in })
+    .environmentObject(OnboardingWizardContext())
     .frame(width: 800, height: 600)
 }

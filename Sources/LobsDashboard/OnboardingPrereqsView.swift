@@ -1,8 +1,9 @@
 import SwiftUI
 
 struct OnboardingPrereqsView: View {
-  let onBack: () -> Void
-  let onContinue: () -> Void
+  @EnvironmentObject private var wizard: OnboardingWizardContext
+
+  let onComplete: () -> Void
 
   private let commandTimeoutSeconds: Double = 5
 
@@ -93,49 +94,30 @@ struct OnboardingPrereqsView: View {
 
       Spacer()
 
-      HStack(spacing: 12) {
-        Button(action: onBack) {
-          Text("Back")
-            .font(.system(size: 14, weight: .medium))
-            .foregroundColor(.primary)
-            .frame(width: 120)
-            .padding(.vertical, 10)
-        }
-        .buttonStyle(.plain)
-        .background(Theme.cardBg)
-        .cornerRadius(8)
-
-        Button(action: { Task { await refresh() } }) {
-          Text(isChecking ? "Checking…" : "Refresh")
-            .font(.system(size: 14, weight: .medium))
-            .foregroundColor(.primary)
-            .frame(width: 120)
-            .padding(.vertical, 10)
-        }
-        .buttonStyle(.plain)
-        .background(Theme.cardBg)
-        .cornerRadius(8)
-        .disabled(isChecking)
-
-        Button(action: onContinue) {
-          Text("Continue")
-            .font(.system(size: 14, weight: .medium))
-            .foregroundColor(.white)
-            .frame(width: 120)
-            .padding(.vertical, 10)
-        }
-        .buttonStyle(.plain)
-        .background(Theme.accent)
-        .cornerRadius(8)
-        .disabled(!allOK)
-        .opacity(allOK ? 1.0 : 0.5)
+      Button(action: { Task { await refresh() } }) {
+        Text(isChecking ? "Checking…" : "Refresh")
+          .font(.system(size: 14, weight: .medium))
+          .foregroundColor(.primary)
+          .frame(width: 140)
+          .padding(.vertical, 10)
       }
-      .padding(.bottom, 60)
+      .buttonStyle(.plain)
+      .background(Theme.cardBg)
+      .cornerRadius(8)
+      .disabled(isChecking)
+      .padding(.bottom, 20)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Theme.bg)
     .onAppear {
+      wizard.configureNext(title: "Next", enabled: allOK) {
+        onComplete()
+      }
+      wizard.configureSkip(shown: false)
       Task { await refresh() }
+    }
+    .onChange(of: allOK) { ok in
+      wizard.updateNextEnabled(ok)
     }
     .onChange(of: apiKeyInput) { _ in
       // Allow "prompting" for an API key to satisfy this check.
@@ -467,6 +449,7 @@ struct OnboardingPrereqsView: View {
 }
 
 #Preview {
-  OnboardingPrereqsView(onBack: {}, onContinue: {})
+  OnboardingPrereqsView(onComplete: {})
+    .environmentObject(OnboardingWizardContext())
     .frame(width: 900, height: 650)
 }

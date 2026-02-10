@@ -1,10 +1,11 @@
 import SwiftUI
 
 struct OnboardingCloneCoreReposView: View {
+  @EnvironmentObject private var wizard: OnboardingWizardContext
+
   let workspacePath: String
   let controlRepoUrl: String
   let isNewControlRepo: Bool
-  let onBack: () -> Void
   let onComplete: (URL) -> Void
 
   @State private var isRunning: Bool = false
@@ -135,37 +136,12 @@ struct OnboardingCloneCoreReposView: View {
       Spacer()
 
       HStack(spacing: 12) {
-        Button(action: onBack) {
-          Text("Back")
-            .font(.system(size: 14, weight: .medium))
-            .foregroundColor(.primary)
-            .frame(width: 120)
-            .padding(.vertical, 10)
-        }
-        .buttonStyle(.plain)
-        .background(Theme.cardBg)
-        .cornerRadius(8)
-        .disabled(isRunning && !canRetry)
-
-        if isFinished {
-          Button(action: completeIfPossible) {
-            Text("Continue")
-              .font(.system(size: 14, weight: .medium))
-              .foregroundColor(.white)
-              .frame(width: 120)
-              .padding(.vertical, 10)
-          }
-          .buttonStyle(.plain)
-          .background(Theme.accent)
-          .cornerRadius(8)
-          .disabled(!canContinue)
-          .opacity(canContinue ? 1.0 : 0.5)
-        } else if canRetry {
+        if canRetry {
           Button(action: start) {
             Text("Try Again")
               .font(.system(size: 14, weight: .medium))
               .foregroundColor(.white)
-              .frame(width: 120)
+              .frame(width: 140)
               .padding(.vertical, 10)
           }
           .buttonStyle(.plain)
@@ -173,10 +149,10 @@ struct OnboardingCloneCoreReposView: View {
           .cornerRadius(8)
         } else {
           Button(action: start) {
-            Text(isRunning ? "Working…" : "Start")
+            Text(isRunning ? "Working…" : (isFinished ? "Re-run" : "Start"))
               .font(.system(size: 14, weight: .medium))
               .foregroundColor(.white)
-              .frame(width: 120)
+              .frame(width: 140)
               .padding(.vertical, 10)
           }
           .buttonStyle(.plain)
@@ -184,12 +160,23 @@ struct OnboardingCloneCoreReposView: View {
           .cornerRadius(8)
           .disabled(isRunning)
         }
+
+        if isFinished {
+          Text(canContinue ? "Ready — use Next" : "Fix required errors above")
+            .font(.system(size: 12))
+            .foregroundColor(.secondary)
+        }
       }
-      .padding(.bottom, 60)
+      .padding(.bottom, 20)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Theme.bg)
     .onAppear {
+      wizard.configureNext(title: "Next", enabled: isFinished && canContinue) {
+        completeIfPossible()
+      }
+      wizard.configureSkip(shown: false)
+
       if steps.isEmpty {
         steps = [
           Step(title: "Clone lobs-control", status: .pending),
@@ -198,6 +185,9 @@ struct OnboardingCloneCoreReposView: View {
           Step(title: "Clone lobs-workspace", status: .pending)
         ]
       }
+    }
+    .onChange(of: readyToProceed) { ok in
+      wizard.updateNextEnabled(ok)
     }
     .confirmationDialog(
       pendingDecision?.repoName ?? "Repository exists",
@@ -229,6 +219,8 @@ struct OnboardingCloneCoreReposView: View {
       }
     }
   }
+
+  private var readyToProceed: Bool { isFinished && canContinue }
 
   private var canContinue: Bool {
     // Require control repo clone + validation to proceed; other repos may fail.
@@ -512,8 +504,8 @@ private extension Array {
     workspacePath: NSHomeDirectory() + "/lobs",
     controlRepoUrl: "git@github.com:user/lobs-control.git",
     isNewControlRepo: false,
-    onBack: {},
     onComplete: { _ in }
   )
+  .environmentObject(OnboardingWizardContext())
   .frame(width: 800, height: 600)
 }

@@ -4,8 +4,9 @@ import AppKit
 /// Repository setup screen of the onboarding wizard
 struct OnboardingRepoSetupView: View {
     @EnvironmentObject var vm: AppViewModel
-    let onBack: () -> Void
-    let onContinue: (String, Bool) -> Void
+    @EnvironmentObject private var wizard: OnboardingWizardContext
+
+    let onComplete: (String, Bool) -> Void
     
     @State private var repoChoice: RepoChoice = .existing
     @State private var sshUrl: String = ""
@@ -143,36 +144,25 @@ struct OnboardingRepoSetupView: View {
             
             Spacer()
             
-            // Navigation buttons
-            HStack(spacing: 12) {
-                Button(action: onBack) {
-                    Text("Back")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.primary)
-                        .frame(width: 120)
-                        .padding(.vertical, 10)
-                }
-                .buttonStyle(.plain)
-                .background(Theme.cardBg)
-                .cornerRadius(8)
-                
-                Button(action: handleContinue) {
-                    Text("Continue")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.white)
-                        .frame(width: 120)
-                        .padding(.vertical, 10)
-                }
-                .buttonStyle(.plain)
-                .background(Theme.accent)
-                .cornerRadius(8)
-                .disabled(sshUrl.trimmingCharacters(in: .whitespaces).isEmpty)
-                .opacity(sshUrl.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1.0)
-            }
-            .padding(.bottom, 60)
+            Text("Use Next to continue")
+              .font(.system(size: 13))
+              .foregroundColor(.secondary)
+              .padding(.bottom, 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.bg)
+        .onAppear {
+          wizard.configureNext(
+            title: "Next",
+            enabled: !sshUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+          ) {
+            handleContinue()
+          }
+          wizard.configureSkip(shown: false)
+        }
+        .onChange(of: sshUrl) { _ in
+          wizard.updateNextEnabled(!sshUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
     }
     
     /// Helper text that changes based on repo choice
@@ -197,7 +187,7 @@ struct OnboardingRepoSetupView: View {
         
         // Pass data to parent
         let isNewRepo = repoChoice == .new
-        onContinue(trimmedUrl, isNewRepo)
+        onComplete(trimmedUrl, isNewRepo)
     }
     
     /// Validate that the URL is a proper SSH Git URL
@@ -260,11 +250,11 @@ struct RadioOption: View {
 
 #Preview {
     OnboardingRepoSetupView(
-        onBack: {},
-        onContinue: { url, isNew in
+        onComplete: { url, isNew in
             print("Continue with URL: \(url), isNew: \(isNew)")
         }
     )
     .environmentObject(AppViewModel())
+    .environmentObject(OnboardingWizardContext())
     .frame(width: 800, height: 600)
 }

@@ -11,7 +11,7 @@ struct OnboardingDoneView: View {
         Image(systemName: "checkmark.seal.fill")
           .font(.system(size: 44))
           .foregroundColor(.green)
-        Text("You’re All Set!")
+        Text("You're All Set!")
           .font(.system(size: 28, weight: .semibold))
         Text("Your assistant is ready. Create your first task to get started.")
           .font(.system(size: 14))
@@ -35,17 +35,10 @@ struct OnboardingDoneView: View {
 
       Spacer()
 
-      Button(action: onFinish) {
-        Text("Go to Dashboard")
-          .font(.system(size: 14, weight: .medium))
-          .foregroundColor(.white)
-          .frame(width: 180)
-          .padding(.vertical, 12)
-      }
-      .buttonStyle(.plain)
-      .background(Theme.accent)
-      .cornerRadius(10)
-      .padding(.bottom, 60)
+      Text("Click Next to go to the dashboard")
+        .font(.system(size: 13))
+        .foregroundColor(.secondary)
+        .padding(.bottom, 20)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Theme.bg)

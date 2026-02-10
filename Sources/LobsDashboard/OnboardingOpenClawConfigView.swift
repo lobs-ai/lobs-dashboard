@@ -1,9 +1,10 @@
 import SwiftUI
 
 struct OnboardingOpenClawConfigView: View {
+  @EnvironmentObject private var wizard: OnboardingWizardContext
+
   let workspacePath: String
-  let onBack: () -> Void
-  let onContinue: () -> Void
+  let onComplete: () -> Void
 
   enum Provider: String, CaseIterable, Identifiable {
     case anthropic
@@ -213,18 +214,6 @@ struct OnboardingOpenClawConfigView: View {
       Spacer()
 
       HStack(spacing: 12) {
-        Button(action: onBack) {
-          Text("Back")
-            .font(.system(size: 14, weight: .medium))
-            .foregroundColor(.primary)
-            .frame(width: 120)
-            .padding(.vertical, 10)
-        }
-        .buttonStyle(.plain)
-        .background(Theme.cardBg)
-        .cornerRadius(8)
-        .disabled(isRunning || isTesting)
-
         Button(action: { Task { await testConnection() } }) {
           Text(isTesting ? "Testing…" : "Test Connection")
             .font(.system(size: 14, weight: .medium))
@@ -251,26 +240,27 @@ struct OnboardingOpenClawConfigView: View {
         .disabled(!canRun || !testOK)
         .opacity((canRun && testOK) ? 1.0 : 0.5)
 
-        Button(action: onContinue) {
-          Text("Next")
-            .font(.system(size: 14, weight: .medium))
-            .foregroundColor(.white)
-            .frame(width: 120)
-            .padding(.vertical, 10)
+        if success {
+          Text("Saved — use Next")
+            .font(.system(size: 12))
+            .foregroundColor(.secondary)
         }
-        .buttonStyle(.plain)
-        .background(Theme.accent)
-        .cornerRadius(8)
-        .disabled(!success)
-        .opacity(success ? 1.0 : 0.5)
       }
-      .padding(.bottom, 60)
+      .padding(.bottom, 20)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Theme.bg)
     .onAppear {
+      wizard.configureNext(title: "Next", enabled: success) {
+        onComplete()
+      }
+      wizard.configureSkip(shown: false)
+
       // Ensure default model is valid for initial provider.
       defaultModel = provider.defaultModels.first ?? defaultModel
+    }
+    .onChange(of: success) { ok in
+      wizard.updateNextEnabled(ok)
     }
   }
 
@@ -396,6 +386,7 @@ struct OnboardingOpenClawConfigView: View {
 }
 
 #Preview {
-  OnboardingOpenClawConfigView(workspacePath: NSHomeDirectory() + "/lobs", onBack: {}, onContinue: {})
+  OnboardingOpenClawConfigView(workspacePath: NSHomeDirectory() + "/lobs", onComplete: {})
+    .environmentObject(OnboardingWizardContext())
     .frame(width: 800, height: 600)
 }

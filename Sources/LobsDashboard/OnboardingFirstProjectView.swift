@@ -6,10 +6,11 @@ import SwiftUI
 ///   <workspace>/projects/<repo>
 /// so users can start creating tasks against a real codebase.
 struct OnboardingFirstProjectView: View {
+  @EnvironmentObject private var wizard: OnboardingWizardContext
+
   let workspacePath: String
-  let onBack: () -> Void
-  let onSkip: () -> Void
   let onComplete: () -> Void
+  let onSkip: () -> Void
 
   @State private var repoURL: String = ""
   @State private var isCloning: Bool = false
@@ -86,35 +87,11 @@ struct OnboardingFirstProjectView: View {
       Spacer()
 
       HStack(spacing: 12) {
-        Button(action: onBack) {
-          Text("Back")
-            .font(.system(size: 14, weight: .medium))
-            .foregroundColor(.primary)
-            .frame(width: 120)
-            .padding(.vertical, 10)
-        }
-        .buttonStyle(.plain)
-        .background(Theme.cardBg)
-        .cornerRadius(8)
-        .disabled(isCloning)
-
-        Button(action: onSkip) {
-          Text("Skip")
-            .font(.system(size: 14, weight: .medium))
-            .foregroundColor(.primary)
-            .frame(width: 120)
-            .padding(.vertical, 10)
-        }
-        .buttonStyle(.plain)
-        .background(Theme.cardBg)
-        .cornerRadius(8)
-        .disabled(isCloning)
-
         Button(action: { Task { await clone() } }) {
           Text(isCloning ? "Cloning…" : "Clone")
             .font(.system(size: 14, weight: .medium))
             .foregroundColor(.white)
-            .frame(width: 120)
+            .frame(width: 140)
             .padding(.vertical, 10)
         }
         .buttonStyle(.plain)
@@ -123,29 +100,41 @@ struct OnboardingFirstProjectView: View {
         .disabled(isCloning || repoURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         .opacity(repoURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.5 : 1.0)
 
-        Button(action: onComplete) {
-          Text("Next")
-            .font(.system(size: 14, weight: .medium))
-            .foregroundColor(.white)
-            .frame(width: 120)
-            .padding(.vertical, 10)
+        if didClone {
+          Text("Cloned — use Next")
+            .font(.system(size: 12))
+            .foregroundColor(.secondary)
+        } else {
+          Text("Or use Skip")
+            .font(.system(size: 12))
+            .foregroundColor(.secondary)
         }
-        .buttonStyle(.plain)
-        .background(Theme.accent)
-        .cornerRadius(8)
-        .disabled(!didClone)
-        .opacity(didClone ? 1.0 : 0.5)
       }
-      .padding(.bottom, 60)
+      .padding(.bottom, 20)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Theme.bg)
     .onAppear {
+      wizard.configureNext(title: "Next", enabled: didClone) {
+        onComplete()
+      }
+      wizard.configureSkip(shown: true, title: "Skip", enabled: !isCloning) {
+        onSkip()
+      }
+
       // Ensure projects directory exists.
       do {
         try FileManager.default.createDirectory(at: projectsDir, withIntermediateDirectories: true)
       } catch {
         self.error = "Failed to create projects directory: \(error.localizedDescription)"
+      }
+    }
+    .onChange(of: didClone) { ok in
+      wizard.updateNextEnabled(ok)
+    }
+    .onChange(of: isCloning) { cloning in
+      wizard.configureSkip(shown: true, title: "Skip", enabled: !cloning) {
+        onSkip()
       }
     }
   }
@@ -229,9 +218,9 @@ struct OnboardingFirstProjectView: View {
 #Preview {
   OnboardingFirstProjectView(
     workspacePath: NSHomeDirectory() + "/lobs",
-    onBack: {},
-    onSkip: {},
-    onComplete: {}
+    onComplete: {},
+    onSkip: {}
   )
+  .environmentObject(OnboardingWizardContext())
   .frame(width: 900, height: 650)
 }
