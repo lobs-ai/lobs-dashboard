@@ -8,6 +8,7 @@ struct OnboardingOpenClawInstallView: View {
   @State private var logLines: [String] = []
   @State private var error: String? = nil
   @State private var installedVersion: String? = nil
+  @State private var npmAvailable: Bool = true
 
   var body: some View {
     VStack(spacing: 28) {
@@ -28,7 +29,7 @@ struct OnboardingOpenClawInstallView: View {
           .font(.system(size: 12, weight: .medium))
           .foregroundColor(.secondary)
 
-        Text("npm install -g openclaw@latest")
+        Text("npm install -g openclaw")
           .font(.system(size: 13, design: .monospaced))
           .textSelection(.enabled)
           .padding(12)
@@ -48,6 +49,17 @@ struct OnboardingOpenClawInstallView: View {
           Text(error)
             .font(.system(size: 13))
             .foregroundColor(.red)
+        }
+
+        if !npmAvailable {
+          VStack(alignment: .leading, spacing: 6) {
+            Text("npm was not found in PATH.")
+              .font(.system(size: 13))
+              .foregroundColor(.red)
+            Text("Install Node.js (18+) from https://nodejs.org, then restart Terminal / re-open the app.")
+              .font(.system(size: 12))
+              .foregroundColor(.secondary)
+          }
         }
 
         if !logLines.isEmpty {
@@ -82,8 +94,8 @@ struct OnboardingOpenClawInstallView: View {
         .cornerRadius(8)
         .disabled(isInstalling)
 
-        Button(action: { Task { await install() } }) {
-          Text(isInstalling ? "Installing…" : "Install")
+        Button(action: { Task { await installIfNeeded() } }) {
+          Text(isInstalling ? "Installing…" : (installedVersion == nil ? "Install" : "Reinstall"))
             .font(.system(size: 14, weight: .medium))
             .foregroundColor(.white)
             .frame(width: 120)
@@ -92,7 +104,8 @@ struct OnboardingOpenClawInstallView: View {
         .buttonStyle(.plain)
         .background(Theme.accent)
         .cornerRadius(8)
-        .disabled(isInstalling)
+        .disabled(isInstalling || !npmAvailable)
+        .opacity((isInstalling || !npmAvailable) ? 0.5 : 1.0)
 
         Button(action: onContinue) {
           Text("Next")
@@ -112,7 +125,17 @@ struct OnboardingOpenClawInstallView: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Theme.bg)
     .onAppear {
-      Task { await detectVersion() }
+      Task {
+        await detectPrereqs()
+        await detectVersion()
+      }
+    }
+  }
+
+  private func detectPrereqs() async {
+    let npmPath = await Shell.which("npm")
+    await MainActor.run {
+      npmAvailable = (npmPath != nil)
     }
   }
 
@@ -123,7 +146,17 @@ struct OnboardingOpenClawInstallView: View {
         installedVersion = res.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         error = nil
       }
+    } else {
+      await MainActor.run {
+        installedVersion = nil
+      }
     }
+  }
+
+  private func installIfNeeded() async {
+    await detectVersion()
+    // If already installed, we still allow a reinstall via the button.
+    await install()
   }
 
   private func install() async {
@@ -133,7 +166,8 @@ struct OnboardingOpenClawInstallView: View {
       logLines = []
     }
 
-    let res = await Shell.envAsync("npm", ["install", "-g", "openclaw@latest"])
+    // Run install.
+    let res = await Shell.envAsync("npm", ["install", "-g", "openclaw"])
 
     await MainActor.run {
       logLines = (res.stdout + "\n" + res.stderr)
@@ -145,7 +179,12 @@ struct OnboardingOpenClawInstallView: View {
 
     if installedVersion == nil {
       await MainActor.run {
-        error = "Install did not succeed. If you use a Node version manager, ensure your global npm bin is on PATH."
+        let stderr = res.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !stderr.isEmpty {
+          error = "Install failed: \(stderr)"
+        } else {
+          error = "Install did not succeed. If you use a Node version manager, ensure your global npm bin is on PATH."
+        }
       }
     }
   }
