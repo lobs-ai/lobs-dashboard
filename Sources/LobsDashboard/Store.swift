@@ -910,6 +910,10 @@ final class LobsControlStore {
 
   private var artifactsDirURL: URL { repoRoot.appendingPathComponent("artifacts") }
   private var inboxDirURL: URL { repoRoot.appendingPathComponent("inbox") }
+  /// Repo-backed inbox (used by the orchestrator/monitor for JSON suggestions).
+  private var inboxStateDirURL: URL {
+    repoRoot.appendingPathComponent("state").appendingPathComponent("inbox")
+  }
   private var inboxArchiveDirURL: URL { repoRoot.appendingPathComponent("inbox-archive") }
   private var artifactsArchiveDirURL: URL { repoRoot.appendingPathComponent("artifacts-archive") }
   private var inboxResponsesDirURL: URL {
@@ -965,10 +969,47 @@ final class LobsControlStore {
     var items: [InboxItem] = []
     let fm = FileManager.default
 
-    // Scan both artifacts/ and inbox/ directories
+    func parseSuggestionPreview(from data: Data, filename: String) -> (title: String, content: String, summary: String)? {
+      // Suggestions are JSON files written by the orchestrator's Monitor to state/inbox/.
+      // Expected shape is loosely:
+      // { "type": "suggestion", "title": "…", "text"|"content"|"suggestion": "…", "summary": "…" }
+      guard let obj = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) else {
+        return nil
+      }
+      guard let dict = obj as? [String: Any] else { return nil }
+      guard (dict["type"] as? String)?.lowercased() == "suggestion" else { return nil }
+
+      let title = (dict["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+      let textCandidates: [String?] = [
+        dict["content"] as? String,
+        dict["text"] as? String,
+        dict["suggestion"] as? String,
+        dict["body"] as? String,
+        dict["message"] as? String,
+      ]
+      let text = textCandidates.compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first
+
+      let prettyJSON: String = {
+        if let pretty = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys]),
+           let s = String(data: pretty, encoding: .utf8) {
+          return s
+        }
+        return String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
+      }()
+
+      let content = (text?.isEmpty == false) ? text! : prettyJSON
+      let summary = ((dict["summary"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines))
+        ?? extractSummary(from: content)
+
+      let finalTitle = (title?.isEmpty == false) ? title! : extractTitle(from: content, filename: filename)
+      return (finalTitle, content, summary)
+    }
+
+    // Scan artifacts/, legacy inbox/, and repo-backed state/inbox/ (JSON suggestions).
     let dirs: [(URL, String)] = [
       (inboxDirURL, "inbox"),
       (artifactsDirURL, "artifacts"),
+      (inboxStateDirURL, "state/inbox"),
     ]
 
     for (dir, prefix) in dirs {
@@ -981,11 +1022,18 @@ final class LobsControlStore {
 
       for fileURL in files {
         let ext = fileURL.pathExtension.lowercased()
-        guard ext == "md" || ext == "txt" || ext == "markdown" else { continue }
-
         let filename = fileURL.lastPathComponent
-        // Skip README files
-        guard filename.lowercased() != "readme.md" else { continue }
+
+        // Skip README files + read state file.
+        if filename.lowercased() == "readme.md" { continue }
+        if filename.lowercased() == "read-state.json" { continue }
+
+        // Supported inbox file types:
+        // - Markdown/text documents (md/txt/markdown)
+        // - JSON suggestions (type == "suggestion")
+        let isTextDoc = (ext == "md" || ext == "txt" || ext == "markdown")
+        let isJSON = (ext == "json")
+        guard isTextDoc || isJSON else { continue }
 
         // Load only a small preview of the content to keep sync + navigation snappy.
         // Full content is loaded on-demand when the user selects an item.
@@ -1002,21 +1050,31 @@ final class LobsControlStore {
           return (try? Data(contentsOf: fileURL)) ?? Data()
         }()
 
-        let preview = String(data: previewData, encoding: .utf8)
+        let previewString = String(data: previewData, encoding: .utf8)
           ?? String(decoding: previewData, as: UTF8.self)
 
         let isTruncated = fileSize > previewData.count
 
         // Derive title/summary from preview (good enough for list rendering)
-        let title = extractTitle(from: preview, filename: filename)
-        let summary = extractSummary(from: preview)
+        var title = extractTitle(from: previewString, filename: filename)
+        var summary = extractSummary(from: previewString)
+        var content = previewString
+
+        if isJSON, let parsed = parseSuggestionPreview(from: previewData, filename: filename) {
+          title = parsed.title
+          content = parsed.content
+          summary = parsed.summary
+        } else if isJSON {
+          // Only surface JSON files we understand (avoid polluting inbox with internal state).
+          continue
+        }
 
         let item = InboxItem(
           id: "\(prefix)/\(filename)",
           title: title,
           filename: filename,
           relativePath: "\(prefix)/\(filename)",
-          content: preview,
+          content: content,
           contentIsTruncated: isTruncated,
           modifiedAt: modDate,
           isRead: false,
