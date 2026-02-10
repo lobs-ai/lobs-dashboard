@@ -9,9 +9,14 @@ struct OnboardingPrereqsView: View {
   @State private var gitOK: Bool = false
   @State private var nodeOK: Bool = false
   @State private var ghOK: Bool = false
+  @State private var apiKeyOK: Bool = false
 
   @State private var nodeVersion: String = ""
   @State private var ghStatus: String = ""
+
+  // API key is required eventually, but we collect it during OpenClaw config.
+  // Here we just detect whether the user already has one set in their environment.
+  @State private var apiKeyStatus: String = ""
 
   private var allOK: Bool { gitOK && nodeOK && ghOK }
 
@@ -35,6 +40,8 @@ struct OnboardingPrereqsView: View {
         prereqRow(title: "Node.js 18+", ok: nodeOK, detail: nodeOK ? nodeVersion : "Install Node 18+ (nvm recommended)")
 
         prereqRow(title: "GitHub CLI (gh) authed", ok: ghOK, detail: ghOK ? ghStatus : "Run: gh auth login")
+
+        prereqRow(title: "Anthropic/OpenRouter API key", ok: apiKeyOK, detail: apiKeyOK ? apiKeyStatus : "You’ll paste this during OpenClaw config")
       }
       .frame(width: 560)
       .padding(20)
@@ -48,7 +55,7 @@ struct OnboardingPrereqsView: View {
         VStack(alignment: .leading, spacing: 10) {
           Text("Install help")
             .font(.system(size: 13, weight: .semibold))
-          Text("• Git: run `xcode-select --install`\n• Node: https://nodejs.org or `brew install node`\n• GitHub CLI: https://cli.github.com then `gh auth login`")
+          Text("• Git: run `xcode-select --install`\n• Node: https://nodejs.org or `brew install node`\n• GitHub CLI: https://cli.github.com then `gh auth login`\n• API key: you’ll paste it during OpenClaw config (Anthropic or OpenRouter)")
             .font(.system(size: 12, design: .monospaced))
             .foregroundColor(.secondary)
             .textSelection(.enabled)
@@ -150,12 +157,22 @@ struct OnboardingPrereqsView: View {
       ghOKLocal = res.ok
     }
 
+    // Detect API key via environment variables (best-effort).
+    // Users can also enter it later during OpenClaw config.
+    let env = ProcessInfo.processInfo.environment
+    let anthropic = (env["ANTHROPIC_API_KEY"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    let openrouter = (env["OPENROUTER_API_KEY"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    let apiOKLocal = !anthropic.isEmpty || !openrouter.isEmpty
+    let apiStatusLocal = !anthropic.isEmpty ? "Detected ANTHROPIC_API_KEY" : (!openrouter.isEmpty ? "Detected OPENROUTER_API_KEY" : "")
+
     await MainActor.run {
       gitOK = gitOKLocal
       nodeOK = nodeOKLocal
       ghOK = ghOKLocal
+      apiKeyOK = apiOKLocal
       nodeVersion = nodeVersionLocal.isEmpty ? "" : "Detected \(nodeVersionLocal)"
       ghStatus = ghStatusLocal
+      apiKeyStatus = apiStatusLocal
       isChecking = false
     }
   }

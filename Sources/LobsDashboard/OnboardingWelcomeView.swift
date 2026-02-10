@@ -21,12 +21,11 @@ struct OnboardingWelcomeView: View {
             
             VStack(spacing: 12) {
                 // Welcome message
-                Text("Welcome to Lobs Dashboard")
+                Text("Welcome to Lobs — your async AI assistant")
                     .font(.system(size: 32, weight: .semibold))
                     .foregroundColor(.primary)
                 
-                // Description
-                Text("Manage your tasks and communicate with your AI assistant.")
+                Text("Lobs helps you manage tasks, run background work, and keep everything synced in Git — without living in your terminal.")
                     .font(.system(size: 16))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -37,7 +36,7 @@ struct OnboardingWelcomeView: View {
             
             // Get Started button
             Button(action: onGetStarted) {
-                Text("Get Started")
+                Text("Let’s get you set up")
                     .font(.system(size: 15, weight: .medium))
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)

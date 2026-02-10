@@ -6,7 +6,7 @@ struct OnboardingView: View {
 
   @State private var currentStep: Step = .welcome
 
-  @State private var onboardingState: OnboardingState = OnboardingStateManager.load()
+  @State private var onboardingState: OnboardingState = OnboardingStateManager.load(preferredWorkspacePath: NSHomeDirectory() + "/lobs")
 
   // Inputs gathered during onboarding
   @State private var workspacePath: String = NSHomeDirectory() + "/lobs"
@@ -26,6 +26,7 @@ struct OnboardingView: View {
     case configureOpenClaw
     case agentSetup
     case startOrchestrator
+    case firstProject
     case done
   }
 
@@ -138,6 +139,21 @@ struct OnboardingView: View {
         )
         .transition(.opacity)
 
+      case .firstProject:
+        OnboardingFirstProjectView(
+          workspacePath: workspacePath,
+          onBack: goBack,
+          onSkip: {
+            markCompleted(.firstProject)
+            advance()
+          },
+          onComplete: {
+            markCompleted(.firstProject)
+            advance()
+          }
+        )
+        .transition(.opacity)
+
       case .done:
         OnboardingDoneView {
           completeOnboarding()
@@ -148,7 +164,7 @@ struct OnboardingView: View {
     .animation(.easeInOut(duration: 0.25), value: currentStep)
     .onAppear {
       // Restore persisted onboarding state + pick first incomplete step.
-      let s = OnboardingStateManager.load()
+      let s = OnboardingStateManager.load(preferredWorkspacePath: workspacePath)
       onboardingState = s
       if let ws = s.workspace { workspacePath = ws }
       if let agent = s.agentName { agentName = agent }
@@ -175,6 +191,7 @@ struct OnboardingView: View {
     if !state.isCompleted(.configureOpenClaw) { return .configureOpenClaw }
     if !state.isCompleted(.agentSetup) { return .agentSetup }
     if !state.isCompleted(.startOrchestrator) { return .startOrchestrator }
+    if !state.isCompleted(.firstProject) { return .firstProject }
     return .done
   }
 
@@ -202,7 +219,8 @@ struct OnboardingView: View {
     case .installOpenClaw: return .configureOpenClaw
     case .configureOpenClaw: return .agentSetup
     case .agentSetup: return .startOrchestrator
-    case .startOrchestrator: return .done
+    case .startOrchestrator: return .firstProject
+    case .firstProject: return .done
     case .done: return .done
     }
   }
@@ -218,7 +236,8 @@ struct OnboardingView: View {
     case .configureOpenClaw: return .installOpenClaw
     case .agentSetup: return .configureOpenClaw
     case .startOrchestrator: return .agentSetup
-    case .done: return .startOrchestrator
+    case .firstProject: return .startOrchestrator
+    case .done: return .firstProject
     }
   }
 

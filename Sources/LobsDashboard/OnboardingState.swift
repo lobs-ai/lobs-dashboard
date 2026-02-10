@@ -2,7 +2,8 @@ import Foundation
 
 /// Persistent, resumable onboarding state.
 ///
-/// Stored at: ~/.lobs/.onboarding-state.json
+/// Stored at: ~/.lobs/.onboarding-state.json (primary)
+/// and also written into the chosen workspace as: <workspace>/.onboarding-state.json
 struct OnboardingState: Codable, Equatable {
   var completedSteps: [String]
   var workspace: String?
@@ -41,6 +42,7 @@ enum OnboardingStepID: String, CaseIterable {
   case configureOpenClaw
   case agentSetup
   case startOrchestrator
+  case firstProject
   case done
 }
 
@@ -54,8 +56,28 @@ enum OnboardingStateManager {
     configDirectory.appendingPathComponent(".onboarding-state.json")
   }()
 
-  static func load() -> OnboardingState {
-    if FileManager.default.fileExists(atPath: stateFile.path) {
+  private static func workspaceStateFile(workspacePath: String) -> URL {
+    URL(fileURLWithPath: workspacePath).appendingPathComponent(".onboarding-state.json")
+  }
+
+  static func load(preferredWorkspacePath: String? = nil) -> OnboardingState {
+    let fm = FileManager.default
+
+    // Prefer the workspace-local state file if we know the workspace.
+    if let ws = preferredWorkspacePath?.trimmingCharacters(in: .whitespacesAndNewlines), !ws.isEmpty {
+      let wsFile = workspaceStateFile(workspacePath: ws)
+      if fm.fileExists(atPath: wsFile.path) {
+        do {
+          let data = try Data(contentsOf: wsFile)
+          return try JSONDecoder().decode(OnboardingState.self, from: data)
+        } catch {
+          print("⚠️ Failed to load onboarding state from workspace: \(error)")
+        }
+      }
+    }
+
+    // Fallback to config directory state.
+    if fm.fileExists(atPath: stateFile.path) {
       do {
         let data = try Data(contentsOf: stateFile)
         return try JSONDecoder().decode(OnboardingState.self, from: data)
@@ -63,6 +85,7 @@ enum OnboardingStateManager {
         print("⚠️ Failed to load onboarding state: \(error)")
       }
     }
+
     return OnboardingState()
   }
 
@@ -79,7 +102,16 @@ enum OnboardingStateManager {
         jsonString = jsonString.replacingOccurrences(of: " : ", with: ": ")
         data = Data(jsonString.utf8)
       }
+
+      // Always write primary.
       try data.write(to: stateFile, options: .atomic)
+
+      // Also write into the workspace when known.
+      if let ws = state.workspace?.trimmingCharacters(in: .whitespacesAndNewlines), !ws.isEmpty {
+        let wsFile = workspaceStateFile(workspacePath: ws)
+        _ = try? FileManager.default.createDirectory(at: wsFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: wsFile, options: .atomic)
+      }
     } catch {
       print("⚠️ Failed to save onboarding state: \(error)")
     }

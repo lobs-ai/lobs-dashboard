@@ -23,7 +23,7 @@ struct OnboardingDoneView: View {
       VStack(alignment: .leading, spacing: 10) {
         Text("Quick tips")
           .font(.system(size: 13, weight: .semibold))
-        Text("• Use ⌘N for a new task\n• Settings: ⌘,\n• If sync looks stale, click Push Now")
+        Text("• Use ⌘N for a new task\n• Add projects from the sidebar (+)\n• Settings: ⌘,\n• If sync looks stale, click Push Now")
           .font(.system(size: 12))
           .foregroundColor(.secondary)
       }

@@ -114,6 +114,8 @@ struct OnboardingWorkspaceView: View {
 
     do {
       try FileManager.default.createDirectory(atPath: expanded, withIntermediateDirectories: true)
+      // Create a few standard subfolders (core repos are cloned later).
+      try FileManager.default.createDirectory(atPath: (expanded as NSString).appendingPathComponent("projects"), withIntermediateDirectories: true)
     } catch {
       self.error = "Failed to create workspace: \(error.localizedDescription)"
       return
