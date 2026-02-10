@@ -1,140 +1,243 @@
 import SwiftUI
 
-/// Container view for the onboarding wizard flow
+/// Container view for the full onboarding wizard flow.
 struct OnboardingView: View {
-    @EnvironmentObject var vm: AppViewModel
-    @State private var currentStep: OnboardingStep = .welcome
-    @State private var repoUrl: String = ""
-    @State private var isNewRepo: Bool = false
-    
-    /// Onboarding wizard steps
-    enum OnboardingStep {
-        case welcome
-        case repoSetup
-        case cloneAndValidate
-        case personality
-        case serverSetup
-        case verification
-    }
-    
-    var body: some View {
-        ZStack {
-            Theme.bg.ignoresSafeArea()
-            
-            switch currentStep {
-            case .welcome:
-                OnboardingWelcomeView {
-                    advanceToNextStep()
-                }
-                .transition(.opacity)
-            
-            case .repoSetup:
-                OnboardingRepoSetupView(
-                    onBack: goBackToPreviousStep,
-                    onContinue: { url, isNew in
-                        handleRepoSetup(url: url, isNew: isNew)
-                    }
-                )
-                .transition(.opacity)
-            
-            case .cloneAndValidate:
-                OnboardingCloneView(
-                    repoUrl: repoUrl,
-                    isNewRepo: isNewRepo,
-                    onBack: goBackToPreviousStep,
-                    onComplete: advanceToNextStep
-                )
-                .transition(.opacity)
-            
-            case .personality:
-                OnboardingPersonalityView(
-                    onBack: goBackToPreviousStep,
-                    onContinue: advanceToNextStep
-                )
-                .transition(.opacity)
+  @EnvironmentObject var vm: AppViewModel
 
-            case .serverSetup:
-                OnboardingServerSetupView(
-                    repoUrl: repoUrl,
-                    onBack: goBackToPreviousStep,
-                    onContinue: advanceToNextStep
-                )
-                .transition(.opacity)
-            
-            case .verification:
-                OnboardingVerificationView(
-                    repoUrl: repoUrl,
-                    onBack: goBackToPreviousStep,
-                    onComplete: completeOnboarding
-                )
-                .transition(.opacity)
-            }
+  @State private var currentStep: Step = .welcome
+
+  @State private var onboardingState: OnboardingState = OnboardingStateManager.load()
+
+  // Inputs gathered during onboarding
+  @State private var workspacePath: String = NSHomeDirectory() + "/lobs"
+  @State private var controlRepoUrl: String = ""
+  @State private var isNewControlRepo: Bool = false
+
+  @State private var agentName: String = "Lobs"
+  @State private var userName: String = ""
+
+  enum Step {
+    case welcome
+    case prereqs
+    case workspace
+    case repoSetup
+    case cloneCoreRepos
+    case installOpenClaw
+    case configureOpenClaw
+    case agentSetup
+    case startOrchestrator
+    case done
+  }
+
+  var body: some View {
+    ZStack {
+      Theme.bg.ignoresSafeArea()
+
+      switch currentStep {
+      case .welcome:
+        OnboardingWelcomeView {
+          markCompleted(.welcome)
+          advance()
         }
-        .animation(.easeInOut(duration: 0.3), value: currentStep)
-    }
-    
-    /// Advance to the next step in the onboarding flow
-    private func advanceToNextStep() {
-        switch currentStep {
-        case .welcome:
-            currentStep = .repoSetup
-        case .repoSetup:
-            currentStep = .cloneAndValidate
-        case .cloneAndValidate:
-            currentStep = .personality
-        case .personality:
-            currentStep = .serverSetup
-        case .serverSetup:
-            currentStep = .verification
-        case .verification:
-            completeOnboarding()
+        .transition(.opacity)
+
+      case .prereqs:
+        OnboardingPrereqsView(
+          onBack: goBack,
+          onContinue: {
+            markCompleted(.prereqs)
+            advance()
+          }
+        )
+        .transition(.opacity)
+
+      case .workspace:
+        OnboardingWorkspaceView(
+          initialWorkspace: workspacePath,
+          onBack: goBack,
+          onContinue: { path in
+            workspacePath = path
+            onboardingState.workspace = path
+            markCompleted(.workspace)
+            advance()
+          }
+        )
+        .transition(.opacity)
+
+      case .repoSetup:
+        OnboardingRepoSetupView(
+          onBack: goBack,
+          onContinue: { url, isNew in
+            controlRepoUrl = url
+            isNewControlRepo = isNew
+            advance()
+          }
+        )
+        .transition(.opacity)
+
+      case .cloneCoreRepos:
+        OnboardingCloneCoreReposView(
+          workspacePath: workspacePath,
+          controlRepoUrl: controlRepoUrl,
+          isNewControlRepo: isNewControlRepo,
+          onBack: goBack,
+          onComplete: { controlRepoPath in
+            _ = vm.setControlRepo(path: controlRepoPath.path, repoUrl: controlRepoUrl, onboardingComplete: nil)
+            markCompleted(.cloneCoreRepos)
+            advance()
+          }
+        )
+        .transition(.opacity)
+
+      case .installOpenClaw:
+        OnboardingOpenClawInstallView(
+          onBack: goBack,
+          onContinue: {
+            markCompleted(.installOpenClaw)
+            advance()
+          }
+        )
+        .transition(.opacity)
+
+      case .configureOpenClaw:
+        OnboardingOpenClawConfigView(
+          workspacePath: workspacePath,
+          onBack: goBack,
+          onContinue: {
+            markCompleted(.configureOpenClaw)
+            advance()
+          }
+        )
+        .transition(.opacity)
+
+      case .agentSetup:
+        OnboardingAgentSetupView(
+          workspacePath: workspacePath,
+          initialAgentName: onboardingState.agentName ?? agentName,
+          initialUserName: onboardingState.userName ?? userName,
+          onBack: goBack,
+          onContinue: { agent, user in
+            agentName = agent
+            userName = user
+            onboardingState.agentName = agent
+            onboardingState.userName = user
+            markCompleted(.agentSetup)
+            advance()
+          }
+        )
+        .transition(.opacity)
+
+      case .startOrchestrator:
+        OnboardingOrchestratorView(
+          workspacePath: workspacePath,
+          onBack: goBack,
+          onContinue: {
+            markCompleted(.startOrchestrator)
+            advance()
+          }
+        )
+        .transition(.opacity)
+
+      case .done:
+        OnboardingDoneView {
+          completeOnboarding()
         }
+        .transition(.opacity)
+      }
     }
-    
-    /// Go back to the previous step in the onboarding flow
-    private func goBackToPreviousStep() {
-        switch currentStep {
-        case .welcome:
-            // Already at first step, do nothing
-            break
-        case .repoSetup:
-            currentStep = .welcome
-        case .cloneAndValidate:
-            currentStep = .repoSetup
-        case .personality:
-            currentStep = .cloneAndValidate
-        case .serverSetup:
-            currentStep = .personality
-        case .verification:
-            currentStep = .serverSetup
-        }
+    .animation(.easeInOut(duration: 0.25), value: currentStep)
+    .onAppear {
+      // Restore persisted onboarding state + pick first incomplete step.
+      let s = OnboardingStateManager.load()
+      onboardingState = s
+      if let ws = s.workspace { workspacePath = ws }
+      if let agent = s.agentName { agentName = agent }
+      if let user = s.userName { userName = user }
+
+      // If config already has a control repo URL (e.g., user partially set up), reuse it.
+      if controlRepoUrl.isEmpty {
+        let cfgUrl = vm.config?.controlRepoUrl.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !cfgUrl.isEmpty { controlRepoUrl = cfgUrl }
+      }
+
+      currentStep = firstIncompleteStep(state: s)
     }
-    
-    /// Handle repository setup completion
-    private func handleRepoSetup(url: String, isNew: Bool) {
-        repoUrl = url
-        isNewRepo = isNew
-        
-        // Don't save config yet - the clone screen will handle that
-        // Just advance to the next step
-        advanceToNextStep()
+  }
+
+  private func firstIncompleteStep(state: OnboardingState) -> Step {
+    if !state.isCompleted(.welcome) { return .welcome }
+    if !state.isCompleted(.prereqs) { return .prereqs }
+    if !state.isCompleted(.workspace) { return .workspace }
+    // We intentionally don't persist repo setup separately.
+    if controlRepoUrl.isEmpty { return .repoSetup }
+    if !state.isCompleted(.cloneCoreRepos) { return .cloneCoreRepos }
+    if !state.isCompleted(.installOpenClaw) { return .installOpenClaw }
+    if !state.isCompleted(.configureOpenClaw) { return .configureOpenClaw }
+    if !state.isCompleted(.agentSetup) { return .agentSetup }
+    if !state.isCompleted(.startOrchestrator) { return .startOrchestrator }
+    return .done
+  }
+
+  private func markCompleted(_ step: OnboardingStepID) {
+    onboardingState.markCompleted(step)
+    OnboardingStateManager.save(onboardingState)
+  }
+
+  private func advance() {
+    currentStep = nextStep(after: currentStep)
+    OnboardingStateManager.save(onboardingState)
+  }
+
+  private func goBack() {
+    currentStep = previousStep(before: currentStep)
+  }
+
+  private func nextStep(after step: Step) -> Step {
+    switch step {
+    case .welcome: return .prereqs
+    case .prereqs: return .workspace
+    case .workspace: return .repoSetup
+    case .repoSetup: return .cloneCoreRepos
+    case .cloneCoreRepos: return .installOpenClaw
+    case .installOpenClaw: return .configureOpenClaw
+    case .configureOpenClaw: return .agentSetup
+    case .agentSetup: return .startOrchestrator
+    case .startOrchestrator: return .done
+    case .done: return .done
     }
-    
-    /// Mark onboarding as complete and save configuration
-    private func completeOnboarding() {
-        // This will be called when all onboarding steps are finished
-        let path = vm.config?.controlRepoPath ?? ""
-        let url = vm.config?.controlRepoUrl
-        // Persist onboardingComplete, even on fresh installs where config started as nil.
-        let ok = vm.setControlRepo(path: path, repoUrl: url, onboardingComplete: true)
-        if !ok {
-            print("⚠️ Failed to persist onboarding completion")
-        }
+  }
+
+  private func previousStep(before step: Step) -> Step {
+    switch step {
+    case .welcome: return .welcome
+    case .prereqs: return .welcome
+    case .workspace: return .prereqs
+    case .repoSetup: return .workspace
+    case .cloneCoreRepos: return .repoSetup
+    case .installOpenClaw: return .cloneCoreRepos
+    case .configureOpenClaw: return .installOpenClaw
+    case .agentSetup: return .configureOpenClaw
+    case .startOrchestrator: return .agentSetup
+    case .done: return .startOrchestrator
     }
+  }
+
+  private func completeOnboarding() {
+    // Persist onboarding completion.
+    let path = vm.config?.controlRepoPath ?? ""
+    let url = vm.config?.controlRepoUrl
+    let ok = vm.setControlRepo(path: path, repoUrl: url, onboardingComplete: true)
+    if !ok {
+      print("⚠️ Failed to persist onboarding completion")
+    }
+
+    onboardingState.markCompleted(.done)
+    OnboardingStateManager.save(onboardingState)
+  }
 }
 
 #Preview {
-    OnboardingView()
-        .environmentObject(AppViewModel())
-        .frame(width: 800, height: 600)
+  OnboardingView()
+    .environmentObject(AppViewModel())
+    .frame(width: 900, height: 650)
 }

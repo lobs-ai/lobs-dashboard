@@ -1,0 +1,58 @@
+import SwiftUI
+
+struct OnboardingDoneView: View {
+  let onFinish: () -> Void
+
+  var body: some View {
+    VStack(spacing: 28) {
+      Spacer()
+
+      VStack(spacing: 12) {
+        Image(systemName: "checkmark.seal.fill")
+          .font(.system(size: 44))
+          .foregroundColor(.green)
+        Text("You’re All Set!")
+          .font(.system(size: 28, weight: .semibold))
+        Text("Your assistant is ready. Create your first task to get started.")
+          .font(.system(size: 14))
+          .foregroundColor(.secondary)
+          .multilineTextAlignment(.center)
+          .frame(maxWidth: 560)
+      }
+
+      VStack(alignment: .leading, spacing: 10) {
+        Text("Quick tips")
+          .font(.system(size: 13, weight: .semibold))
+        Text("• Use ⌘N for a new task\n• Settings: ⌘,\n• If sync looks stale, click Push Now")
+          .font(.system(size: 12))
+          .foregroundColor(.secondary)
+      }
+      .frame(width: 560, alignment: .leading)
+      .padding(16)
+      .background(Theme.cardBg)
+      .cornerRadius(12)
+      .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border, lineWidth: 1))
+
+      Spacer()
+
+      Button(action: onFinish) {
+        Text("Go to Dashboard")
+          .font(.system(size: 14, weight: .medium))
+          .foregroundColor(.white)
+          .frame(width: 180)
+          .padding(.vertical, 12)
+      }
+      .buttonStyle(.plain)
+      .background(Theme.accent)
+      .cornerRadius(10)
+      .padding(.bottom, 60)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Theme.bg)
+  }
+}
+
+#Preview {
+  OnboardingDoneView(onFinish: {})
+    .frame(width: 800, height: 600)
+}

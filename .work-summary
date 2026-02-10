@@ -1,0 +1,1 @@
+Implemented complete onboarding wizard: prereqs check, workspace setup, repo cloning, OpenClaw install/config, agent setup, orchestrator LaunchAgent with resumable state persistence
