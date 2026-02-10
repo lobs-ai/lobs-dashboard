@@ -40,7 +40,7 @@ struct OnboardingView: View {
     var title: String {
       switch self {
       case .welcome: return "Welcome"
-      case .prereqs: return "Prereqs"
+      case .prereqs: return "Dashboard Setup"
       case .workspace: return "Workspace"
       case .cloneRepos: return "Clone repos"
       case .installOpenClaw: return "Install OpenClaw"
@@ -249,12 +249,12 @@ struct OnboardingView: View {
         }
 
     case .prereqs:
-      OnboardingPrereqsView {
+      OnboardingDashboardSetupView {
         markCompleted(.prereqs)
         advance()
       }
         .onAppear {
-          // OnboardingPrereqsView updates wizard state via environment object.
+          // OnboardingDashboardSetupView updates wizard state via environment object.
         }
 
     case .workspace:
