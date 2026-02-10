@@ -63,23 +63,45 @@ struct CommandPaletteView: View {
       items.append(contentsOf: inboxResults())
     }
     
-    // Filter and rank by query
-    if !queryText.isEmpty {
-      items = items.filter { fuzzyMatch(query: queryText, target: $0.title) != nil }
-      items.sort { a, b in
-        rankResult(a, query: queryText) > rankResult(b, query: queryText)
-      }
+    let parsed = PaletteQuery.parse(queryText)
+
+    // Optional project filter (e.g. "in:dashboard")
+    if let pf = parsed.projectFilter, !pf.isEmpty {
+      items = items.filter { matchesProjectFilter($0, projectQuery: pf) }
     }
-    
-    // Add recent items if no query
-    if queryText.isEmpty && filterMode == .all {
+
+    // Filter and rank by query (multi-token)
+    if !parsed.searchTokens.isEmpty {
+      let recentIds = Set(loadRecentIds())
+      items = items.compactMap { result in
+        guard let score = matchScore(result: result, queryTokens: parsed.searchTokens, recentIds: recentIds) else {
+          return nil
+        }
+        return (result, score)
+      }
+      .sorted { $0.1 > $1.1 }
+      .map { $0.0 }
+    }
+
+    // Add recent items when there's no search text (for all modes)
+    if parsed.searchTokens.isEmpty {
       let recents = loadRecents()
+      let filteredRecents = recents.filter { recent in
+        switch filterMode {
+        case .all: return true
+        case .actions: return recent.id.hasPrefix("action:")
+        case .projects: return recent.id.hasPrefix("project:") || recent.id.hasPrefix("research:")
+        case .tasks: return recent.id.hasPrefix("task:")
+        case .docs: return recent.id.hasPrefix("research:")
+        case .inbox: return recent.id.hasPrefix("inbox:")
+        }
+      }
       // Deduplicate by result ID
       let existingIds = Set(items.map { $0.id })
-      let recentItems = recents.filter { !existingIds.contains($0.id) }
+      let recentItems = filteredRecents.filter { !existingIds.contains($0.id) }
       items = recentItems + items
     }
-    
+
     return Array(items.prefix(15)) // Limit to 15 results
   }
   
@@ -387,60 +409,63 @@ struct CommandPaletteView: View {
   }
   
   // MARK: - Fuzzy Matching & Ranking
-  
-  /// Basic fuzzy match — returns match score if all query chars appear in order in target
-  private func fuzzyMatch(query: String, target: String) -> Int? {
-    let queryLower = query.lowercased()
-    let targetLower = target.lowercased()
-    
-    var queryIndex = queryLower.startIndex
-    var lastMatchIndex = targetLower.startIndex
-    var score = 0
-    
-    for (targetIndex, targetChar) in targetLower.enumerated() {
-      guard queryIndex < queryLower.endIndex else { break }
-      
-      if queryLower[queryIndex] == targetChar {
-        // Consecutive matches get bonus
-        if targetIndex > 0 && targetLower.index(targetLower.startIndex, offsetBy: targetIndex - 1) == lastMatchIndex {
-          score += 5
-        }
-        score += 1
-        lastMatchIndex = targetLower.index(targetLower.startIndex, offsetBy: targetIndex)
-        queryIndex = queryLower.index(after: queryIndex)
-      }
+
+  private func matchScore(result: CommandResult, queryTokens: [String], recentIds: Set<String>) -> Int? {
+    // Score title and subtitle; allow matches in either.
+    let titleScore = FuzzyMatcher.score(queryTokens: queryTokens, target: result.title)
+    let subtitleScore = FuzzyMatcher.score(queryTokens: queryTokens, target: result.subtitle)
+
+    guard let base = max(titleScore ?? Int.min, subtitleScore ?? Int.min), base != Int.min else {
+      return nil
     }
-    
-    return queryIndex == queryLower.endIndex ? score : nil
+
+    // Slight boost if this is a recent selection.
+    let recentBoost = recentIds.contains(result.id) ? 120 : 0
+
+    // Prefer title matches over subtitle-only matches.
+    let titleBoost = (titleScore != nil) ? 40 : 0
+
+    return base + recentBoost + titleBoost
   }
-  
-  /// Rank results: exact > recent > prefix > fuzzy
-  private func rankResult(_ result: CommandResult, query: String) -> Int {
-    let titleLower = result.title.lowercased()
-    let queryLower = query.lowercased()
-    
-    // Exact match
-    if titleLower == queryLower {
-      return 10000
+
+  private func matchesProjectFilter(_ result: CommandResult, projectQuery: String) -> Bool {
+    let q = projectQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+    if q.isEmpty { return true }
+
+    // Projects: match against their own title.
+    if result.id.hasPrefix("project:") {
+      return FuzzyMatcher.score(queryTokens: [q], target: result.title) != nil
     }
-    
-    // Prefix match
-    if titleLower.hasPrefix(queryLower) {
-      return 1000 + (100 - query.count) // Prefer shorter prefixes
+
+    // Research projects are also projects.
+    if result.id.hasPrefix("research:") {
+      return FuzzyMatcher.score(queryTokens: [q], target: result.title) != nil
     }
-    
-    // Word boundary match (query matches start of a word)
-    let words = titleLower.split(separator: " ")
-    for word in words {
-      if word.hasPrefix(queryLower) {
-        return 500
+
+    // Tasks: match against the associated project title.
+    if result.id.hasPrefix("task:") {
+      let taskId = String(result.id.dropFirst(5))
+      if let task = vm.tasks.first(where: { $0.id == taskId }),
+         let pid = task.projectId {
+        let pt = projectTitle(pid)
+        return FuzzyMatcher.score(queryTokens: [q], target: pt) != nil
       }
+      return false
     }
-    
-    // Fuzzy match score
-    return fuzzyMatch(query: query, target: result.title) ?? 0
+
+    // Inbox items: no project association.
+    return false
   }
-  
+
+  private func loadRecentIds() -> [String] {
+    guard !recentsData.isEmpty,
+          let data = recentsData.data(using: .utf8),
+          let ids = try? JSONDecoder().decode([String].self, from: data) else {
+      return []
+    }
+    return ids
+  }
+
   // MARK: - Recents Persistence
   
   private func loadRecents() -> [CommandResult] {

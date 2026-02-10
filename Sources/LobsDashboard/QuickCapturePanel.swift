@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 // MARK: - Quick Capture Panel (Global Hotkey — Task E1F2A3B4-1002)
@@ -12,12 +13,19 @@ final class QuickCapturePanel {
   private var localMonitor: Any?
   private weak var vm: AppViewModel?
   private var cachedHotkeyMode: Int = 1
+  private var hotkeyModeCancellable: AnyCancellable?
 
   func setup(vm: AppViewModel) {
     self.vm = vm
-    Task { @MainActor in
-      self.cachedHotkeyMode = vm.quickCaptureHotkeyMode
-    }
+
+    // Cache the hotkey mode for use in the global event monitor (which may fire off-main-thread).
+    cachedHotkeyMode = vm.quickCaptureHotkeyMode
+    hotkeyModeCancellable = vm.$quickCaptureHotkeyMode
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] newValue in
+        self?.cachedHotkeyMode = newValue
+      }
+
     registerGlobalHotkey()
   }
 
@@ -74,11 +82,11 @@ final class QuickCapturePanel {
     }
 
     let hostingView = NSHostingView(rootView: captureView)
-    hostingView.frame = NSRect(x: 0, y: 0, width: 480, height: 200)
+    hostingView.frame = NSRect(x: 0, y: 0, width: 560, height: 260)
 
     if panel == nil {
       let p = NSPanel(
-        contentRect: NSRect(x: 0, y: 0, width: 480, height: 200),
+        contentRect: NSRect(x: 0, y: 0, width: 560, height: 260),
         styleMask: [.titled, .closable, .fullSizeContentView, .nonactivatingPanel, .hudWindow],
         backing: .buffered,
         defer: false
@@ -129,10 +137,68 @@ struct QuickCaptureView: View {
 
   @State private var title: String = ""
   @State private var notes: String = ""
+
   @State private var selectedProjectId: String = ""
+  @State private var projectQuery: String = ""
+  @State private var showingProjectPicker: Bool = false
+
+  @FocusState private var titleFocused: Bool
+
+  @AppStorage("quickCaptureRecentProjectIds") private var recentProjectsData: String = ""
 
   private var activeProjects: [Project] {
     vm.projects.filter { ($0.archived ?? false) == false }
+  }
+
+  private var selectedProjectTitle: String {
+    activeProjects.first(where: { $0.id == selectedProjectId })?.title ?? ""
+  }
+
+  private var recentProjectIds: [String] {
+    guard let data = recentProjectsData.data(using: .utf8),
+          let ids = try? JSONDecoder().decode([String].self, from: data) else {
+      return []
+    }
+    return ids
+  }
+
+  private var projectSuggestions: [Project] {
+    let q = projectQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    // If empty, show recents first, then the current selection, then alphabetically.
+    if q.isEmpty {
+      var projects: [Project] = []
+
+      let recent = recentProjectIds.compactMap { id in
+        activeProjects.first(where: { $0.id == id })
+      }
+      projects.append(contentsOf: recent)
+
+      if let selected = activeProjects.first(where: { $0.id == selectedProjectId }),
+         !projects.contains(where: { $0.id == selected.id }) {
+        projects.append(selected)
+      }
+
+      let remaining = activeProjects
+        .filter { p in !projects.contains(where: { $0.id == p.id }) }
+        .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+
+      projects.append(contentsOf: remaining)
+      return Array(projects.prefix(8))
+    }
+
+    // Fuzzy search.
+    let tokens = q.split(separator: " ").map(String.init)
+    let scored: [(Project, Int)] = activeProjects.compactMap { p in
+      guard let s = FuzzyMatcher.score(queryTokens: tokens, target: p.title) else { return nil }
+      return (p, s)
+    }
+
+    return scored
+      .sorted { $0.1 > $1.1 }
+      .map { $0.0 }
+      .prefix(8)
+      .map { $0 }
   }
 
   var body: some View {
@@ -159,31 +225,83 @@ struct QuickCaptureView: View {
       TextField("What needs to be done?", text: $title)
         .textFieldStyle(.roundedBorder)
         .font(.body)
+        .focused($titleFocused)
         .onSubmit { submit() }
 
-      HStack(spacing: 8) {
-        Picker("Project", selection: $selectedProjectId) {
-          ForEach(activeProjects) { p in
-            Text(p.title).tag(p.id)
+      VStack(alignment: .leading, spacing: 8) {
+        HStack(spacing: 8) {
+          ZStack(alignment: .leading) {
+            if projectQuery.isEmpty {
+              Text(selectedProjectTitle.isEmpty ? "Project" : selectedProjectTitle)
+                .foregroundStyle(.secondary)
+                .padding(.leading, 8)
+            }
+
+            TextField("", text: $projectQuery)
+              .textFieldStyle(.roundedBorder)
+              .font(.footnote)
+              .onTapGesture {
+                showingProjectPicker = true
+              }
+              .onChange(of: projectQuery) { _ in
+                showingProjectPicker = true
+              }
           }
-        }
-        .labelsHidden()
-        .frame(width: 150)
+          .frame(width: 180)
 
-        TextField("Notes (optional)", text: $notes)
-          .textFieldStyle(.roundedBorder)
-          .font(.footnote)
-          .onSubmit { submit() }
+          TextField("Notes (optional)", text: $notes)
+            .textFieldStyle(.roundedBorder)
+            .font(.footnote)
+            .onSubmit { submit() }
 
-        Button(action: submit) {
-          Image(systemName: "arrow.up.circle.fill")
-            .font(.title2)
-            .foregroundStyle(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                             ? Color.secondary : Color.accentColor)
+          Button(action: submit) {
+            Image(systemName: "arrow.up.circle.fill")
+              .font(.title2)
+              .foregroundStyle(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                               ? Color.secondary : Color.accentColor)
+          }
+          .buttonStyle(.plain)
+          .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+          .keyboardShortcut(.defaultAction)
         }
-        .buttonStyle(.plain)
-        .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        .keyboardShortcut(.defaultAction)
+
+        if showingProjectPicker {
+          VStack(alignment: .leading, spacing: 0) {
+            ForEach(projectSuggestions) { p in
+              Button {
+                selectProject(p)
+              } label: {
+                HStack {
+                  Text(p.title)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                  Spacer()
+                  if p.id == selectedProjectId {
+                    Image(systemName: "checkmark")
+                      .font(.system(size: 11, weight: .semibold))
+                      .foregroundStyle(.secondary)
+                  }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+              }
+              .buttonStyle(.plain)
+
+              if p.id != projectSuggestions.last?.id {
+                Divider()
+              }
+            }
+          }
+          .background(
+            RoundedRectangle(cornerRadius: 10)
+              .fill(Color(NSColor.controlBackgroundColor))
+          )
+          .overlay(
+            RoundedRectangle(cornerRadius: 10)
+              .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+          )
+        }
       }
     }
     .padding(16)
@@ -198,8 +316,30 @@ struct QuickCaptureView: View {
     .shadow(color: .black.opacity(0.2), radius: 20, y: 10)
     .onAppear {
       selectedProjectId = vm.selectedProjectId
+      if !activeProjects.contains(where: { $0.id == selectedProjectId }) {
+        selectedProjectId = activeProjects.first?.id ?? ""
+      }
+      projectQuery = ""
+      titleFocused = true
     }
     .onExitCommand { onDismiss() }
+  }
+
+  private func selectProject(_ project: Project) {
+    selectedProjectId = project.id
+    projectQuery = ""
+    showingProjectPicker = false
+
+    // Persist as a recent.
+    var ids = recentProjectIds
+    ids.removeAll { $0 == project.id }
+    ids.insert(project.id, at: 0)
+    ids = Array(ids.prefix(8))
+
+    if let data = try? JSONEncoder().encode(ids),
+       let s = String(data: data, encoding: .utf8) {
+      recentProjectsData = s
+    }
   }
 
   private func submit() {
@@ -208,15 +348,19 @@ struct QuickCaptureView: View {
 
     let prevProject = vm.selectedProjectId
     vm.selectedProjectId = selectedProjectId
+
     vm.submitTaskToLobs(
       title: trimmed,
       notes: notes.isEmpty ? nil : notes,
       autoPush: true
     )
+
     vm.selectedProjectId = prevProject
 
     title = ""
     notes = ""
+    projectQuery = ""
+    showingProjectPicker = false
     onDismiss()
   }
 }
