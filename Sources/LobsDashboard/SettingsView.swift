@@ -7,7 +7,7 @@ struct SettingsView: View {
   @State private var showingChangeRepoConfirmation = false
   @State private var showingResetConfirmation = false
   @State private var showingPersonalityEditor = false
-  @State private var showingRestartOnboardingConfirmation = false
+  @State private var showingSetupStatus = false
 
   @State private var showingForcePullConfirm: Bool = false
   @State private var showingForcePushConfirm: Bool = false
@@ -166,31 +166,19 @@ struct SettingsView: View {
           Divider()
             .padding(.vertical, 8)
           
-          // Onboarding
+          // Setup & Onboarding
           VStack(alignment: .leading, spacing: 12) {
-            Text("Setup Wizard")
+            Text("Setup & Onboarding")
               .font(.headline)
             
-            Text("Re-run the onboarding wizard to review or reconfigure your setup.")
+            Text("Review your configuration status and fix any issues.")
               .font(.caption)
               .foregroundColor(.secondary)
             
-            Button("Restart Onboarding Wizard") {
-              showingRestartOnboardingConfirmation = true
+            Button("View Setup Status…") {
+              showingSetupStatus = true
             }
             .buttonStyle(.bordered)
-            .confirmationDialog(
-              "Restart Onboarding Wizard",
-              isPresented: $showingRestartOnboardingConfirmation,
-              titleVisibility: .visible
-            ) {
-              Button("Restart Wizard", role: .none) {
-                restartOnboarding()
-              }
-              Button("Cancel", role: .cancel) {}
-            } message: {
-              Text("This will restart the setup wizard. Your existing configuration will be preserved, but you can review and update any settings. Continue?")
-            }
           }
 
           Divider()
@@ -250,25 +238,9 @@ struct SettingsView: View {
         .environmentObject(vm)
         .frame(width: 760, height: 560)
     }
-  }
-  
-  private func restartOnboarding() {
-    do {
-      // Keep the existing config but mark onboarding as incomplete
-      if var config = vm.config {
-        config.onboardingComplete = false
-        try ConfigManager.save(config: config)
-        vm.config = config
-      }
-      
-      // Optionally reset onboarding state to start from the beginning
-      // (users can still skip steps they've already completed)
-      OnboardingStateManager.reset()
-      
-      // Close settings window - onboarding will appear
-      dismiss()
-    } catch {
-      print("⚠️ Failed to restart onboarding: \(error)")
+    .sheet(isPresented: $showingSetupStatus) {
+      SetupStatusView()
+        .environmentObject(vm)
     }
   }
   

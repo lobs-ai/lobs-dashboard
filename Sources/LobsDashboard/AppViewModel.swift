@@ -108,7 +108,7 @@ final class AppViewModel: ObservableObject {
     return false
   }
 
-  fileprivate static func detectWorkspacePath(controlRepoPath: String) -> String {
+  static func detectWorkspacePath(controlRepoPath: String) -> String {
     // Prefer explicit onboarding state (if present), otherwise fall back to
     // the parent directory of the configured control repo path.
     let s = OnboardingStateManager.load()
@@ -120,12 +120,12 @@ final class AppViewModel: ObservableObject {
     return url.deletingLastPathComponent().path
   }
 
-  fileprivate static func directoryExists(atPath path: String) -> Bool {
+  static func directoryExists(atPath path: String) -> Bool {
     var isDir: ObjCBool = false
     return FileManager.default.fileExists(atPath: path, isDirectory: &isDir) && isDir.boolValue
   }
 
-  fileprivate static func isOpenClawConfigured() -> Bool {
+  static func isOpenClawConfigured() -> Bool {
     let fm = FileManager.default
     let home = fm.homeDirectoryForCurrentUser
     let openclawDir = home.appendingPathComponent(".openclaw")
@@ -140,7 +140,7 @@ final class AppViewModel: ObservableObject {
     return candidates.contains { fm.fileExists(atPath: $0.path) }
   }
 
-  fileprivate static func isGitRepo(atPath path: String) -> Bool {
+  static func isGitRepo(atPath path: String) -> Bool {
     let repoPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !repoPath.isEmpty else { return false }
 
