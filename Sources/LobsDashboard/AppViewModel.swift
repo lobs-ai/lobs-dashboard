@@ -3092,7 +3092,7 @@ final class AppViewModel: ObservableObject {
   // MARK: - Optimistic + Async Helpers
 
   /// Show error banner that auto-dismisses after a few seconds.
-  private func flashError(_ message: String) {
+  func flashError(_ message: String) {
     errorBanner = message
     Task {
       try? await Task.sleep(nanoseconds: 5_000_000_000)

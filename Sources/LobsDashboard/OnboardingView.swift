@@ -249,7 +249,10 @@ struct OnboardingView: View {
         }
 
     case .prereqs:
-      OnboardingPrereqsView()
+      OnboardingPrereqsView {
+        markCompleted(.prereqs)
+        advance()
+      }
         .onAppear {
           // OnboardingPrereqsView updates wizard state via environment object.
         }

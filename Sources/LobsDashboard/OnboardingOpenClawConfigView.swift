@@ -111,8 +111,8 @@ struct OnboardingOpenClawConfigView: View {
               Text(p.displayName).tag(p)
             }
           }
-          .pickerStyle(.popUpButton)
-          .onChange(of: provider) { _, newProvider in
+          .pickerStyle(.menu)
+          .onChange(of: provider) { newProvider in
             // Reset model to provider default list.
             defaultModel = newProvider.defaultModels.first ?? ""
             testOK = false
@@ -164,7 +164,7 @@ struct OnboardingOpenClawConfigView: View {
               Text(m).tag(m)
             }
           }
-          .pickerStyle(.popUpButton)
+          .pickerStyle(.menu)
           .frame(maxWidth: .infinity, alignment: .leading)
 
           Text("This is the model OpenClaw will use by default.")

@@ -149,10 +149,10 @@ struct OnboardingFirstProjectView: View {
 
     do {
       try FileManager.default.createDirectory(at: projectsDir, withIntermediateDirectories: true)
-    } catch {
+    } catch let createDirError {
       await MainActor.run {
         isCloning = false
-        error = "Failed to create projects directory: \(error.localizedDescription)"
+        error = "Failed to create projects directory: \(createDirError.localizedDescription)"
       }
       return
     }

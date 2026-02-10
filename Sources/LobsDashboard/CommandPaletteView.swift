@@ -73,13 +73,13 @@ struct CommandPaletteView: View {
     // Filter and rank by query (multi-token)
     if !parsed.searchTokens.isEmpty {
       let recentIds = Set(loadRecentIds())
-      items = items.compactMap { result in
+      items = items.compactMap { result -> (CommandResult, Int)? in
         guard let score = matchScore(result: result, queryTokens: parsed.searchTokens, recentIds: recentIds) else {
           return nil
         }
         return (result, score)
       }
-      .sorted { $0.1 > $1.1 }
+      .sorted { (lhs, rhs) in lhs.1 > rhs.1 }
       .map { $0.0 }
     }
 
@@ -415,7 +415,8 @@ struct CommandPaletteView: View {
     let titleScore = FuzzyMatcher.score(queryTokens: queryTokens, target: result.title)
     let subtitleScore = FuzzyMatcher.score(queryTokens: queryTokens, target: result.subtitle)
 
-    guard let base = max(titleScore ?? Int.min, subtitleScore ?? Int.min), base != Int.min else {
+    let base = max(titleScore ?? Int.min, subtitleScore ?? Int.min)
+    guard base != Int.min else {
       return nil
     }
 

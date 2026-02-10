@@ -52,7 +52,7 @@ struct OnboardingPrereqsView: View {
           detail: gitDetail,
           error: gitError,
           expanded: $gitExpanded,
-          help: gitHelp
+          help: { gitHelp }
         )
 
         prereqDisclosure(
@@ -61,7 +61,7 @@ struct OnboardingPrereqsView: View {
           detail: nodeDetail,
           error: nodeError,
           expanded: $nodeExpanded,
-          help: nodeHelp
+          help: { nodeHelp }
         )
 
         prereqDisclosure(
@@ -70,7 +70,7 @@ struct OnboardingPrereqsView: View {
           detail: ghDetail,
           error: ghError,
           expanded: $ghExpanded,
-          help: ghHelp
+          help: { ghHelp }
         )
 
         prereqDisclosure(
@@ -79,7 +79,7 @@ struct OnboardingPrereqsView: View {
           detail: pythonDetail,
           error: pythonError,
           expanded: $pythonExpanded,
-          help: pythonHelp
+          help: { pythonHelp }
         )
       }
       .frame(width: 600)
@@ -359,7 +359,7 @@ struct OnboardingPrereqsView: View {
         let ok = res.ok && pythonVersionAtLeast3_10(ver)
         await MainActor.run {
           pythonOK = ok
-          pythonDetail = res.ok ? "Detected \(ver.isEmpty ? \"(unknown)\" : ver)" : "python3 command failed"
+          pythonDetail = res.ok ? "Detected \(ver.isEmpty ? "(unknown)" : ver)" : "python3 command failed"
           pythonError = (res.ok && ok) ? nil : (!res.ok ? cleanError(res) : "Python must be version 3.10 or newer")
           pythonExpanded = !ok
         }

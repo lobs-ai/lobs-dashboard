@@ -15,6 +15,7 @@ final class QuickCapturePanel {
   private var cachedHotkeyMode: Int = 1
   private var hotkeyModeCancellable: AnyCancellable?
 
+  @MainActor
   func setup(vm: AppViewModel) {
     self.vm = vm
 
