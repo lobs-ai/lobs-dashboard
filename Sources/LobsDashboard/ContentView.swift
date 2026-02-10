@@ -64,6 +64,7 @@ struct ContentView: View {
   @State private var requestSearchFocus = false
   @State private var showCommandPalette = false
   @State private var showOnboarding = false
+  @State private var showFirstTaskWalkthrough = false
 
   var body: some View {
     ZStack(alignment: .top) {
@@ -380,12 +381,26 @@ struct ContentView: View {
     .sheet(isPresented: $showOnboarding) {
       OnboardingSheet(vm: vm, showPicker: $showPicker)
     }
+    .sheet(isPresented: $showFirstTaskWalkthrough) {
+      FirstTaskWalkthroughSheet(
+        vm: vm,
+        autoPush: $autoPush,
+        openNewTaskSheet: { showAddTask = true },
+        openInbox: { withAnimation(.easeInOut(duration: 0.25)) { showInbox = true } }
+      )
+    }
     .onAppear {
       // Check if onboarding is needed on first launch
       if vm.needsOnboarding {
         showOnboarding = true
       } else {
         vm.reloadIfPossible()
+        if !vm.firstTaskWalkthroughComplete {
+          // Let the UI settle so the sheet appears cleanly.
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            showFirstTaskWalkthrough = true
+          }
+        }
       }
     }
     .onChange(of: vm.textDumps) { _ in

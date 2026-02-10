@@ -56,6 +56,15 @@ final class AppViewModel: ObservableObject {
     }
   }
 
+  var firstTaskWalkthroughComplete: Bool {
+    get { settings.firstTaskWalkthroughComplete }
+    set {
+      var s = settings
+      s.firstTaskWalkthroughComplete = newValue
+      settings = s
+    }
+  }
+
   /// Whether onboarding is needed (config not set, incomplete, or repo missing)
   ///
   /// We consider onboarding required if:

@@ -41,6 +41,9 @@ struct UserSettings: Codable {
     /// Whether to show the menu bar widget for ambient task awareness
     var menuBarWidgetEnabled: Bool
 
+    /// Whether the user has completed the first-task walkthrough tutorial
+    var firstTaskWalkthroughComplete: Bool
+
     // MARK: - Auto-refresh
 
     /// Whether auto-refresh is enabled
@@ -78,6 +81,7 @@ struct UserSettings: Codable {
         case quickCaptureHotkeyMode
         case selectedProjectId
         case menuBarWidgetEnabled
+        case firstTaskWalkthroughComplete
         case autoRefreshEnabled
         case autoRefreshIntervalSeconds
         case readInboxItemIds
@@ -104,6 +108,7 @@ struct UserSettings: Codable {
 
         selectedProjectId = try c.decodeIfPresent(String.self, forKey: .selectedProjectId) ?? "default"
         menuBarWidgetEnabled = try c.decodeIfPresent(Bool.self, forKey: .menuBarWidgetEnabled) ?? true
+        firstTaskWalkthroughComplete = try c.decodeIfPresent(Bool.self, forKey: .firstTaskWalkthroughComplete) ?? false
 
         autoRefreshEnabled = try c.decodeIfPresent(Bool.self, forKey: .autoRefreshEnabled) ?? true
         autoRefreshIntervalSeconds = try c.decodeIfPresent(Int.self, forKey: .autoRefreshIntervalSeconds) ?? 30
@@ -128,6 +133,7 @@ struct UserSettings: Codable {
         quickCaptureHotkeyMode: Int = 1,
         selectedProjectId: String = "default",
         menuBarWidgetEnabled: Bool = true,
+        firstTaskWalkthroughComplete: Bool = false,
         autoRefreshEnabled: Bool = true,
         autoRefreshIntervalSeconds: Int = 30,
         readInboxItemIds: [String] = [],
@@ -146,6 +152,7 @@ struct UserSettings: Codable {
         self.quickCaptureHotkeyMode = quickCaptureHotkeyMode
         self.selectedProjectId = selectedProjectId
         self.menuBarWidgetEnabled = menuBarWidgetEnabled
+        self.firstTaskWalkthroughComplete = firstTaskWalkthroughComplete
         self.autoRefreshEnabled = autoRefreshEnabled
         self.autoRefreshIntervalSeconds = autoRefreshIntervalSeconds
         self.readInboxItemIds = readInboxItemIds
