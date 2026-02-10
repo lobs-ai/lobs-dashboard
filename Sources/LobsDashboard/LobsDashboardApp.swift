@@ -4,6 +4,7 @@ import SwiftUI
 @main
 struct LobsDashboardApp: App {
   @StateObject private var vm = AppViewModel()
+  @StateObject private var orchestrator = OrchestratorManager()
   @NSApplicationDelegateAdaptor(LobsDashboardAppDelegate.self) private var appDelegate
 
   var body: some Scene {
@@ -12,13 +13,23 @@ struct LobsDashboardApp: App {
         if vm.needsOnboarding {
           OnboardingView()
             .environmentObject(vm)
+            .environmentObject(orchestrator)
         } else {
           ContentView()
             .environmentObject(vm)
+            .environmentObject(orchestrator)
             .frame(minWidth: 1100, minHeight: 720)
         }
       }
       .onAppear {
+        // Keep orchestrator manager pointed at the same workspace used during onboarding.
+        let onboardingState = OnboardingStateManager.load()
+        if let ws = onboardingState.workspace, !ws.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+          orchestrator.workspacePath = ws
+        }
+        orchestrator.controlRepoURL = vm.repoURL
+        orchestrator.startMonitoring()
+
         // Register global quick capture hotkey (⌘⇧Space)
         QuickCapturePanel.shared.setup(vm: vm)
 
@@ -55,6 +66,7 @@ struct LobsDashboardApp: App {
       .onReceive(vm.$config) { _ in
         // Keep the menu bar widget in sync with user settings changes.
         syncMenuBarWidget()
+        orchestrator.controlRepoURL = vm.repoURL
       }
     }
     // Set a reasonable initial window size; the `.frame(minWidth/minHeight)` only
@@ -73,6 +85,7 @@ struct LobsDashboardApp: App {
     Settings {
       SettingsView()
         .environmentObject(vm)
+        .environmentObject(orchestrator)
     }
   }
 

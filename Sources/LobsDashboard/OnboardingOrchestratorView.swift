@@ -37,7 +37,7 @@ struct OnboardingOrchestratorView: View {
             .font(.system(size: 13, weight: .semibold))
           Text(statusText)
             .font(.system(size: 13))
-            .foregroundColor(statusText.contains("Running") ? .green : .secondary)
+            .foregroundColor(statusText.contains("Running") ? .green : (statusText.contains("Starting") ? .orange : .secondary))
           Spacer()
 
           Toggle("Run on login", isOn: $runOnLogin)
@@ -137,6 +137,7 @@ struct OnboardingOrchestratorView: View {
       isWorking = true
       error = nil
       log = ""
+      statusText = "Starting…"
     }
 
     // 1) Ensure python venv + deps (best-effort; orchestrator repo defines requirements.txt)
@@ -176,7 +177,7 @@ struct OnboardingOrchestratorView: View {
     let res = await Shell.envAsync("launchctl", ["print", "gui/\(uid())/\(launchAgentLabel)"])
     await MainActor.run {
       if res.ok {
-        statusText = res.stdout.contains("state = running") ? "Running" : "Installed"
+        statusText = res.stdout.contains("state = running") ? "Running ✓" : "Installed"
       } else {
         statusText = "Not installed"
       }
@@ -200,7 +201,11 @@ struct OnboardingOrchestratorView: View {
     do {
       try fm.createDirectory(at: agentsDir, withIntermediateDirectories: true)
 
-      let logURL = fm.homeDirectoryForCurrentUser.appendingPathComponent(".lobs/orchestrator.log")
+      let logsDir = fm.homeDirectoryForCurrentUser
+        .appendingPathComponent(".openclaw")
+        .appendingPathComponent("logs")
+      _ = try? fm.createDirectory(at: logsDir, withIntermediateDirectories: true)
+      let logURL = logsDir.appendingPathComponent("lobs-orchestrator.log")
 
       let script = "cd \"\(orchestratorURL.path)\" && source .venv/bin/activate && python3 main.py >> \"\(logURL.path)\" 2>&1"
 
