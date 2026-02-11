@@ -1659,6 +1659,17 @@ private struct InboxToolbarButton: View {
               .offset(x: 4, y: -4)
           }
         }
+        .overlay(alignment: .bottomTrailing) {
+          // Keyboard shortcut hint badge
+          Text("⌘I")
+            .font(.system(size: 9, weight: .medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 3)
+            .padding(.vertical, 1)
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 3))
+            .offset(x: 2, y: 2)
+        }
         .scaleEffect(isHovering ? 1.06 : 1.0)
         .animation(.easeOut(duration: 0.15), value: isHovering)
     }
