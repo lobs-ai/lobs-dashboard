@@ -283,11 +283,6 @@ struct OnboardingView: View {
       OnboardingDoneView {
         completeOnboarding()
       }
-      .onAppear {
-        wizard.configureNext(title: "Go to dashboard", enabled: true) {
-          completeOnboarding()
-        }
-      }
     }
   }
 
