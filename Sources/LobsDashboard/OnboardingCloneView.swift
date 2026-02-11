@@ -228,8 +228,14 @@ struct OnboardingCloneView: View {
         panel.canCreateDirectories = true
         panel.message = "Choose where to clone the repository"
         panel.prompt = "Select"
-        // Start in home directory to avoid triggering TCC prompts for protected folders
-        panel.directoryURL = URL(fileURLWithPath: NSHomeDirectory())
+
+        // Start near the current target path instead of home root to avoid broad folder probing.
+        let expanded = expandPath(localPath).trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallback = (NSHomeDirectory() as NSString).appendingPathComponent("lobs")
+        let baseDir = expanded.isEmpty
+            ? fallback
+            : URL(fileURLWithPath: expanded).deletingLastPathComponent().path
+        panel.directoryURL = URL(fileURLWithPath: baseDir)
         
         if panel.runModal() == .OK, let url = panel.url {
             localPath = url.path + "/lobs-control"

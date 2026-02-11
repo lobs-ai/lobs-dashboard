@@ -132,8 +132,12 @@ struct OnboardingWorkspaceView: View {
     panel.canCreateDirectories = true
     panel.message = "Choose your Lobs workspace folder"
     panel.prompt = "Select"
-    // Start in home directory to avoid triggering TCC prompts for protected folders
-    panel.directoryURL = URL(fileURLWithPath: NSHomeDirectory())
+
+    // Start in an app-specific location instead of home root to avoid broad folder probing.
+    let expanded = expandTilde(workspacePath).trimmingCharacters(in: .whitespacesAndNewlines)
+    let fallback = (NSHomeDirectory() as NSString).appendingPathComponent("lobs")
+    let start = expanded.isEmpty ? fallback : expanded
+    panel.directoryURL = URL(fileURLWithPath: start)
 
     if panel.runModal() == .OK, let url = panel.url {
       workspacePath = url.path

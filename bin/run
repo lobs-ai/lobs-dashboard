@@ -10,17 +10,19 @@ if [ ! -f "$EXECUTABLE" ]; then
   exit 1
 fi
 
-# Create a minimal .app bundle wrapping the built executable
-rm -rf "$APP_BUNDLE"
+# Create/update a minimal .app bundle wrapping the built executable.
+# Keep the bundle path stable between launches to avoid repeated TCC prompts.
 mkdir -p "$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$APP_BUNDLE/Contents/Resources"
 
 # Symlink the executable
+rm -f "$APP_BUNDLE/Contents/MacOS/lobs-dashboard"
 ln -s "$EXECUTABLE" "$APP_BUNDLE/Contents/MacOS/lobs-dashboard"
 
 # Copy bundled resources if they exist
 RESOURCE_DIR="$REPO_DIR/.build/arm64-apple-macosx/debug/LobsDashboard_LobsDashboard.bundle"
 if [ -d "$RESOURCE_DIR" ]; then
+  rm -f "$APP_BUNDLE/Contents/Resources/LobsDashboard_LobsDashboard.bundle"
   ln -s "$RESOURCE_DIR" "$APP_BUNDLE/Contents/Resources/LobsDashboard_LobsDashboard.bundle"
 fi
 
@@ -41,20 +43,14 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<'PLIST'
   <string>APPL</string>
   <key>LSUIElement</key>
   <false/>
-  <key>NSDesktopFolderUsageDescription</key>
-  <string>Lobs Dashboard does not need access to your Desktop.</string>
-  <key>NSDocumentsFolderUsageDescription</key>
-  <string>Lobs Dashboard does not need access to your Documents.</string>
-  <key>NSDownloadsFolderUsageDescription</key>
-  <string>Lobs Dashboard does not need access to your Downloads.</string>
 </dict>
 </plist>
 PLIST
 
-# Sign the app bundle with entitlements to avoid TCC prompts
-ENTITLEMENTS="$REPO_DIR/lobs-dashboard.entitlements"
-if [ -f "$ENTITLEMENTS" ]; then
-  codesign --force --sign - --entitlements "$ENTITLEMENTS" "$APP_BUNDLE" 2>/dev/null || true
+# Optional dev signing.
+# Default is unsigned launch to keep local privacy permissions stable.
+if [ "${LOBSDASHBOARD_CODESIGN:-0}" = "1" ]; then
+  codesign --force --sign - "$APP_BUNDLE" 2>/dev/null || true
 fi
 
 open "$APP_BUNDLE"
