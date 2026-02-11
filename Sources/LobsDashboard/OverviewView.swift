@@ -227,7 +227,6 @@ struct OverviewView: View {
         headerSection
         onboardingStatusSection
         quickActionsSection
-        systemHealthSection
         statsSection
         activitySection
         velocitySection
@@ -551,140 +550,6 @@ struct OverviewView: View {
     .clipShape(RoundedRectangle(cornerRadius: 10))
   }
 
-  private var systemHealthSection: some View {
-    let workerStale: Bool = {
-      if let ws = vm.workerStatus { return isWorkerStatusStale(ws) }
-      return false
-    }()
-
-    let healthItems: [(String, String, Color, String)] = {
-      var out: [(String, String, Color, String)] = []
-
-      // Worker
-      if vm.workerStatus == nil {
-        out.append(("Worker", "unknown", .secondary, "Worker status file not found yet"))
-      } else if workerStale {
-        out.append(("Worker", "stale", .orange, "Worker looks active but hasn't heartbeated recently"))
-      } else if vm.workerStatus?.active == true {
-        out.append(("Worker", "running", .purple, "Worker is currently active"))
-      } else {
-        out.append(("Worker", "idle", .green, "Worker is idle"))
-      }
-
-      // Sync
-      if vm.syncBlockedByUncommitted {
-        out.append(("Sync", "blocked", .orange, "Local uncommitted changes are preventing sync"))
-      } else if vm.pendingChangesCount > 0 {
-        out.append(("Sync", "pending", .orange, "You have local commits waiting to push"))
-      } else {
-        out.append(("Sync", "ok", .green, "Repo is clean / pushed"))
-      }
-
-      // Remote drift
-      if vm.controlRepoBehind > 0 {
-        out.append(("Remote", "behind", .blue, "Origin has \(vm.controlRepoBehind) newer commit(s)"))
-      } else {
-        out.append(("Remote", "up to date", .green, "Local matches origin"))
-      }
-
-      // Push errors
-      if let err = vm.lastPushError, !err.isEmpty {
-        out.append(("Push", "failed", .red, err))
-      }
-
-      return out
-    }()
-
-    let overall: (label: String, color: Color) = {
-      if vm.syncBlockedByUncommitted { return ("Needs attention", .orange) }
-      if vm.lastPushError != nil { return ("Needs attention", .orange) }
-      if workerStale { return ("Needs attention", .orange) }
-      if vm.controlRepoBehind > 0 { return ("Updates available", .blue) }
-      return ("Healthy", .green)
-    }()
-
-    return VStack(alignment: .leading, spacing: 12) {
-      HStack {
-        Image(systemName: "heart.text.square.fill")
-          .foregroundStyle(overall.color)
-        Text("System Health")
-          .font(.headline)
-          .fontWeight(.bold)
-        Spacer()
-        Text(overall.label)
-          .font(.caption)
-          .foregroundStyle(overall.color)
-          .padding(.horizontal, 8)
-          .padding(.vertical, 4)
-          .background(overall.color.opacity(0.12))
-          .clipShape(Capsule())
-      }
-
-      VStack(alignment: .leading, spacing: 8) {
-        ForEach(Array(healthItems.enumerated()), id: \.offset) { _, item in
-          let (k, v, c, hint) = item
-          HStack(spacing: 10) {
-            Text(k)
-              .font(.callout)
-              .foregroundStyle(.secondary)
-              .frame(width: 64, alignment: .leading)
-            Text(v)
-              .font(.callout)
-              .fontWeight(.semibold)
-              .foregroundStyle(c)
-            Spacer()
-          }
-          .help(hint)
-        }
-      }
-
-      HStack(spacing: 10) {
-        Button {
-          vm.reloadIfPossible()
-        } label: {
-          HStack(spacing: 6) {
-            Image(systemName: "arrow.clockwise")
-            Text("Refresh")
-          }
-          .font(.footnote.weight(.semibold))
-          .padding(.horizontal, 10)
-          .padding(.vertical, 6)
-          .background(OTheme.subtle)
-          .clipShape(RoundedRectangle(cornerRadius: 8))
-        }
-        .buttonStyle(.plain)
-
-        if vm.pendingChangesCount > 0 || (vm.lastPushError != nil) {
-          Button {
-            vm.pushNow()
-          } label: {
-            HStack(spacing: 6) {
-              Image(systemName: "arrow.up.circle.fill")
-              Text("Push Now")
-            }
-            .font(.footnote.weight(.semibold))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Color.orange.opacity(0.15))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-          }
-          .buttonStyle(.plain)
-        }
-
-        Spacer()
-      }
-    }
-    .padding(16)
-    .background(
-      RoundedRectangle(cornerRadius: OTheme.cardRadius)
-        .fill(OTheme.cardBg)
-    )
-    .overlay(
-      RoundedRectangle(cornerRadius: OTheme.cardRadius)
-        .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-    )
-  }
-
   private var activitySection: some View {
     VStack(alignment: .leading, spacing: 12) {
       HStack {
@@ -982,19 +847,7 @@ struct OverviewView: View {
     )
   }
 
-  private func isWorkerStatusStale(_ status: WorkerStatus) -> Bool {
-    // If the worker looks active but hasn't emitted a heartbeat recently, treat the status as stale.
-    // This prevents the UI from getting stuck in "running" when the worker crashed or was killed.
-    guard status.active else { return false }
-    let cutoff: TimeInterval = 10 * 60
-    if let hb = status.lastHeartbeat {
-      return Date().timeIntervalSince(hb) > cutoff
-    }
-    if let started = status.startedAt {
-      return Date().timeIntervalSince(started) > cutoff
-    }
-    return false
-  }
+
 
   private var projectCardsSection: some View {
     VStack(alignment: .leading, spacing: 12) {

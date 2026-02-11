@@ -1484,6 +1484,9 @@ private struct ToolbarArea: View {
       // Orchestrator status (always visible)
       OrchestratorStatusIndicator()
 
+      // System health status (compact)
+      SystemHealthStatusIcon(vm: vm)
+
       // Help button (⌘/)
       HoverIconButton(icon: "questionmark.circle", tooltip: "Help & Shortcuts (⌘/)") {
         withAnimation(.easeInOut(duration: 0.25)) { showHelp = true }
