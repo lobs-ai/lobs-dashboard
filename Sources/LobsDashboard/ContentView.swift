@@ -1113,7 +1113,7 @@ private struct ToolbarArea: View {
       }
 
       // Home button
-      HoverIconButton(icon: "house.fill", tooltip: "Home — Overview", activeBg: vm.showOverview ? Color.accentColor.opacity(0.15) : nil) {
+      HoverIconButton(icon: "house.fill", tooltip: "Home — Overview (⌘⇧O)", activeBg: vm.showOverview ? Color.accentColor.opacity(0.15) : nil, shortcut: "⌘⇧O") {
         vm.showOverview = true
       }
 
