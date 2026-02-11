@@ -6,6 +6,7 @@ struct OnboardingCloneCoreReposView: View {
   let workspacePath: String
   let controlRepoUrl: String
   let isNewControlRepo: Bool
+  let onSkip: (() -> Void)?
   let onComplete: (URL) -> Void
 
   @State private var isRunning: Bool = false
@@ -175,7 +176,13 @@ struct OnboardingCloneCoreReposView: View {
       wizard.configureNext(title: "Next", enabled: isFinished && canContinue) {
         completeIfPossible()
       }
-      wizard.configureSkip(shown: false)
+      wizard.configureSkip(
+        shown: onSkip != nil,
+        title: "Skip for now",
+        enabled: !isRunning
+      ) {
+        onSkip?()
+      }
 
       if steps.isEmpty {
         steps = [
@@ -184,6 +191,15 @@ struct OnboardingCloneCoreReposView: View {
           Step(title: "Clone lobs-orchestrator", status: .pending),
           Step(title: "Clone lobs-workspace", status: .pending)
         ]
+      }
+    }
+    .onChange(of: isRunning) { running in
+      wizard.configureSkip(
+        shown: onSkip != nil,
+        title: "Skip for now",
+        enabled: !running
+      ) {
+        onSkip?()
       }
     }
     .onChange(of: readyToProceed) { ok in
@@ -504,6 +520,7 @@ private extension Array {
     workspacePath: LobsPaths.defaultWorkspace,
     controlRepoUrl: "git@github.com:user/lobs-control.git",
     isNewControlRepo: false,
+    onSkip: nil,
     onComplete: { _ in }
   )
   .environmentObject(OnboardingWizardContext())

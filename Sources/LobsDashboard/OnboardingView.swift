@@ -43,7 +43,12 @@ struct OnboardingView: View {
     }
 
     var isOptional: Bool {
-      false  // All steps are required in the simplified flow
+      switch self {
+      case .cloneRepos, .serverGuide:
+        return true
+      default:
+        return false
+      }
     }
 
     var stepIndex1Based: Int {
@@ -255,7 +260,11 @@ struct OnboardingView: View {
           OnboardingCloneCoreReposView(
             workspacePath: workspacePath,
             controlRepoUrl: controlRepoUrl,
-            isNewControlRepo: isNewControlRepo
+            isNewControlRepo: isNewControlRepo,
+            onSkip: {
+              markCompleted(.cloneCoreRepos)
+              advance()
+            }
           ) { controlRepoPath in
             _ = vm.setControlRepo(path: controlRepoPath.path, repoUrl: controlRepoUrl, onboardingComplete: nil)
             markCompleted(.cloneCoreRepos)
@@ -268,6 +277,10 @@ struct OnboardingView: View {
       OnboardingServerGuideView()
         .onAppear {
           wizard.configureNext(title: "Next", enabled: true) {
+            markCompleted(.serverGuide)
+            advance()
+          }
+          wizard.configureSkip(shown: true, title: "Skip for now", enabled: true) {
             markCompleted(.serverGuide)
             advance()
           }

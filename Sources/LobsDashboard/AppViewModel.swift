@@ -77,35 +77,12 @@ final class AppViewModel: ObservableObject {
 
   /// Whether onboarding is needed.
   ///
-  /// We consider onboarding required if any of the "first run" conditions are unmet:
-  /// - Config is missing
-  /// - Onboarding hasn't been completed
-  /// - Workspace is missing
-  /// - Core repos are missing (lobs-control, lobs-orchestrator, lobs-workspace)
-  /// - OpenClaw is not configured
+  /// Onboarding is required only until the user explicitly completes it.
+  /// Other setup checks (repo/workspace/server readiness) are surfaced in the UI
+  /// but should not trap users inside onboarding when sections are skipped.
   var needsOnboarding: Bool {
     guard let config else { return true }
-
-    if !config.onboardingComplete { return true }
-
-    // Control repo is our anchor; if it is missing/moved, re-onboard.
-    let controlPath = config.controlRepoPath.trimmingCharacters(in: .whitespacesAndNewlines)
-    if controlPath.isEmpty { return true }
-    if !Self.isGitRepo(atPath: controlPath) { return true }
-
-    let workspacePath = Self.detectWorkspacePath(controlRepoPath: controlPath)
-    if !Self.directoryExists(atPath: workspacePath) { return true }
-
-    // Core repos expected by the orchestrator/dashboard.
-    let orchestratorPath = (workspacePath as NSString).appendingPathComponent("lobs-orchestrator")
-    let lobsWorkspacePath = (workspacePath as NSString).appendingPathComponent("lobs-workspace")
-
-    if !Self.isGitRepo(atPath: orchestratorPath) { return true }
-    if !Self.isGitRepo(atPath: lobsWorkspacePath) { return true }
-
-    if !Self.isOpenClawConfigured() { return true }
-
-    return false
+    return !config.onboardingComplete
   }
 
   static func detectWorkspacePath(controlRepoPath: String) -> String {
