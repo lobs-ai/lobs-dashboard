@@ -878,6 +878,7 @@ private struct ToolbarArea: View {
 
   private enum FocusField { case search }
   @FocusState private var focusField: FocusField?
+  @State private var showNotificationPopover = false
 
   var body: some View {
     HStack(spacing: 12) {
@@ -893,6 +894,26 @@ private struct ToolbarArea: View {
         Text("Lobs Dashboard")
           .font(.title3)
           .fontWeight(.bold)
+      }
+
+      // Push Notification Settings
+      Button {
+        showNotificationPopover.toggle()
+      } label: {
+        HStack(spacing: 4) {
+          Image(systemName: "bell.fill")
+            .foregroundStyle(.purple)
+            .font(.footnote)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.purple.opacity(0.12))
+        .clipShape(Capsule())
+      }
+      .buttonStyle(.plain)
+      .help("Push Notification Settings")
+      .popover(isPresented: $showNotificationPopover, arrowEdge: .bottom) {
+        NotificationPreferencesPopover(vm: vm)
       }
 
       // Update available indicator
@@ -1901,6 +1922,102 @@ private struct SettingsPopover: View {
     .frame(width: 300)
 
     // App icon is bundled; no icon picker.
+  }
+}
+
+// MARK: - Notification Preferences Popover
+
+private struct NotificationPreferencesPopover: View {
+  @ObservedObject var vm: AppViewModel
+  
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      Text("Push Notifications")
+        .font(.headline)
+        .fontWeight(.bold)
+      
+      Text("Choose which types of notifications you'd like to receive.")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      
+      Divider()
+      
+      // Notification types
+      VStack(alignment: .leading, spacing: 12) {
+        ForEach(NotificationType.allCases, id: \.rawValue) { type in
+          Toggle(isOn: Binding(
+            get: { vm.notificationPreferences.enabledTypes.contains(type.rawValue) },
+            set: { isEnabled in
+              var prefs = vm.notificationPreferences
+              if isEnabled {
+                prefs.enabledTypes.insert(type.rawValue)
+              } else {
+                prefs.enabledTypes.remove(type.rawValue)
+              }
+              vm.updateNotificationPreferences(prefs)
+            }
+          )) {
+            HStack(spacing: 8) {
+              Image(systemName: type.iconName)
+                .foregroundStyle(iconColor(for: type))
+                .frame(width: 16)
+              Text(type.displayName)
+                .font(.footnote)
+            }
+          }
+          .toggleStyle(.switch)
+          .controlSize(.small)
+        }
+      }
+      
+      Divider()
+      
+      // Batch settings
+      VStack(alignment: .leading, spacing: 8) {
+        Toggle("Batch low-priority notifications", isOn: Binding(
+          get: { vm.notificationPreferences.batchLowPriority },
+          set: { isEnabled in
+            var prefs = vm.notificationPreferences
+            prefs.batchLowPriority = isEnabled
+            vm.updateNotificationPreferences(prefs)
+          }
+        ))
+        .toggleStyle(.switch)
+        .controlSize(.small)
+        
+        if vm.notificationPreferences.batchLowPriority {
+          HStack {
+            Text("Batch interval")
+              .font(.footnote)
+            TextField("", value: Binding(
+              get: { vm.notificationPreferences.batchIntervalSeconds },
+              set: { newValue in
+                var prefs = vm.notificationPreferences
+                prefs.batchIntervalSeconds = newValue
+                vm.updateNotificationPreferences(prefs)
+              }
+            ), format: .number)
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 50)
+            Text("seconds")
+              .font(.footnote)
+          }
+        }
+      }
+    }
+    .padding(16)
+    .frame(width: 300)
+  }
+  
+  private func iconColor(for type: NotificationType) -> Color {
+    switch type {
+    case .reminder: return .blue
+    case .blocker: return .orange
+    case .error: return .red
+    case .success: return .green
+    case .info: return .blue
+    case .warning: return .orange
+    }
   }
 }
 
