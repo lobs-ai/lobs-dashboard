@@ -1843,26 +1843,4 @@ final class LobsControlStore {
     }
   }
 
-  // MARK: - Worker Request
-
-  private var workerRequestURL: URL { repoRoot.appendingPathComponent("state/worker-request.json") }
-
-  var workerRequestExists: Bool {
-    FileManager.default.fileExists(atPath: workerRequestURL.path)
-  }
-
-  func writeWorkerRequest() throws {
-    let payload: [String: Any] = [
-      "requestedAt": ISO8601DateFormatter().string(from: Date()),
-      "source": "dashboard"
-    ]
-    var data = try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
-    // Convert to Python-compatible format (": " instead of " : ")
-    if var jsonString = String(data: data, encoding: .utf8) {
-      jsonString = jsonString.replacingOccurrences(of: " : ", with: ": ")
-      data = Data(jsonString.utf8)
-    }
-    try data.write(to: workerRequestURL)
-  }
 }
-

@@ -20,7 +20,7 @@ The command palette provides quick access to projects, tasks, actions, and navig
 
 Use prefix characters to filter results:
 
-- `>` — Actions only (create task, request worker, refresh, etc.)
+- `>` — Actions only (create task, refresh, etc.)
 - `#` — Projects only
 - `@` — Tasks only
 - `/` — Research docs only
@@ -46,7 +46,6 @@ The palette remembers your last 5-10 selections and shows them when you open wit
 
 Built-in actions available:
 - Create New Task
-- Request Worker
 - Refresh / Sync
 - Go to Overview
 - Open Inbox

@@ -535,7 +535,6 @@ struct OverviewView: View {
       VStack(alignment: .leading, spacing: 10) {
         tipRow(icon: "house.fill", title: "Home base", detail: "Use this Dashboard as your hub: onboarding, health, and activity.")
         tipRow(icon: "magnifyingglass", title: "Command palette (⌘K)", detail: "Jump to projects/tasks, run actions, and search across Lobs.")
-        tipRow(icon: "bolt.fill", title: "Request worker (⌘W)", detail: "Create priority work — the orchestrator should pick it up within the next poll cycle.")
         tipRow(icon: "tray.full.fill", title: "Inbox triage", detail: "Treat Inbox like your assistant's output stream: read, respond, and convert to tasks.")
       }
       .padding(16)
@@ -659,13 +658,9 @@ struct OverviewView: View {
   @ViewBuilder
   private var workerStatusSection: some View {
     if let ws = vm.workerStatus {
-      let stale = isWorkerStatusStale(ws)
       WorkerStatusCard(
         status: ws,
         history: vm.workerHistory,
-        canRequestWorker: (!ws.active || stale) && !vm.workerRequestPending,
-        workerRequested: vm.workerRequestPending,
-        onRequestWorker: { vm.requestWorker() },
         tasks: allTasks
       )
     }
@@ -2518,9 +2513,6 @@ private func overviewProjectTypeColor(_ type: ProjectType) -> Color {
 struct WorkerStatusCard: View {
   let status: WorkerStatus
   var history: WorkerHistory? = nil
-  var canRequestWorker: Bool = false
-  var workerRequested: Bool = false
-  var onRequestWorker: (() -> Void)? = nil
   var tasks: [DashboardTask] = []
   @State private var showHistory = false
   @State private var showLiveDetails = false
@@ -2777,45 +2769,6 @@ struct WorkerStatusCard: View {
       }
 
       Spacer()
-
-      // Request Worker button (only when idle)
-      if !isActive {
-        if workerRequested {
-          HStack(spacing: 4) {
-            Image(systemName: "checkmark.circle.fill")
-              .font(.footnote)
-              .foregroundStyle(.green)
-            Text("Requested")
-              .font(.footnote)
-              .fontWeight(.medium)
-              .foregroundStyle(.green)
-          }
-          .padding(.horizontal, 12)
-          .padding(.vertical, 6)
-          .background(Color.green.opacity(0.1))
-          .clipShape(Capsule())
-        } else if canRequestWorker {
-          Button {
-            onRequestWorker?()
-          } label: {
-            HStack(spacing: 4) {
-              Image(systemName: "play.circle.fill")
-                .font(.footnote)
-              Text("Request Worker")
-                .font(.footnote)
-                .fontWeight(.medium)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(Color.accentColor.opacity(0.12))
-            .foregroundStyle(Color.accentColor)
-            .clipShape(Capsule())
-          }
-          .buttonStyle(.plain)
-          .keyboardShortcut("w", modifiers: [.command])
-          .help("Request a worker (⌘W)")
-        }
-      }
     }
     .padding(14)
     .background(

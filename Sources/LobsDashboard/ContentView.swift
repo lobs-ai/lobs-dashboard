@@ -475,10 +475,6 @@ struct ContentView: View {
         },
         onHelp: { withAnimation(.easeInOut(duration: 0.25)) { showHelp = true } },
         onInbox: { withAnimation(.easeInOut(duration: 0.25)) { showInbox = true } },
-        onRequestWorker: {
-          vm.requestWorker()
-          vm.flashSuccess("Worker requested ⚡")
-        },
         onOverview: {
           // ⌘⇧O → Overview
           vm.showOverview = true
@@ -571,7 +567,6 @@ private struct KeyboardShortcutReceiver: View {
   let onSearch: () -> Void
   var onHelp: (() -> Void)? = nil
   var onInbox: (() -> Void)? = nil
-  var onRequestWorker: (() -> Void)? = nil
   var onOverview: (() -> Void)? = nil
   var onProjectSwitch: ((Int) -> Void)? = nil
   var onEscape: (() -> Bool)? = nil
@@ -607,10 +602,6 @@ private struct KeyboardShortcutReceiver: View {
 
       Button("") { onSearch() }
         .keyboardShortcut("k", modifiers: .command)
-        .opacity(0)
-
-      Button("") { onRequestWorker?() }
-        .keyboardShortcut("w", modifiers: .command)
         .opacity(0)
 
       Button("") { onOverview?() }

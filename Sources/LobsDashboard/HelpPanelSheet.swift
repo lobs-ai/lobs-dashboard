@@ -60,7 +60,6 @@ struct HelpPanelSheet: View {
               ShortcutRow(keys: "⌘ K", description: "Global fuzzy-finder")
               ShortcutRow(keys: "⌘ N", description: "Create new task")
               ShortcutRow(keys: "⌘ R", description: "Refresh / sync with git")
-              ShortcutRow(keys: "⌘ W", description: "Request worker")
               ShortcutRow(keys: "⌘ /", description: "Show this help panel")
               ShortcutRow(keys: "↑ ↓", description: "Navigate between tasks")
               ShortcutRow(keys: "Esc", description: "Close overlays / deselect")

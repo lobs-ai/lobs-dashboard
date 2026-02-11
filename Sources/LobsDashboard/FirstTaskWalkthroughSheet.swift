@@ -164,12 +164,6 @@ struct FirstTaskWalkthroughSheet: View {
 
       Spacer()
 
-      Button("Request Worker ⚡") {
-        vm.requestWorker()
-        vm.flashSuccess("Worker requested ⚡")
-      }
-      .help("Creates a priority work request so the orchestrator picks up work on its next cycle")
-
       Button(step == .done ? "Close" : "Next") {
         onNextTapped()
       }
@@ -263,9 +257,6 @@ struct FirstTaskWalkthroughSheet: View {
         Text("Waiting for the orchestrator… this can take a minute or two depending on the poll interval.")
           .font(.callout)
           .foregroundStyle(.secondary)
-        Text("If you want to nudge it, use \"Request Worker ⚡\" below.")
-          .font(.callout)
-          .foregroundStyle(.secondary)
       }
     }
   }
@@ -309,8 +300,7 @@ struct FirstTaskWalkthroughSheet: View {
 
       Text("You now have the full loop: create a task → push → orchestrator picks it up → worker runs → results show up back here.")
         .font(.body)
-
-      Text("Any time you want to speed things up, use \"Request Worker ⚡\".")
+      Text("Tip: If things look stuck, check that auto-refresh is enabled (Settings) and that your control repo is syncing.")
         .font(.callout)
         .foregroundStyle(.secondary)
     }
