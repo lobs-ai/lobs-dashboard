@@ -1137,8 +1137,13 @@ private struct ToolbarArea: View {
                   .help("Synced with GitHub Issues")
               }
               if activeCount > 0 {
-                Text("(\(activeCount))")
-                  .foregroundStyle(.secondary)
+                Text("\(activeCount)")
+                  .font(.system(size: 10, weight: .bold))
+                  .foregroundColor(.white)
+                  .padding(.horizontal, 5)
+                  .padding(.vertical, 2)
+                  .background(Color.blue.opacity(0.8))
+                  .clipShape(Capsule())
               }
             }
           }
