@@ -4,6 +4,7 @@ struct OnboardingOpenClawInstallView: View {
   @EnvironmentObject private var wizard: OnboardingWizardContext
 
   let onComplete: () -> Void
+  var onSkip: (() -> Void)? = nil
 
   @State private var isInstalling: Bool = false
   @State private var logLines: [String] = []
@@ -111,7 +112,9 @@ struct OnboardingOpenClawInstallView: View {
       wizard.configureNext(title: "Next", enabled: canProceed) {
         onComplete()
       }
-      wizard.configureSkip(shown: false)
+      wizard.configureSkip(shown: true, title: "Skip for now", enabled: true) {
+        onSkip?() ?? onComplete()
+      }
 
       Task {
         await detectPrereqs()
@@ -183,7 +186,7 @@ struct OnboardingOpenClawInstallView: View {
 }
 
 #Preview {
-  OnboardingOpenClawInstallView(onComplete: {})
+  OnboardingOpenClawInstallView(onComplete: {}, onSkip: {})
     .environmentObject(OnboardingWizardContext())
     .frame(width: 800, height: 600)
 }

@@ -54,7 +54,7 @@ struct OnboardingView: View {
 
     var isOptional: Bool {
       switch self {
-      case .firstProject:
+      case .installOpenClaw, .configureOpenClaw, .startOrchestrator, .firstProject:
         return true
       default:
         return false
@@ -141,30 +141,33 @@ struct OnboardingView: View {
     let isCurrent = step == currentStep
     let completed = step.onboardingID.map { onboardingState.isCompleted($0) } ?? false
 
-    return HStack(spacing: 10) {
-      Image(systemName: completed ? "checkmark.circle.fill" : "circle")
-        .foregroundColor(completed ? .green : .secondary.opacity(0.6))
-        .font(.system(size: 13))
-        .frame(width: 16)
+    return Button(action: { currentStep = step }) {
+      HStack(spacing: 10) {
+        Image(systemName: completed ? "checkmark.circle.fill" : "circle")
+          .foregroundColor(completed ? .green : .secondary.opacity(0.6))
+          .font(.system(size: 13))
+          .frame(width: 16)
 
-      VStack(alignment: .leading, spacing: 1) {
-        Text(step.title)
-          .font(.system(size: 13, weight: isCurrent ? .semibold : .regular))
-          .foregroundColor(isCurrent ? .primary : .secondary)
+        VStack(alignment: .leading, spacing: 1) {
+          Text(step.title)
+            .font(.system(size: 13, weight: isCurrent ? .semibold : .regular))
+            .foregroundColor(isCurrent ? .primary : .secondary)
 
-        if step.isOptional {
-          Text("Optional")
-            .font(.system(size: 11))
-            .foregroundColor(.secondary)
+          if step.isOptional {
+            Text("Optional")
+              .font(.system(size: 11))
+              .foregroundColor(.secondary)
+          }
         }
-      }
 
-      Spacer(minLength: 0)
+        Spacer(minLength: 0)
+      }
+      .padding(.vertical, 6)
+      .padding(.horizontal, 10)
+      .background(isCurrent ? Theme.bg.opacity(0.55) : Color.clear)
+      .cornerRadius(8)
     }
-    .padding(.vertical, 6)
-    .padding(.horizontal, 10)
-    .background(isCurrent ? Theme.bg.opacity(0.55) : Color.clear)
-    .cornerRadius(8)
+    .buttonStyle(.plain)
   }
 
   private var progressBar: some View {
@@ -300,10 +303,16 @@ struct OnboardingView: View {
       OnboardingOpenClawInstallView {
         markCompleted(.installOpenClaw)
         advance()
+      } onSkip: {
+        markCompleted(.installOpenClaw)
+        advance()
       }
 
     case .configureOpenClaw:
       OnboardingOpenClawConfigView(workspacePath: workspacePath) {
+        markCompleted(.configureOpenClaw)
+        advance()
+      } onSkip: {
         markCompleted(.configureOpenClaw)
         advance()
       }
@@ -324,6 +333,9 @@ struct OnboardingView: View {
 
     case .startOrchestrator:
       OnboardingOrchestratorView(workspacePath: workspacePath) {
+        markCompleted(.startOrchestrator)
+        advance()
+      } onSkip: {
         markCompleted(.startOrchestrator)
         advance()
       }

@@ -5,6 +5,7 @@ struct OnboardingOpenClawConfigView: View {
 
   let workspacePath: String
   let onComplete: () -> Void
+  var onSkip: (() -> Void)? = nil
 
   enum Provider: String, CaseIterable, Identifiable {
     case anthropic
@@ -254,7 +255,9 @@ struct OnboardingOpenClawConfigView: View {
       wizard.configureNext(title: "Next", enabled: success) {
         onComplete()
       }
-      wizard.configureSkip(shown: false)
+      wizard.configureSkip(shown: true, title: "Skip for now", enabled: true) {
+        onSkip?() ?? onComplete()
+      }
 
       // Ensure default model is valid for initial provider.
       defaultModel = provider.defaultModels.first ?? defaultModel

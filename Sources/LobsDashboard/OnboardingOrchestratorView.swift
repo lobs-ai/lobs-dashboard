@@ -5,6 +5,7 @@ struct OnboardingOrchestratorView: View {
 
   let workspacePath: String
   let onComplete: () -> Void
+  var onSkip: (() -> Void)? = nil
 
   @State private var isWorking: Bool = false
   @State private var log: String = ""
@@ -113,7 +114,9 @@ struct OnboardingOrchestratorView: View {
       wizard.configureNext(title: "Next", enabled: statusText.contains("Running")) {
         onComplete()
       }
-      wizard.configureSkip(shown: false)
+      wizard.configureSkip(shown: true, title: "Skip for now", enabled: true) {
+        onSkip?() ?? onComplete()
+      }
 
       Task { await refreshStatus() }
     }
