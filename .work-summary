@@ -1,1 +1,0 @@
-Removed obsolete Request Worker feature (state/worker-request.json) from store/view model, UI (overview card, shortcuts, walkthrough/help), and docs.
