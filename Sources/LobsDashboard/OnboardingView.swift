@@ -25,14 +25,9 @@ struct OnboardingView: View {
 
   enum Step: CaseIterable, Identifiable {
     case welcome
-    case prereqs
     case workspace
     case cloneRepos
-    case installOpenClaw
-    case configureOpenClaw
-    case agentPersonality
-    case startOrchestrator
-    case firstProject
+    case serverGuide
     case done
 
     var id: String { title }
@@ -40,43 +35,27 @@ struct OnboardingView: View {
     var title: String {
       switch self {
       case .welcome: return "Welcome"
-      case .prereqs: return "Dashboard Setup"
       case .workspace: return "Workspace"
       case .cloneRepos: return "Clone repos"
-      case .installOpenClaw: return "Install OpenClaw"
-      case .configureOpenClaw: return "Configure OpenClaw"
-      case .agentPersonality: return "Agent personality"
-      case .startOrchestrator: return "Start orchestrator"
-      case .firstProject: return "First project"
+      case .serverGuide: return "Server setup"
       case .done: return "Done"
       }
     }
 
     var isOptional: Bool {
-      switch self {
-      case .installOpenClaw, .configureOpenClaw, .startOrchestrator, .firstProject:
-        return true
-      default:
-        return false
-      }
+      false  // All steps are required in the simplified flow
     }
 
     var stepIndex1Based: Int {
-      // 1-10
       Step.allCases.firstIndex(of: self).map { $0 + 1 } ?? 1
     }
 
     var onboardingID: OnboardingStepID? {
       switch self {
       case .welcome: return .welcome
-      case .prereqs: return .prereqs
       case .workspace: return .workspace
       case .cloneRepos: return .cloneCoreRepos
-      case .installOpenClaw: return .installOpenClaw
-      case .configureOpenClaw: return .configureOpenClaw
-      case .agentPersonality: return .agentSetup
-      case .startOrchestrator: return .startOrchestrator
-      case .firstProject: return .firstProject
+      case .serverGuide: return .serverGuide
       case .done: return .done
       }
     }
@@ -246,19 +225,10 @@ struct OnboardingView: View {
     case .welcome:
       OnboardingWelcomeView()
         .onAppear {
-          wizard.configureNext(title: "Let’s go", enabled: true) {
+          wizard.configureNext(title: "Let's go", enabled: true) {
             markCompleted(.welcome)
             advance()
           }
-        }
-
-    case .prereqs:
-      OnboardingDashboardSetupView {
-        markCompleted(.prereqs)
-        advance()
-      }
-        .onAppear {
-          // OnboardingDashboardSetupView updates wizard state via environment object.
         }
 
     case .workspace:
@@ -300,55 +270,14 @@ struct OnboardingView: View {
         }
       }
 
-    case .installOpenClaw:
-      OnboardingOpenClawInstallView {
-        markCompleted(.installOpenClaw)
-        advance()
-      } onSkip: {
-        markCompleted(.installOpenClaw)
-        advance()
-      }
-
-    case .configureOpenClaw:
-      OnboardingOpenClawConfigView(workspacePath: workspacePath) {
-        markCompleted(.configureOpenClaw)
-        advance()
-      } onSkip: {
-        markCompleted(.configureOpenClaw)
-        advance()
-      }
-
-    case .agentPersonality:
-      OnboardingAgentSetupView(
-        workspacePath: workspacePath,
-        initialAgentName: onboardingState.agentName ?? agentName,
-        initialUserName: onboardingState.userName ?? userName
-      ) { agent, user in
-        agentName = agent
-        userName = user
-        onboardingState.agentName = agent
-        onboardingState.userName = user
-        markCompleted(.agentSetup)
-        advance()
-      }
-
-    case .startOrchestrator:
-      OnboardingOrchestratorView(workspacePath: workspacePath) {
-        markCompleted(.startOrchestrator)
-        advance()
-      } onSkip: {
-        markCompleted(.startOrchestrator)
-        advance()
-      }
-
-    case .firstProject:
-      OnboardingFirstProjectView(workspacePath: workspacePath) {
-        markCompleted(.firstProject)
-        advance()
-      } onSkip: {
-        markCompleted(.firstProject)
-        advance()
-      }
+    case .serverGuide:
+      OnboardingServerGuideView()
+        .onAppear {
+          wizard.configureNext(title: "Next", enabled: true) {
+            markCompleted(.serverGuide)
+            advance()
+          }
+        }
 
     case .done:
       OnboardingDoneView {
@@ -384,14 +313,9 @@ struct OnboardingView: View {
 
   private func firstIncompleteStep(state: OnboardingState) -> Step {
     if !state.isCompleted(.welcome) { return .welcome }
-    if !state.isCompleted(.prereqs) { return .prereqs }
     if !state.isCompleted(.workspace) { return .workspace }
     if !state.isCompleted(.cloneCoreRepos) { return .cloneRepos }
-    if !state.isCompleted(.installOpenClaw) { return .installOpenClaw }
-    if !state.isCompleted(.configureOpenClaw) { return .configureOpenClaw }
-    if !state.isCompleted(.agentSetup) { return .agentPersonality }
-    if !state.isCompleted(.startOrchestrator) { return .startOrchestrator }
-    if !state.isCompleted(.firstProject) { return .firstProject }
+    if !state.isCompleted(.serverGuide) { return .serverGuide }
     return .done
   }
 
