@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Command Palette
 
-/// Global command palette (⌘K) — search, navigation, and quick actions.
+/// Global command palette (⌘K) — search and navigation.
 struct CommandPaletteView: View {
   @ObservedObject var vm: AppViewModel
   @Binding var isPresented: Bool
@@ -20,7 +20,6 @@ struct CommandPaletteView: View {
   @AppStorage("commandPaletteRecents") private var recentsData = ""
   
   private var filterMode: FilterMode {
-    if searchText.hasPrefix(">") { return .actions }
     if searchText.hasPrefix("#") { return .projects }
     if searchText.hasPrefix("@") { return .tasks }
     if searchText.hasPrefix("/") { return .docs }
@@ -29,6 +28,9 @@ struct CommandPaletteView: View {
   }
   
   private var queryText: String {
+    if searchText.hasPrefix(">") {
+      return String(searchText.dropFirst()).trimmingCharacters(in: .whitespaces)
+    }
     if filterMode != .all, let first = searchText.first, first != " " {
       return String(searchText.dropFirst()).trimmingCharacters(in: .whitespaces)
     }
@@ -37,11 +39,6 @@ struct CommandPaletteView: View {
   
   private var results: [CommandResult] {
     var items: [CommandResult] = []
-    
-    // Quick actions
-    if filterMode == .all || filterMode == .actions {
-      items.append(contentsOf: quickActions())
-    }
     
     // Projects
     if filterMode == .all || filterMode == .projects {
@@ -89,7 +86,6 @@ struct CommandPaletteView: View {
       let filteredRecents = recents.filter { recent in
         switch filterMode {
         case .all: return true
-        case .actions: return recent.id.hasPrefix("action:")
         case .projects: return recent.id.hasPrefix("project:") || recent.id.hasPrefix("research:")
         case .tasks: return recent.id.hasPrefix("task:")
         case .docs: return recent.id.hasPrefix("research:")
@@ -157,7 +153,6 @@ struct CommandPaletteView: View {
                 .foregroundStyle(.tertiary)
               
               HStack(spacing: 12) {
-                FilterHint(prefix: ">", label: "Actions")
                 FilterHint(prefix: "#", label: "Projects")
                 FilterHint(prefix: "@", label: "Tasks")
               }
@@ -258,72 +253,6 @@ struct CommandPaletteView: View {
   }
   
   // MARK: - Result Generators
-  
-  private func quickActions() -> [CommandResult] {
-    [
-      CommandResult(
-        id: "action:new-task",
-        icon: "plus.circle",
-        title: "Create New Task",
-        subtitle: "Add a new task to the current project",
-        category: "Actions",
-        action: {
-          onNewTask?()
-        }
-      ),
-      CommandResult(
-        id: "action:request-worker",
-        icon: "bolt.circle",
-        title: "Request Worker",
-        subtitle: "Request orchestrator to assign work",
-        category: "Actions",
-        action: {
-          vm.requestWorker()
-          vm.flashSuccess("Worker requested ⚡")
-        }
-      ),
-      CommandResult(
-        id: "action:refresh",
-        icon: "arrow.clockwise",
-        title: "Refresh / Sync",
-        subtitle: "Pull latest changes from repository",
-        category: "Actions",
-        action: {
-          vm.reload()
-        }
-      ),
-      CommandResult(
-        id: "action:overview",
-        icon: "house",
-        title: "Go to Overview",
-        subtitle: "View all projects and stats",
-        category: "Navigation",
-        action: {
-          vm.showOverview = true
-        }
-      ),
-      CommandResult(
-        id: "action:inbox",
-        icon: "tray.full",
-        title: "Open Inbox",
-        subtitle: "View design docs and artifacts",
-        category: "Navigation",
-        action: {
-          onOpenInbox?(nil)
-        }
-      ),
-      CommandResult(
-        id: "action:ai-usage",
-        icon: "chart.bar",
-        title: "AI Usage Stats",
-        subtitle: "View worker usage and costs",
-        category: "Navigation",
-        action: {
-          onOpenAIUsage?()
-        }
-      )
-    ]
-  }
   
   private func projectResults() -> [CommandResult] {
     vm.sortedActiveProjects.map { project in
@@ -594,14 +523,6 @@ struct CommandPaletteView: View {
             }
           ))
         }
-      } else if id.hasPrefix("action:") {
-        // Reconstruct quick actions
-        if let action = quickActions().first(where: { $0.id == id }) {
-          var recentAction = action
-          recentAction.category = "Recent"
-          results.append(recentAction)
-        }
-      }
     }
     
     return results
@@ -659,7 +580,6 @@ struct CommandPaletteView: View {
 
 private enum FilterMode {
   case all
-  case actions
   case projects
   case tasks
   case docs

@@ -98,7 +98,7 @@ struct SetupStatusView: View {
         .background(Color(NSColor.controlBackgroundColor))
         .cornerRadius(8)
         
-        // Quick Actions
+        // Actions
         VStack(alignment: .leading, spacing: 16) {
           Text("Actions")
             .font(.headline)
