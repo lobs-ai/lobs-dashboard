@@ -4778,14 +4778,6 @@ final class AppViewModel: ObservableObject {
     updateRequest(updated)
   }
 
-  /// Assign a worker to a research request.
-  func assignResearchRequestWorker(requestId: String, worker: String?) {
-    guard let req = researchRequests.first(where: { $0.id == requestId }) else { return }
-    var updated = req
-    updated.assignedWorker = worker
-    updateRequest(updated)
-  }
-
   /// Split a research request into a sub-request. Creates a new request with parentRequestId set.
   func splitResearchRequest(parentId: String, newPrompt: String) {
     guard let parent = researchRequests.first(where: { $0.id == parentId }) else { return }

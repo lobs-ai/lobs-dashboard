@@ -928,11 +928,6 @@ private struct RequestCard: View {
             .font(.system(size: 11))
             .foregroundStyle(.tertiary)
         }
-        if let worker = request.assignedWorker {
-          Text("→ \(worker)")
-            .font(.system(size: 11))
-            .foregroundStyle(.blue)
-        }
         if request.parentRequestId != nil {
           HStack(spacing: 2) {
             Image(systemName: "arrow.branch")
