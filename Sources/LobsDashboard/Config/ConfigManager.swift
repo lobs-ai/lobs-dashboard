@@ -118,7 +118,7 @@ class ConfigManager {
     }
     
     /// Merge migrated settings with existing settings (prefer existing)
-    private static func mergeSettings(existing: UserSettings, migrated: UserSettings) -> UserSettings {
+    static func mergeSettings(existing: UserSettings, migrated: UserSettings) -> UserSettings {
         var merged = existing
         
         // Only use migrated values if existing is still at default

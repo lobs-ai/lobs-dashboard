@@ -84,7 +84,7 @@ final class LobsControlStore {
   }
 
   /// Encode value to JSON with Python-compatible formatting (": " instead of " : ").
-  private func encodeToPythonJSON<T: Encodable>(_ value: T) throws -> Data {
+  func encodeToPythonJSON<T: Encodable>(_ value: T) throws -> Data {
     let data = try encoder().encode(value)
     guard var jsonString = String(data: data, encoding: .utf8) else {
       return data

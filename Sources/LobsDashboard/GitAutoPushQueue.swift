@@ -213,7 +213,7 @@ actor GitAutoPushQueue {
     }
   }
 
-  private static func bundleCommitMessage(from messages: [String]) -> String {
+  static func bundleCommitMessage(from messages: [String]) -> String {
     guard !messages.isEmpty else { return "Lobs: bundled updates" }
     if messages.count == 1 { return messages[0] }
 
