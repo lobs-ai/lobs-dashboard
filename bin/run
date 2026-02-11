@@ -41,6 +41,12 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<'PLIST'
   <string>APPL</string>
   <key>LSUIElement</key>
   <false/>
+  <key>NSDesktopFolderUsageDescription</key>
+  <string>Lobs Dashboard does not need access to your Desktop.</string>
+  <key>NSDocumentsFolderUsageDescription</key>
+  <string>Lobs Dashboard does not need access to your Documents.</string>
+  <key>NSDownloadsFolderUsageDescription</key>
+  <string>Lobs Dashboard does not need access to your Downloads.</string>
 </dict>
 </plist>
 PLIST
