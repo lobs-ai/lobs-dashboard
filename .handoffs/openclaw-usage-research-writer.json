@@ -1,8 +1,0 @@
-{
-  "to": "writer",
-  "initiative": "openclaw-community-research",
-  "title": "Polish OpenClaw usage research into a concise, readable summary",
-  "context": "Draft research notes are in /home/rafe/lobs-control/research/openclaw-usage-research.md. Please rewrite into a polished summary for Rafe to review tomorrow morning: highlight top 5-7 emerging use cases, integration patterns, and pain points; include links; add an executive summary and a short section on implications/next steps.",
-  "acceptance": "A cleaned-up, well-structured markdown doc suitable for sharing/review, retaining citations/links and noting the search limitations.",
-  "files": ["/home/rafe/lobs-control/research/openclaw-usage-research.md"]
-}

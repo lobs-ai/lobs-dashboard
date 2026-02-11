@@ -226,7 +226,6 @@ struct OverviewView: View {
       VStack(alignment: .leading, spacing: 24) {
         headerSection
         onboardingStatusSection
-        quickActionsSection
         statsSection
         activitySection
         velocitySection
@@ -625,7 +624,7 @@ struct OverviewView: View {
       }
 
       VStack(alignment: .leading, spacing: 10) {
-        tipRow(icon: "house.fill", title: "Home base", detail: "Use this Dashboard as your hub: onboarding, quick actions, health, and activity.")
+        tipRow(icon: "house.fill", title: "Home base", detail: "Use this Dashboard as your hub: onboarding, health, and activity.")
         tipRow(icon: "magnifyingglass", title: "Command palette (⌘K)", detail: "Jump to projects/tasks, run actions, and search across Lobs.")
         tipRow(icon: "bolt.fill", title: "Request worker (⌘W)", detail: "Create priority work — the orchestrator should pick it up within the next poll cycle.")
         tipRow(icon: "tray.full.fill", title: "Inbox triage", detail: "Treat Inbox like your assistant's output stream: read, respond, and convert to tasks.")
