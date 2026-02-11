@@ -148,8 +148,14 @@ final class AppViewModel: ObservableObject {
     return FileManager.default.fileExists(atPath: gitDir, isDirectory: &isGitDir) && isGitDir.boolValue
   }
 
-  @Published var tasks: [DashboardTask] = []
+  @Published var tasks: [DashboardTask] = [] {
+    didSet { invalidateFilteredTasksCache() }
+  }
   @Published var selectedTaskId: String? = nil
+  
+  // Cached filtered tasks for performance
+  private var _cachedFilteredTasks: [DashboardTask] = []
+  private var _filteredTasksCacheValid: Bool = false
 
   // Research
   @Published var researchTiles: [ResearchTile] = []  // Legacy tiles
@@ -268,6 +274,7 @@ final class AppViewModel: ObservableObject {
       loadResearchData()
       loadTrackerData()
       loadProjectReadme()
+      invalidateFilteredTasksCache()
     }
   }
 
@@ -366,7 +373,9 @@ final class AppViewModel: ObservableObject {
   @Published var updateError: String? = nil
 
   // Kanban UX
-  @Published var searchText: String = ""
+  @Published var searchText: String = "" {
+    didSet { invalidateFilteredTasksCache() }
+  }
   @Published var multiSelectedTaskIds: Set<String> = []
 
   /// Whether multi-select mode is currently active.
@@ -387,17 +396,22 @@ final class AppViewModel: ObservableObject {
   }
 
   /// Inbox is treated as a filter, not a column.
-  @Published var showInboxOnly: Bool = false
+  @Published var showInboxOnly: Bool = false {
+    didSet { invalidateFilteredTasksCache() }
+  }
   @Published var ownerFilter: String = "all" {
     didSet {
       var s = settings
       s.ownerFilter = ownerFilter
       settings = s
+      invalidateFilteredTasksCache()
     }
   }
 
   /// Filter tasks by shape/type. nil = show all.
-  @Published var shapeFilter: TaskShape? = nil
+  @Published var shapeFilter: TaskShape? = nil {
+    didSet { invalidateFilteredTasksCache() }
+  }
   @Published var wipLimitActive: Int = 6 {
     didSet {
       var s = settings
@@ -5187,7 +5201,15 @@ final class AppViewModel: ObservableObject {
   // Drag-and-drop support
   @Published var draggingTaskId: String? = nil
 
-  var filteredTasks: [DashboardTask] {
+  // MARK: - Filtered Tasks Cache (Performance Optimization)
+  
+  /// Invalidate the filtered tasks cache when filter dependencies change.
+  private func invalidateFilteredTasksCache() {
+    _filteredTasksCacheValid = false
+  }
+  
+  /// Recompute the filtered tasks cache.
+  private func recomputeFilteredTasks() {
     var out = tasks
 
     // Project scoping
@@ -5234,7 +5256,15 @@ final class AppViewModel: ObservableObject {
       return false // preserve existing order for non-pinned
     }
 
-    return out
+    _cachedFilteredTasks = out
+    _filteredTasksCacheValid = true
+  }
+
+  var filteredTasks: [DashboardTask] {
+    if !_filteredTasksCacheValid {
+      recomputeFilteredTasks()
+    }
+    return _cachedFilteredTasks
   }
 
   var columns: [AnyTaskColumn] {
