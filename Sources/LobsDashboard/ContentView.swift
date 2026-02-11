@@ -1479,7 +1479,7 @@ private struct ToolbarArea: View {
       SystemHealthStatusIcon(vm: vm)
 
       // Help button (⌘/)
-      HoverIconButton(icon: "questionmark.circle", tooltip: "Help & Shortcuts (⌘/)") {
+      HoverIconButton(icon: "questionmark.circle", tooltip: "Help & Shortcuts (⌘/)", shortcut: "⌘/") {
         withAnimation(.easeInOut(duration: 0.25)) { showHelp = true }
       }
 
