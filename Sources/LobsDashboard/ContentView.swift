@@ -1521,6 +1521,17 @@ private struct ToolbarButton: View {
           RoundedRectangle(cornerRadius: 8)
             .stroke(Color.primary.opacity(isHovering ? 0.15 : 0), lineWidth: 1)
         )
+        .overlay(alignment: .bottomTrailing) {
+          // Keyboard shortcut hint badge
+          Text(shortcut)
+            .font(.system(size: 9, weight: .medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 3)
+            .padding(.vertical, 1)
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 3))
+            .offset(x: 2, y: 2)
+        }
         .scaleEffect(isHovering ? 1.05 : 1.0)
         .animation(.easeOut(duration: 0.15), value: isHovering)
     }
