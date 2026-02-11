@@ -216,6 +216,24 @@ struct InboxView: View {
         }
         .buttonStyle(.plain)
 
+        // Mark all as read
+        Button {
+          vm.markAllInboxItemsAsRead()
+        } label: {
+          HStack(spacing: 4) {
+            Image(systemName: "checkmark.circle")
+            Text("Mark all read")
+              .font(.footnote)
+          }
+          .padding(.horizontal, 10)
+          .padding(.vertical, 6)
+          .background(ITheme.subtle)
+          .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .disabled(vm.unreadInboxCount == 0)
+        .help("Mark all inbox items as read")
+
         Button {
           isPresented = false
         } label: {

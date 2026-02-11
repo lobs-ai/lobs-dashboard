@@ -2505,6 +2505,12 @@ final class AppViewModel: ObservableObject {
     // Do not change lastSeenThreadCounts here.
   }
 
+  func markAllInboxItemsAsRead() {
+    for item in inboxItems where !item.isRead {
+      markInboxItemRead(item)
+    }
+  }
+
   /// If the inbox item's content was loaded as a preview, load the full file contents.
   /// This keeps background sync + list rendering fast, but still shows the full doc
   /// when the user selects it.
