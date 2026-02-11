@@ -45,4 +45,10 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
+# Sign the app bundle with entitlements to avoid TCC prompts
+ENTITLEMENTS="$REPO_DIR/lobs-dashboard.entitlements"
+if [ -f "$ENTITLEMENTS" ]; then
+  codesign --force --sign - --entitlements "$ENTITLEMENTS" "$APP_BUNDLE" 2>/dev/null || true
+fi
+
 open "$APP_BUNDLE"
