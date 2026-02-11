@@ -523,6 +523,7 @@ struct CommandPaletteView: View {
             }
           ))
         }
+      }
     }
     
     return results

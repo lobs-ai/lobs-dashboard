@@ -666,6 +666,18 @@ struct OverviewView: View {
     }
   }
 
+  private func isWorkerStatusStale(_ status: WorkerStatus) -> Bool {
+    guard status.active else { return false }
+    let cutoff: TimeInterval = 10 * 60
+    if let hb = status.lastHeartbeat {
+      return Date().timeIntervalSince(hb) > cutoff
+    }
+    if let started = status.startedAt {
+      return Date().timeIntervalSince(started) > cutoff
+    }
+    return false
+  }
+
   @ViewBuilder
   private var syncStatusSection: some View {
     VStack(alignment: .leading, spacing: 12) {
