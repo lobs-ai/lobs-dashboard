@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Foundation
 
 /// Server setup instructions screen of the onboarding wizard
 struct OnboardingServerSetupView: View {
@@ -10,6 +11,17 @@ struct OnboardingServerSetupView: View {
     
     @State private var copiedIndex: Int? = nil
     @State private var copiedAll: Bool = false
+    @State private var isChecking = false
+    @State private var nodeOK = false
+    @State private var pythonOK = false
+    @State private var nodeDetail = ""
+    @State private var pythonDetail = ""
+    @State private var nodeError: String? = nil
+    @State private var pythonError: String? = nil
+    @State private var nodeExpanded = false
+    @State private var pythonExpanded = false
+
+    private let commandTimeoutSeconds: TimeInterval = 12
     
     var body: some View {
         VStack(spacing: 32) {
