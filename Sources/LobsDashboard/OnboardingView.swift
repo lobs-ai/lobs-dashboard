@@ -101,6 +101,7 @@ struct OnboardingView: View {
           stepBody
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .environmentObject(wizard)
+            .id(currentStep)  // Force view recreation when step changes via sidebar
         }
 
         Divider()
