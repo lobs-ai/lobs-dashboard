@@ -92,13 +92,7 @@ struct OnboardingView: View {
       restoreAndResume()
     }
     .onChange(of: currentStep) { newStep in
-      wizard.resetForStep()
-      // Pre-configure wizard for steps that need immediate enabling
-      if newStep == .done {
-        wizard.configureNext(title: "Go to dashboard", enabled: true) {
-          completeOnboarding()
-        }
-      }
+      configureWizardForStep(newStep)
     }
   }
 
@@ -230,12 +224,6 @@ struct OnboardingView: View {
     switch currentStep {
     case .welcome:
       OnboardingWelcomeView()
-        .onAppear {
-          wizard.configureNext(title: "Let's go", enabled: true) {
-            markCompleted(.welcome)
-            advance()
-          }
-        }
 
     case .workspace:
       OnboardingWorkspaceView(initialWorkspace: workspacePath) { path in
@@ -310,6 +298,25 @@ struct OnboardingView: View {
     }
 
     currentStep = firstIncompleteStep(state: s)
+    configureWizardForStep(currentStep)
+  }
+  
+  private func configureWizardForStep(_ step: Step) {
+    wizard.resetForStep()
+    switch step {
+    case .welcome:
+      wizard.configureNext(title: "Let's go", enabled: true) {
+        markCompleted(.welcome)
+        advance()
+      }
+    case .done:
+      wizard.configureNext(title: "Go to dashboard", enabled: true) {
+        completeOnboarding()
+      }
+    default:
+      // Other steps configure themselves via their views
+      break
+    }
   }
 
   private func firstIncompleteStep(state: OnboardingState) -> Step {

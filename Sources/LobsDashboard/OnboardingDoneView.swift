@@ -1,8 +1,6 @@
 import SwiftUI
 
 struct OnboardingDoneView: View {
-  @EnvironmentObject private var wizard: OnboardingWizardContext
-  
   let onFinish: () -> Void
 
   var body: some View {
@@ -44,16 +42,10 @@ struct OnboardingDoneView: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Theme.bg)
-    .task {
-      wizard.configureNext(title: "Go to dashboard", enabled: true) {
-        onFinish()
-      }
-    }
   }
 }
 
 #Preview {
   OnboardingDoneView(onFinish: {})
-    .environmentObject(OnboardingWizardContext())
     .frame(width: 800, height: 600)
 }
