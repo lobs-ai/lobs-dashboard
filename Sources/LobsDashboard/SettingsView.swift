@@ -8,6 +8,9 @@ struct SettingsView: View {
   @State private var showingResetConfirmation = false
   @State private var showingPersonalityEditor = false
   @State private var showingSetupStatus = false
+  @State private var showingHelpGuides = false
+  @State private var showingServerSetupGuide = false
+  @State private var showingRerunOnboardingConfirm = false
 
   @State private var showingForcePullConfirm: Bool = false
   @State private var showingForcePushConfirm: Bool = false
@@ -170,11 +173,28 @@ struct SettingsView: View {
           VStack(alignment: .leading, spacing: 12) {
             Text("Setup & Onboarding")
               .font(.headline)
-            
-            Text("Review your configuration status and fix any issues.")
+
+            Text("Revisit the setup wizard or open guides any time.")
               .font(.caption)
               .foregroundColor(.secondary)
-            
+
+            HStack(spacing: 12) {
+              Button("Re-run Onboarding Wizard…") {
+                showingRerunOnboardingConfirm = true
+              }
+              .buttonStyle(.bordered)
+
+              Button("Help & Shortcuts…") {
+                showingHelpGuides = true
+              }
+              .buttonStyle(.bordered)
+
+              Button("Server Setup Guide…") {
+                showingServerSetupGuide = true
+              }
+              .buttonStyle(.bordered)
+            }
+
             Button("View Setup Status…") {
               showingSetupStatus = true
             }
@@ -242,6 +262,25 @@ struct SettingsView: View {
       SetupStatusView()
         .environmentObject(vm)
     }
+    .sheet(isPresented: $showingHelpGuides) {
+      HelpPanelSheet(isPresented: $showingHelpGuides)
+    }
+    .sheet(isPresented: $showingServerSetupGuide) {
+      OnboardingServerGuideView()
+        .frame(width: 820, height: 720)
+    }
+    .confirmationDialog(
+      "Re-run onboarding?",
+      isPresented: $showingRerunOnboardingConfirm,
+      titleVisibility: .visible
+    ) {
+      Button("Re-run Onboarding", role: .destructive) {
+        rerunOnboarding()
+      }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("This will take you back through the setup wizard, without deleting your current configuration.")
+    }
   }
   
   private func changeRepository() {
@@ -263,6 +302,9 @@ struct SettingsView: View {
     do {
       // Delete configuration
       try ConfigManager.reset()
+
+      // Also reset onboarding resume state.
+      OnboardingStateManager.reset()
       
       // Update AppViewModel to trigger onboarding
       vm.config = nil
@@ -272,6 +314,19 @@ struct SettingsView: View {
     } catch {
       print("⚠️ Failed to reset config: \(error)")
     }
+  }
+
+  private func rerunOnboarding() {
+    guard var c = vm.config else { return }
+
+    // Reset resumable onboarding progress so the wizard starts from the beginning.
+    OnboardingStateManager.reset()
+
+    c.onboardingComplete = false
+    vm.config = c
+
+    // Close settings; the main window will swap into onboarding when `needsOnboarding` becomes true.
+    dismiss()
   }
 }
 
