@@ -335,15 +335,10 @@ struct OnboardingView: View {
 
   private func nextStep(after step: Step) -> Step {
     switch step {
-    case .welcome: return .prereqs
-    case .prereqs: return .workspace
+    case .welcome: return .workspace
     case .workspace: return .cloneRepos
-    case .cloneRepos: return .installOpenClaw
-    case .installOpenClaw: return .configureOpenClaw
-    case .configureOpenClaw: return .agentPersonality
-    case .agentPersonality: return .startOrchestrator
-    case .startOrchestrator: return .firstProject
-    case .firstProject: return .done
+    case .cloneRepos: return .serverGuide
+    case .serverGuide: return .done
     case .done: return .done
     }
   }
@@ -351,15 +346,10 @@ struct OnboardingView: View {
   private func previousStep(before step: Step) -> Step {
     switch step {
     case .welcome: return .welcome
-    case .prereqs: return .welcome
-    case .workspace: return .prereqs
+    case .workspace: return .welcome
     case .cloneRepos: return .workspace
-    case .installOpenClaw: return .cloneRepos
-    case .configureOpenClaw: return .installOpenClaw
-    case .agentPersonality: return .configureOpenClaw
-    case .startOrchestrator: return .agentPersonality
-    case .firstProject: return .startOrchestrator
-    case .done: return .firstProject
+    case .serverGuide: return .cloneRepos
+    case .done: return .serverGuide
     }
   }
 
