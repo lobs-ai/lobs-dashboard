@@ -13,10 +13,10 @@ struct OnboardingView: View {
   @StateObject private var wizard = OnboardingWizardContext()
 
   @State private var currentStep: Step = .welcome
-  @State private var onboardingState: OnboardingState = OnboardingStateManager.load(preferredWorkspacePath: NSHomeDirectory() + "/lobs")
+  @State private var onboardingState: OnboardingState = OnboardingStateManager.load(preferredWorkspacePath: LobsPaths.defaultWorkspace)
 
   // Inputs gathered during onboarding
-  @State private var workspacePath: String = NSHomeDirectory() + "/lobs"
+  @State private var workspacePath: String = LobsPaths.defaultWorkspace
   @State private var controlRepoUrl: String = ""
   @State private var isNewControlRepo: Bool = false
 

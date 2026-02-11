@@ -501,7 +501,7 @@ private extension Array {
 
 #Preview {
   OnboardingCloneCoreReposView(
-    workspacePath: NSHomeDirectory() + "/lobs",
+    workspacePath: LobsPaths.defaultWorkspace,
     controlRepoUrl: "git@github.com:user/lobs-control.git",
     isNewControlRepo: false,
     onComplete: { _ in }

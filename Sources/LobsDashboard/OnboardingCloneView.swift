@@ -9,7 +9,7 @@ struct OnboardingCloneView: View {
     let onBack: () -> Void
     let onComplete: () -> Void
     
-    @State private var localPath: String = NSHomeDirectory() + "/lobs-control"
+    @State private var localPath: String = LobsPaths.defaultWorkspace + "/lobs-control"
     @State private var isCloning: Bool = false
     @State private var setupSteps: [SetupStep] = []
     @State private var errorMessage: String? = nil

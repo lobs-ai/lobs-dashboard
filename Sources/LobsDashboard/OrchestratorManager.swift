@@ -45,7 +45,7 @@ final class OrchestratorManager: ObservableObject {
   var controlRepoURL: URL? = nil
 
   /// Workspace containing the orchestrator repo.
-  var workspacePath: String = NSHomeDirectory() + "/lobs" {
+  var workspacePath: String = LobsPaths.defaultWorkspace {
     didSet {
       workspacePath = (workspacePath as NSString).expandingTildeInPath
     }
@@ -286,7 +286,7 @@ final class OrchestratorManager: ObservableObject {
     }
 
     // Fallback to legacy path used by older onboarding.
-    let legacy = fm.homeDirectoryForCurrentUser.appendingPathComponent(".lobs/orchestrator.log")
+    let legacy = LobsPaths.appSupport.appendingPathComponent("orchestrator.log")
     if fm.fileExists(atPath: legacy.path) {
       candidates.append(legacy)
     }

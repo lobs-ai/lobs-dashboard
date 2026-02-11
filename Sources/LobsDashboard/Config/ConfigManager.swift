@@ -1,16 +1,12 @@
 import Foundation
 
-/// Manages application configuration persistence at ~/.lobs/config.json
+/// Manages application configuration persistence at ~/Library/Application Support/Lobs/config.json
 class ConfigManager {
-    /// Configuration file location
-    private static let configDirectory: URL = {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".lobs")
-    }()
+    /// Configuration directory (Application Support to avoid TCC prompts)
+    private static var configDirectory: URL { LobsPaths.appSupport }
     
-    private static let configFile: URL = {
-        configDirectory.appendingPathComponent("config.json")
-    }()
+    /// Configuration file location
+    private static var configFile: URL { LobsPaths.configFile }
     
     /// Load configuration from disk, migrating from UserDefaults if needed
     /// - Returns: AppConfig if file exists and is valid, or default config with migrated settings
@@ -38,7 +34,7 @@ class ConfigManager {
         
         // No config file or decode failed - migrate from UserDefaults if available
         if let migrated = migrateUserDefaults() {
-            print("ℹ️ Migrated settings from UserDefaults to ~/.lobs/config.json")
+            print("ℹ️ Migrated settings from UserDefaults to \(configFile.path)")
             let config = AppConfig(settings: migrated)
             // Try to save migrated config
             try? save(config)

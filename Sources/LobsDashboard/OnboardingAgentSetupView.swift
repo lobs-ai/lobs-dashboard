@@ -176,7 +176,7 @@ struct OnboardingAgentSetupView: View {
 }
 
 #Preview {
-  OnboardingAgentSetupView(workspacePath: NSHomeDirectory() + "/lobs", initialAgentName: "Lobs", initialUserName: "Rafe", onComplete: { _, _ in })
+  OnboardingAgentSetupView(workspacePath: LobsPaths.defaultWorkspace, initialAgentName: "Lobs", initialUserName: "Rafe", onComplete: { _, _ in })
     .environmentObject(OnboardingWizardContext())
     .frame(width: 800, height: 600)
 }

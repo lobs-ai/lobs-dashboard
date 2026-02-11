@@ -7,7 +7,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REAL_HOME="$HOME"
-HASH_FILE="$REAL_HOME/.lobs/dashboard-build-commit"
+HASH_FILE="$REAL_HOME/Library/Application Support/Lobs/dashboard-build-commit"
 
 cd "$REPO_DIR"
 

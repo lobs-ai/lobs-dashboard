@@ -48,14 +48,9 @@ enum OnboardingStepID: String, CaseIterable {
 }
 
 enum OnboardingStateManager {
-  private static let configDirectory: URL = {
-    FileManager.default.homeDirectoryForCurrentUser
-      .appendingPathComponent("lobs")
-  }()
+  private static var configDirectory: URL { LobsPaths.appSupport }
 
-  static let stateFile: URL = {
-    configDirectory.appendingPathComponent(".onboarding-state.json")
-  }()
+  static var stateFile: URL { LobsPaths.onboardingState }
 
   private static func workspaceStateFile(workspacePath: String) -> URL {
     URL(fileURLWithPath: workspacePath).appendingPathComponent(".onboarding-state.json")

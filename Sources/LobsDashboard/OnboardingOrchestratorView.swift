@@ -246,7 +246,7 @@ struct OnboardingOrchestratorView: View {
 }
 
 #Preview {
-  OnboardingOrchestratorView(workspacePath: NSHomeDirectory() + "/lobs", onComplete: {})
+  OnboardingOrchestratorView(workspacePath: LobsPaths.defaultWorkspace, onComplete: {})
     .environmentObject(OnboardingWizardContext())
     .frame(width: 800, height: 600)
 }

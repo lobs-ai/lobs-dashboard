@@ -389,7 +389,7 @@ struct OnboardingOpenClawConfigView: View {
 }
 
 #Preview {
-  OnboardingOpenClawConfigView(workspacePath: NSHomeDirectory() + "/lobs", onComplete: {})
+  OnboardingOpenClawConfigView(workspacePath: LobsPaths.defaultWorkspace, onComplete: {})
     .environmentObject(OnboardingWizardContext())
     .frame(width: 800, height: 600)
 }

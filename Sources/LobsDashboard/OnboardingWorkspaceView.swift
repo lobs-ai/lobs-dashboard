@@ -27,7 +27,7 @@ struct OnboardingWorkspaceView: View {
       VStack(spacing: 10) {
         Text("Create Your Workspace")
           .font(.system(size: 28, weight: .semibold))
-        Text("Where should Lobs store its files? We’ll put core repos and projects here.")
+        Text("Where should Lobs store its files? We'll put core repos and projects here.")
           .font(.system(size: 14))
           .foregroundColor(.secondary)
           .multilineTextAlignment(.center)
@@ -40,7 +40,7 @@ struct OnboardingWorkspaceView: View {
           .foregroundColor(.secondary)
 
         HStack(spacing: 8) {
-          TextField("~/lobs/", text: $workspacePath)
+          TextField("~/Library/Application Support/Lobs", text: $workspacePath)
             .textFieldStyle(.plain)
             .font(.system(size: 14, design: .monospaced))
             .padding(10)
@@ -60,7 +60,7 @@ struct OnboardingWorkspaceView: View {
           .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border, lineWidth: 1))
         }
 
-        Text("Default: ~/lobs/ (we’ll create it if needed)")
+        Text("Default: ~/Library/Application Support/Lobs (no permissions needed)")
           .font(.system(size: 12))
           .foregroundColor(.secondary)
       }
@@ -182,7 +182,7 @@ struct OnboardingWorkspaceView: View {
 }
 
 #Preview {
-  OnboardingWorkspaceView(initialWorkspace: NSHomeDirectory() + "/lobs", onComplete: { _ in })
+  OnboardingWorkspaceView(initialWorkspace: LobsPaths.defaultWorkspace, onComplete: { _ in })
     .environmentObject(OnboardingWizardContext())
     .frame(width: 800, height: 600)
 }

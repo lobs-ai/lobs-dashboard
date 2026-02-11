@@ -217,7 +217,7 @@ struct OnboardingFirstProjectView: View {
 
 #Preview {
   OnboardingFirstProjectView(
-    workspacePath: NSHomeDirectory() + "/lobs",
+    workspacePath: LobsPaths.defaultWorkspace,
     onComplete: {},
     onSkip: {}
   )
