@@ -54,5 +54,6 @@ struct OnboardingDoneView: View {
 
 #Preview {
   OnboardingDoneView(onFinish: {})
+    .environmentObject(OnboardingWizardContext())
     .frame(width: 800, height: 600)
 }

@@ -91,8 +91,14 @@ struct OnboardingView: View {
     .onAppear {
       restoreAndResume()
     }
-    .onChange(of: currentStep) { _ in
+    .onChange(of: currentStep) { newStep in
       wizard.resetForStep()
+      // Pre-configure wizard for steps that need immediate enabling
+      if newStep == .done {
+        wizard.configureNext(title: "Go to dashboard", enabled: true) {
+          completeOnboarding()
+        }
+      }
     }
   }
 
