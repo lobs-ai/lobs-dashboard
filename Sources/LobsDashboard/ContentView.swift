@@ -1472,9 +1472,6 @@ private struct ToolbarArea: View {
         }
       }
 
-      // Orchestrator status (always visible)
-      OrchestratorStatusIndicator()
-
       // System health status (compact)
       SystemHealthStatusIcon(vm: vm)
 

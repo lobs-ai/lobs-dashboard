@@ -70,19 +70,6 @@ struct SettingsView: View {
           Divider()
             .padding(.vertical, 8)
 
-          // Orchestrator
-          VStack(alignment: .leading, spacing: 12) {
-            Text("Orchestrator")
-              .font(.headline)
-
-            OrchestratorControlPanel(compact: false)
-              .frame(maxWidth: .infinity)
-              .padding(.top, 4)
-          }
-
-          Divider()
-            .padding(.vertical, 8)
-
           // Agent Personality
           VStack(alignment: .leading, spacing: 12) {
             Text("Agent")

@@ -82,7 +82,24 @@ final class AppViewModel: ObservableObject {
   /// but should not trap users inside onboarding when sections are skipped.
   var needsOnboarding: Bool {
     guard let config else { return true }
-    return !config.onboardingComplete
+    
+    // If config says onboarding is complete, we're done.
+    if config.onboardingComplete { return false }
+    
+    // Also check if the "done" step is marked complete in the onboarding state.
+    // This handles cases where steps were completed but the config flag wasn't set
+    // (e.g., config reset, save failure, etc.)
+    let onboardingState = OnboardingStateManager.load(preferredWorkspacePath: config.controlRepoPath)
+    if onboardingState.isCompleted(.done) {
+      // Auto-fix: If done step is complete but config flag isn't set, set it now.
+      var updatedConfig = config
+      updatedConfig.onboardingComplete = true
+      self.config = updatedConfig
+      saveConfig()
+      return false
+    }
+    
+    return true
   }
 
   static func detectWorkspacePath(controlRepoPath: String) -> String {
