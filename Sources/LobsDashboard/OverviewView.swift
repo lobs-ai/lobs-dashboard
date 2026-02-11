@@ -230,6 +230,7 @@ struct OverviewView: View {
         activitySection
         velocitySection
         detailedStatsSection
+        AgentGridView(vm: vm)
         workerStatusSection
         syncStatusSection
         projectCardsSection
@@ -247,6 +248,14 @@ struct OverviewView: View {
     .sheet(item: $detailTask) { task in
       OverviewTaskDetailSheet(task: task, vm: vm)
         .frame(minWidth: 480, minHeight: 500)
+    }
+    .sheet(isPresented: Binding(
+      get: { vm.selectedAgentType != nil },
+      set: { if !$0 { vm.selectedAgentType = nil } }
+    )) {
+      if let agentType = vm.selectedAgentType {
+        AgentDetailSheet(agentType: agentType, vm: vm)
+      }
     }
     .sheet(isPresented: $showTimeline) {
       TimelineSheetView(tasks: vm.tasks, projects: vm.projects)

@@ -197,6 +197,10 @@ final class AppViewModel: ObservableObject {
   @Published var workerStatus: WorkerStatus? = nil
   @Published var workerHistory: WorkerHistory? = nil
 
+  // Agent Status
+  @Published var agentStatuses: [String: AgentStatus] = [:]
+  @Published var selectedAgentType: String? = nil
+
   // Main Session Usage
   @Published var mainSessionUsage: MainSessionUsage? = nil
 
@@ -734,6 +738,7 @@ final class AppViewModel: ObservableObject {
         await self.loadTrackerDataAsync(store: store)
         await self.loadInboxItemsAsync(store: store)
         await self.loadWorkerStatusAsync(store: store)
+        await self.loadAgentStatusesAsync(store: store)
       }
 
       // Check for updates in background (low priority)
@@ -5457,6 +5462,17 @@ final class AppViewModel: ObservableObject {
       self.workerStatus = status
       self.workerHistory = history
       self.mainSessionUsage = usage
+    }
+  }
+
+  /// Load per-agent statuses from control repo filesystem.
+  private func loadAgentStatusesAsync(store: LobsControlStore) async {
+    let statuses: [String: AgentStatus]? = await Task.detached {
+      try? store.loadAgentStatuses()
+    }.value
+    guard let statuses else { return }
+    await MainActor.run {
+      self.agentStatuses = statuses
     }
   }
 

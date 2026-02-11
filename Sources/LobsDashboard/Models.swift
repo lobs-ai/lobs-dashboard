@@ -755,6 +755,45 @@ struct WorkerHistory: Codable {
   var runs: [WorkerHistoryRun]
 }
 
+// MARK: - Agent Status
+
+struct AgentStats: Codable {
+  var tasksCompleted: Int?
+  var tasksFailed: Int?
+  var avgDurationSeconds: Int?
+  var lastWeekCompleted: Int?
+}
+
+struct AgentStatus: Codable, Identifiable {
+  var agentType: String
+  var status: String  // idle|working|thinking|finalizing
+  var activity: String?
+  var thinking: String?
+  var currentTaskId: String?
+  var currentProjectId: String?
+  var lastActiveAt: Date?
+  var lastCompletedTaskId: String?
+  var lastCompletedAt: Date?
+  var stats: AgentStats?
+
+  var id: String { agentType }
+
+  var displayName: String { agentType.capitalized }
+
+  var emoji: String {
+    switch agentType {
+    case "programmer": return "\u{1F527}"
+    case "architect": return "\u{1F3D7}"
+    case "researcher": return "\u{1F52C}"
+    case "reviewer": return "\u{1F50D}"
+    case "writer": return "\u{270D}\u{FE0F}"
+    default: return "\u{1F916}"
+    }
+  }
+
+  var isActive: Bool { status != "idle" }
+}
+
 // MARK: - Main Session Usage
 
 struct MainSessionSnapshot: Codable, Identifiable {

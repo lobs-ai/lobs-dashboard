@@ -1766,6 +1766,49 @@ final class LobsControlStore {
     return try decoder().decode(WorkerHistory.self, from: data)
   }
 
+  // MARK: - Agent Status
+
+  func loadAgentStatuses() throws -> [String: AgentStatus] {
+    let agentsDir = repoRoot
+      .appendingPathComponent("state")
+      .appendingPathComponent("agents")
+    let fm = FileManager.default
+    guard fm.fileExists(atPath: agentsDir.path) else { return [:] }
+    guard let files = try? fm.contentsOfDirectory(at: agentsDir, includingPropertiesForKeys: nil) else { return [:] }
+
+    var result: [String: AgentStatus] = [:]
+    for file in files where file.pathExtension == "json" {
+      do {
+        let data = try Data(contentsOf: file)
+        let status = try decoder().decode(AgentStatus.self, from: data)
+        result[status.agentType] = status
+      } catch {
+        // Skip malformed files
+      }
+    }
+    return result
+  }
+
+  /// Load a markdown file from an agent's memory directory.
+  func loadAgentFile(agentType: String, filename: String) -> String? {
+    let url = repoRoot
+      .appendingPathComponent("memory")
+      .appendingPathComponent(agentType)
+      .appendingPathComponent(filename)
+    guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+    return try? String(contentsOf: url, encoding: .utf8)
+  }
+
+  /// Save a markdown file to an agent's memory directory.
+  func saveAgentFile(agentType: String, filename: String, content: String) throws {
+    let dir = repoRoot
+      .appendingPathComponent("memory")
+      .appendingPathComponent(agentType)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let url = dir.appendingPathComponent(filename)
+    try content.write(to: url, atomically: true, encoding: .utf8)
+  }
+
   // MARK: - Main Session Usage
 
   func loadMainSessionUsage() throws -> MainSessionUsage? {
