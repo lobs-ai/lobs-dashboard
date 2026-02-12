@@ -107,21 +107,40 @@ final class AppViewModel: ObservableObject {
   /// Other setup checks (repo/workspace/server readiness) are surfaced in the UI
   /// but should not trap users inside onboarding when sections are skipped.
   var needsOnboarding: Bool {
-    guard let config else { return true }
+    // Check onboarding state first - it's the source of truth for completion.
+    // This handles cases where config is missing or was reset but user already
+    // completed onboarding.
+    let onboardingState = OnboardingStateManager.load(preferredWorkspacePath: config?.controlRepoPath)
     
-    // If config says onboarding is complete, we're done.
-    if config.onboardingComplete { return false }
-    
-    // Also check if the "done" step is marked complete in the onboarding state.
-    // This handles cases where steps were completed but the config flag wasn't set
-    // (e.g., config reset, save failure, etc.)
-    let onboardingState = OnboardingStateManager.load(preferredWorkspacePath: config.controlRepoPath)
+    // If onboarding is complete according to the state, we're done.
     if onboardingState.isCompleted(.done) {
-      // Auto-fix: If done step is complete but config flag isn't set, set it now.
-      var updatedConfig = config
-      updatedConfig.onboardingComplete = true
-      self.config = updatedConfig
-      saveConfig()
+      // Auto-fix: Create or update config to match the completion state.
+      if let config = config {
+        // Config exists but completion flag might be wrong - fix it.
+        if !config.onboardingComplete {
+          var updatedConfig = config
+          updatedConfig.onboardingComplete = true
+          self.config = updatedConfig
+          saveConfig()
+        }
+      } else {
+        // Config is missing entirely - create one with onboarding complete.
+        // Use workspace path from onboarding state if available.
+        let workspace = onboardingState.workspace ?? LobsPaths.defaultWorkspace
+        let controlPath = (workspace as NSString).appendingPathComponent("lobs-control")
+        let newConfig = AppConfig(
+          controlRepoUrl: "",
+          controlRepoPath: controlPath,
+          onboardingComplete: true
+        )
+        self.config = newConfig
+        saveConfig()
+      }
+      return false
+    }
+    
+    // If config exists and says onboarding is complete, trust it.
+    if let config = config, config.onboardingComplete {
       return false
     }
     
