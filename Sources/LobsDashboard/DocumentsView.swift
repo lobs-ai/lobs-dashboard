@@ -233,6 +233,11 @@ struct DocumentsView: View {
     }
     .background(Theme.boardBg)
     .frame(minWidth: 900, idealWidth: 1200, minHeight: 600, idealHeight: 800)
+    .onExitCommand {
+      withAnimation(.easeInOut(duration: 0.25)) {
+        isPresented = false
+      }
+    }
     .onAppear {
       // Select first document if none selected
       if selectedDocument == nil, let first = filteredDocuments.first {
