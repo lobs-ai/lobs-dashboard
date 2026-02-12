@@ -3100,27 +3100,65 @@ private struct TaskDetailPopover: View {
                   .background(Theme.subtle)
                   .clipShape(RoundedRectangle(cornerRadius: 8))
               } else {
-                ScrollView {
-                  SelfSizingMarkdownView(markdown: editNotes, minHeight: 60)
-                    .padding(8)
+                VStack(spacing: 0) {
+                  ScrollView {
+                    SelfSizingMarkdownView(markdown: editNotes, minHeight: 60)
+                      .padding(8)
+                  }
+                  .frame(minHeight: 80, maxHeight: notesHeight)
+                  .background(Theme.subtle)
+                  .clipShape(RoundedRectangle(cornerRadius: 8))
+                  
+                  // Resize handle
+                  ResizeHandle()
+                    .onHover { isHovering in
+                      if isHovering {
+                        NSCursor.resizeUpDown.push()
+                      } else {
+                        NSCursor.pop()
+                      }
+                    }
+                    .gesture(
+                      DragGesture()
+                        .onChanged { value in
+                          let newHeight = notesHeight + value.translation.height
+                          notesHeight = max(80, min(600, newHeight))
+                        }
+                    )
                 }
-                .frame(minHeight: 80, maxHeight: 300)
-                .background(Theme.subtle)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
               }
             } else {
-              SpellCheckingTextEditor(
-                text: $editNotes,
-                font: .systemFont(ofSize: NSFont.smallSystemFontSize),
-                placeholder: "Add notes…",
-                onSubmit: {
-                  vm.editTask(taskId: task.id, title: editTitle, notes: editNotes, autoPush: autoPush)
-                  lastAutosavedTitle = editTitle
-                  lastAutosavedNotes = editNotes
-                }
-              )
-              .frame(minHeight: 80, maxHeight: 160)
-              .onChange(of: editNotes) { _ in scheduleAutosave() }
+              VStack(spacing: 0) {
+                SpellCheckingTextEditor(
+                  text: $editNotes,
+                  font: .systemFont(ofSize: NSFont.smallSystemFontSize),
+                  placeholder: "Add notes…",
+                  onSubmit: {
+                    vm.editTask(taskId: task.id, title: editTitle, notes: editNotes, autoPush: autoPush)
+                    lastAutosavedTitle = editTitle
+                    lastAutosavedNotes = editNotes
+                  }
+                )
+                .frame(minHeight: 80, height: notesHeight)
+                .onChange(of: editNotes) { _ in scheduleAutosave() }
+                
+                // Resize handle
+                ResizeHandle()
+                  .onHover { isHovering in
+                    if isHovering {
+                      NSCursor.resizeUpDown.push()
+                    } else {
+                      NSCursor.pop()
+                    }
+                  }
+                  .gesture(
+                    DragGesture()
+                      .onChanged { value in
+                        let newHeight = notesHeight + value.translation.height
+                        notesHeight = max(80, min(600, newHeight))
+                      }
+                  )
+              }
             }
           }
 
@@ -3318,6 +3356,27 @@ private struct TaskDetailPopover: View {
 
     autosaveWorkItem = item
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: item)
+  }
+}
+
+// MARK: - Resize Handle
+
+private struct ResizeHandle: View {
+  @State private var isHovering = false
+  
+  var body: some View {
+    Rectangle()
+      .fill(isHovering ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.3))
+      .frame(height: 8)
+      .frame(maxWidth: .infinity)
+      .overlay(
+        RoundedRectangle(cornerRadius: 2)
+          .fill(isHovering ? Color.accentColor : Color.secondary.opacity(0.6))
+          .frame(width: 40, height: 4)
+      )
+      .onHover { hovering in
+        isHovering = hovering
+      }
   }
 }
 
