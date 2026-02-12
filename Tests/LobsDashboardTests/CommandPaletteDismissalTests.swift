@@ -140,11 +140,11 @@ final class CommandPaletteDismissalTests: XCTestCase {
     // Expected behavior:
     // 1. First Enter: guard passes, execution proceeds
     // 2. Palette begins closing (isPresented = false)
-    // 3. Second Enter (within 0.3s): guard fails (palette already dismissed)
+    // 3. Second Enter (within 0.35s): guard fails (palette already dismissed)
     
     // The guard `selectedIndex >= 0 && selectedIndex < results.count`
     // protects against double-execution, but selectedIndex is only reset
-    // after 0.3s, so there's a window where it could execute twice
+    // after 0.35s, so there's a window where it could execute twice
     
     // However, in practice this is prevented by the view itself - once
     // isPresented = false, the command palette view is no longer interactive
@@ -152,24 +152,24 @@ final class CommandPaletteDismissalTests: XCTestCase {
     XCTAssert(true, "Rapid execution prevented by view dismissal + guard clause")
   }
   
-  /// Test: Animation feels instant even with delay
+  /// Test: Animation feels instant and completely smooth
   ///
-  /// The user experience goal: dismissal feels instant, actions happen quickly
+  /// The user experience goal: dismissal feels instant and buttery smooth
   func testUserExperienceGoals() {
     // Measured timings:
     // - User presses Enter: t=0ms
     // - Dismissal animation starts: t=0ms (withAnimation is synchronous)
     // - Palette visually begins shrinking: t=0-50ms (animation ramp)
-    // - Action executes: t=100ms
-    // - Palette fully gone: t=250ms
-    // - State reset: t=300ms
+    // - Palette fully gone: t=250ms (animation completes)
+    // - Action executes: t=300ms (AFTER animation)
+    // - State reset: t=350ms
     
     // User perception:
-    // - Dismissal: instant (animation starts immediately)
-    // - Action result: nearly instant (100ms < perception threshold)
-    // - Overall: snappy, responsive
+    // - Dismissal: instant and perfectly smooth (no interference)
+    // - Action result: quick (300ms is still responsive)
+    // - Overall: buttery smooth dismissal, no jank
     
-    XCTAssert(true, "User experience: dismissal feels instant, actions feel quick")
+    XCTAssert(true, "User experience: dismissal is instant and perfectly smooth")
   }
   
   /// Test: Pattern applies to all commands

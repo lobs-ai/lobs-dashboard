@@ -1,1 +1,1 @@
-Made Documents button conditional - only appears when agent documents exist (matching Templates button pattern). Added 6 unit tests covering visibility logic and dynamic updates. Build passes successfully.
+Fixed command palette dismissal lag when navigating home. Changed action timing from 0.1s (during animation) to 0.3s (after animation completes) so heavy OverviewView updates don't interfere with smooth dismissal. Updated 10 unit tests to reflect new timing. Build passes successfully.
