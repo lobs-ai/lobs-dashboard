@@ -267,19 +267,19 @@ struct AgentDetailSheet: View {
     Task {
       do {
         // Load agent files from API
-        if let memoryContent = try await vm.apiService?.loadAgentFile(agentType: agent.agentType, filename: "MEMORY.md") {
+        if let memoryContent = try await vm.apiService?.loadAgentFile(agentType: agentType, filename: "MEMORY.md") {
           await MainActor.run {
             self.memory = memoryContent
           }
         }
         
-        if let traitsContent = try await vm.apiService?.loadAgentFile(agentType: agent.agentType, filename: "EVOLVED_TRAITS.md") {
+        if let traitsContent = try await vm.apiService?.loadAgentFile(agentType: agentType, filename: "EVOLVED_TRAITS.md") {
           await MainActor.run {
             self.evolvedTraits = traitsContent
           }
         }
         
-        if let soulContent = try await vm.apiService?.loadAgentFile(agentType: agent.agentType, filename: "SOUL.md") {
+        if let soulContent = try await vm.apiService?.loadAgentFile(agentType: agentType, filename: "SOUL.md") {
           await MainActor.run {
             self.personality = soulContent
             self.editedPersonality = soulContent
@@ -298,7 +298,7 @@ struct AgentDetailSheet: View {
     Task {
       do {
         // Save personality to API
-        try await vm.apiService?.saveAgentFile(agentType: agent.agentType, filename: "SOUL.md", content: editedPersonality)
+        try await vm.apiService?.saveAgentFile(agentType: agentType, filename: "SOUL.md", content: editedPersonality)
         
         await MainActor.run {
           self.personality = self.editedPersonality

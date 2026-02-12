@@ -22,12 +22,7 @@ struct LobsDashboardApp: App {
         }
       }
       .onAppear {
-        // Keep orchestrator manager pointed at the same workspace used during onboarding.
-        let onboardingState = OnboardingStateManager.load()
-        if let ws = onboardingState.workspace, !ws.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-          orchestrator.workspacePath = ws
-        }
-        orchestrator.controlRepoURL = vm.repoURL
+        orchestrator.serverURL = vm.config?.serverURL ?? "http://localhost:8000"
         orchestrator.startMonitoring()
 
         // Register global quick capture hotkey (⌘⇧Space)
@@ -66,7 +61,7 @@ struct LobsDashboardApp: App {
       .onReceive(vm.$config) { _ in
         // Keep the menu bar widget in sync with user settings changes.
         syncMenuBarWidget()
-        orchestrator.controlRepoURL = vm.repoURL
+        orchestrator.serverURL = vm.config?.serverURL ?? "http://localhost:8000"
       }
     }
     // Set a reasonable initial window size; the `.frame(minWidth/minHeight)` only

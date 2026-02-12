@@ -233,8 +233,8 @@ struct OnboardingCloneView: View {
             guard var config = vm.config else {
                 // Create new config
                 let newConfig = AppConfig(
-                    serverURL: repoUrl,
-                    onboardingComplete: false
+                    onboardingComplete: false,
+                    serverURL: repoUrl
                 )
                 vm.config = newConfig
                 do {

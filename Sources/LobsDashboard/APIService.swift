@@ -457,7 +457,7 @@ final class APIService {
     return thread
   }
   
-  func saveInboxThread(_ thread: InboxThread) async throws {
+  func saveInboxThread(_ thread: InboxThread) async throws -> InboxThread {
     // Save each message
     for message in thread.messages {
       struct MessageCreate: Codable {
@@ -487,6 +487,7 @@ final class APIService {
         body: create
       )
     }
+    return thread
   }
   
   func loadAllInboxThreads() async throws -> [String: InboxThread] {
@@ -608,18 +609,18 @@ final class APIService {
     struct SourceCreate: Codable {
       let id: String
       let projectId: String
-      let url: String?
+      let url: String
       let title: String
-      let notes: String?
-      let sourceType: String
+      let tags: [String]?
+      let addedAt: Date
       
       enum CodingKeys: String, CodingKey {
         case id
         case projectId = "project_id"
         case url
         case title
-        case notes
-        case sourceType = "source_type"
+        case tags
+        case addedAt = "added_at"
       }
     }
     
@@ -628,8 +629,8 @@ final class APIService {
       projectId: projectId,
       url: source.url,
       title: source.title,
-      notes: source.notes,
-      sourceType: source.sourceType.rawValue
+      tags: source.tags,
+      addedAt: source.addedAt
     )
     
     let _: ResearchSource = try await request(
@@ -658,14 +659,14 @@ final class APIService {
     struct RequestCreate: Codable {
       let id: String
       let projectId: String
-      let question: String
+      let prompt: String
       let status: String
       let priority: String?
       
       enum CodingKeys: String, CodingKey {
         case id
         case projectId = "project_id"
-        case question
+        case prompt
         case status
         case priority
       }
@@ -674,12 +675,12 @@ final class APIService {
     let create = RequestCreate(
       id: request.id,
       projectId: projectId,
-      question: request.question,
+      prompt: request.prompt,
       status: request.status.rawValue,
       priority: request.priority?.rawValue
     )
     
-    let _: ResearchRequest = try await request(
+    let _: ResearchRequest = try await self.request(
       method: "POST",
       path: "/api/research/\(projectId)/requests",
       body: create
@@ -721,18 +722,20 @@ final class APIService {
       let projectId: String
       let title: String
       let status: String
-      let category: String?
-      let priority: String?
+      let difficulty: String?
+      let tags: [String]?
       let notes: String?
+      let links: [String]?
       
       enum CodingKeys: String, CodingKey {
         case id
         case projectId = "project_id"
         case title
         case status
-        case category
-        case priority
+        case difficulty
+        case tags
         case notes
+        case links
       }
     }
     
@@ -741,9 +744,10 @@ final class APIService {
       projectId: projectId,
       title: item.title,
       status: item.status.rawValue,
-      category: item.category,
-      priority: item.priority?.rawValue,
-      notes: item.notes
+      difficulty: item.difficulty,
+      tags: item.tags,
+      notes: item.notes,
+      links: item.links
     )
     
     let _: TrackerItem = try await request(
@@ -757,17 +761,19 @@ final class APIService {
     struct ItemUpdate: Codable {
       let title: String?
       let status: String?
-      let category: String?
-      let priority: String?
+      let difficulty: String?
+      let tags: [String]?
       let notes: String?
+      let links: [String]?
     }
     
     let update = ItemUpdate(
       title: item.title,
       status: item.status.rawValue,
-      category: item.category,
-      priority: item.priority?.rawValue,
-      notes: item.notes
+      difficulty: item.difficulty,
+      tags: item.tags,
+      notes: item.notes,
+      links: item.links
     )
     
     let _: TrackerItem = try await request(
@@ -820,17 +826,24 @@ final class APIService {
   
   func saveTextDump(_ dump: TextDump) async throws {
     struct DumpUpdate: Codable {
-      let content: String
-      let source: String?
-      let context: String?
+      let projectId: String
+      let text: String
       let status: String
+      let taskIds: [String]?
+      
+      enum CodingKeys: String, CodingKey {
+        case projectId = "project_id"
+        case text
+        case status
+        case taskIds = "task_ids"
+      }
     }
     
     let update = DumpUpdate(
-      content: dump.content,
-      source: dump.source,
-      context: dump.context,
-      status: dump.status.rawValue
+      projectId: dump.projectId,
+      text: dump.text,
+      status: dump.status.rawValue,
+      taskIds: dump.taskIds
     )
     
     let _: TextDump = try await request(
@@ -845,35 +858,16 @@ final class APIService {
   func saveTemplate(_ template: TaskTemplate) async throws {
     struct TemplateUpdate: Codable {
       let id: String
-      let title: String
-      let owner: String
-      let workState: String?
-      let reviewState: String?
-      let projectId: String?
-      let notes: String?
-      let shape: String?
-      
-      enum CodingKeys: String, CodingKey {
-        case id
-        case title
-        case owner
-        case workState = "work_state"
-        case reviewState = "review_state"
-        case projectId = "project_id"
-        case notes
-        case shape
-      }
+      let name: String
+      let description: String?
+      let items: [TaskTemplateItem]
     }
     
     let update = TemplateUpdate(
       id: template.id,
-      title: template.title,
-      owner: template.owner.rawValue,
-      workState: template.workState?.rawValue,
-      reviewState: template.reviewState?.rawValue,
-      projectId: template.projectId,
-      notes: template.notes,
-      shape: template.shape?.rawValue
+      name: template.name,
+      description: template.description,
+      items: template.items
     )
     
     let _: TaskTemplate = try await request(
@@ -892,7 +886,7 @@ final class APIService {
   
   // MARK: - Tiles
   
-  func loadTiles(projectId: String) async throws -> [Tile] {
+  func loadTiles(projectId: String) async throws -> [ResearchTile] {
     return try await request(
       method: "GET",
       path: "/api/tiles/\(projectId)",
@@ -900,35 +894,65 @@ final class APIService {
     )
   }
   
-  func saveTile(_ tile: Tile) async throws {
+  func saveTile(_ tile: ResearchTile) async throws {
     struct TileUpdate: Codable {
       let id: String
       let projectId: String
+      let type: String
       let title: String
-      let status: String
-      let category: String?
-      let notes: String?
+      let tags: [String]?
+      let status: String?
+      let author: String?
+      let url: String?
+      let summary: String?
+      let snapshot: String?
+      let content: String?
+      let claim: String?
+      let confidence: Double?
+      let evidence: [String]?
+      let counterpoints: [String]?
+      let options: [ComparisonOption]?
       
       enum CodingKeys: String, CodingKey {
         case id
         case projectId = "project_id"
+        case type
         case title
+        case tags
         case status
-        case category
-        case notes
+        case author
+        case url
+        case summary
+        case snapshot
+        case content
+        case claim
+        case confidence
+        case evidence
+        case counterpoints
+        case options
       }
     }
     
     let update = TileUpdate(
       id: tile.id,
       projectId: tile.projectId,
+      type: tile.type.rawValue,
       title: tile.title,
-      status: tile.status.rawValue,
-      category: tile.category,
-      notes: tile.notes
+      tags: tile.tags,
+      status: tile.status?.rawValue,
+      author: tile.author,
+      url: tile.url,
+      summary: tile.summary,
+      snapshot: tile.snapshot,
+      content: tile.content,
+      claim: tile.claim,
+      confidence: tile.confidence,
+      evidence: tile.evidence,
+      counterpoints: tile.counterpoints,
+      options: tile.options
     )
     
-    let _: Tile = try await request(
+    let _: ResearchTile = try await request(
       method: "PUT",
       path: "/api/tiles/\(tile.projectId)/\(tile.id)",
       body: update
@@ -977,12 +1001,16 @@ final class APIService {
       )
       
       return deliverables.map { d in
-        ResearchDeliverable(
+        let base = (d.filename as NSString).deletingPathExtension
+        let title = base.replacingOccurrences(of: "-", with: " ")
+        let requestPrefix = d.filename.contains("-") ? String(d.filename.prefix(8)) : nil
+        return ResearchDeliverable(
           id: d.filename,
-          projectId: d.projectId,
           filename: d.filename,
+          title: title,
+          requestIdPrefix: requestPrefix,
+          modifiedAt: d.updatedAt,
           content: d.content,
-          updatedAt: d.updatedAt
         )
       }
     } catch APIError.httpError(statusCode: 404, _) {
@@ -1121,15 +1149,15 @@ final class APIService {
     )
   }
   
-  func saveTrackerRequest(_ request: ResearchRequest) async throws {
+  func saveTrackerRequest(_ trackerRequest: ResearchRequest) async throws {
     struct RequestUpdate: Codable {
       let status: String
     }
     
     let _: ResearchRequest = try await request(
       method: "PUT",
-      path: "/api/tracker/\(request.projectId)/requests/\(request.id)",
-      body: RequestUpdate(status: request.status.rawValue)
+      path: "/api/tracker/\(trackerRequest.projectId)/requests/\(trackerRequest.id)",
+      body: RequestUpdate(status: trackerRequest.status.rawValue)
     )
   }
   

@@ -61,7 +61,63 @@ final class AppViewModel: ObservableObject {
   @Published var config: AppConfig?
   
   /// API service for communicating with lobs-server
-  private var api: APIService
+  var api: APIService
+  var apiService: APIService? { api }
+
+  /// Compatibility adapter for legacy call sites that still reference `cache`.
+  @MainActor
+  private struct TaskCacheAdapter {
+    unowned let vm: AppViewModel
+
+    var tasks: [DashboardTask] { vm.tasks }
+
+    func updateTask(_ taskId: String, update: (inout DashboardTask) -> Void) {
+      guard let idx = vm.tasks.firstIndex(where: { $0.id == taskId }) else { return }
+      var task = vm.tasks[idx]
+      update(&task)
+      vm.tasks[idx] = task
+    }
+
+    func removeTask(_ taskId: String) {
+      vm.tasks.removeAll { $0.id == taskId }
+    }
+
+    func invalidateTasks() {
+      // No-op in API mode; data is already kept in-memory and refreshed by polling.
+    }
+
+    func getResearchDoc(_ projectId: String) -> String? {
+      vm.researchDocContent
+    }
+
+    func getResearchSources(_ projectId: String) -> [ResearchSource] {
+      vm.researchSources
+    }
+
+    func getResearchRequests(_ projectId: String) -> [ResearchRequest] {
+      vm.researchRequests.filter { $0.projectId == projectId }
+    }
+
+    func getTrackerItems(_ projectId: String) -> [TrackerItem] {
+      vm.trackerItems.filter { $0.projectId == projectId }
+    }
+  }
+
+  private var cache: TaskCacheAdapter { TaskCacheAdapter(vm: self) }
+
+  @MainActor
+  private final class PollingManagerCompat {
+    func startResearchPolling(projectId: String) {}
+    func stopResearchPolling(projectId: String) {}
+    func startTrackerPolling(projectId: String) {}
+    func stopTrackerPolling(projectId: String) {}
+    func refreshStaleData() async {}
+  }
+
+  private let pollingManager = PollingManagerCompat()
+
+  private var inboxReadItemIds: Set<String> { readItemIds }
+  private var inboxLastSeenThreadCounts: [String: Int] { lastSeenThreadCounts }
   
   /// Helper to access settings from config
   private var settings: UserSettings {
@@ -562,14 +618,15 @@ final class AppViewModel: ObservableObject {
 
   init() {
     // Load config from ConfigManager (includes automatic migration from UserDefaults)
-    config = ConfigManager.load()
-    
+    let loadedConfig = ConfigManager.load()
+
     // Initialize API service
-    let baseURL = config?.serverURL ?? "http://localhost:8000"
+    let baseURL = loadedConfig?.serverURL ?? "http://localhost:8000"
     api = (try? APIService(baseURLString: baseURL)) ?? APIService(baseURL: URL(string: "http://localhost:8000")!)
+    config = loadedConfig
     
     // Load repo path from config
-    if let loadedConfig = config {
+    if let loadedConfig {
       repoPath = loadedConfig.controlRepoPath
       
       // Load all settings from config
@@ -2192,7 +2249,7 @@ final class AppViewModel: ObservableObject {
   }
 
   func removeResearchSource(id: String) {
-    guard let projectId = selectedProjectId else { return }
+    let projectId = selectedProjectId
     
     researchSources.removeAll { $0.id == id }
     
@@ -4325,11 +4382,6 @@ final class AppViewModel: ObservableObject {
     ]
   }
 
-  func loadArtifactForSelected() {
-    // TODO: API endpoint needed for artifact loading
-    artifactText = "(select a task)"
-  }
-
   private func loadArtifactForSelected() {
     // TODO: API endpoint needed for artifact loading
     artifactText = "(select a task)"
@@ -4420,7 +4472,7 @@ final class AppViewModel: ObservableObject {
   /// Load research data asynchronously (off main thread)
   private func loadResearchDataAsync() async {
     guard await MainActor.run(body: { isResearchProject }) else { return }
-    guard let projectId = await MainActor.run(body: { selectedProjectId }) else { return }
+    let projectId = await MainActor.run(body: { selectedProjectId })
     
     do {
       let doc = try await api.loadResearchDoc(projectId: projectId)
@@ -4450,7 +4502,7 @@ final class AppViewModel: ObservableObject {
   /// Load tracker data asynchronously (off main thread)
   private func loadTrackerDataAsync() async {
     guard await MainActor.run(body: { isTrackerProject }) else { return }
-    guard let projectId = await MainActor.run(body: { selectedProjectId }) else { return }
+    let projectId = await MainActor.run(body: { selectedProjectId })
     
     do {
       let items = try await api.loadTrackerItems(projectId: projectId)

@@ -78,7 +78,10 @@ struct SettingsView: View {
                 .padding(.vertical, 6)
               }
               .buttonStyle(.bordered)
-              .disabled(connectionTestStatus == .testing)
+              .disabled({
+                if case .testing = connectionTestStatus { return true }
+                return false
+              }())
             }
             
             // Connection status message
