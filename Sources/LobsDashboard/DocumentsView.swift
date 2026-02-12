@@ -431,8 +431,7 @@ private struct DocumentDetailView: View {
             .padding()
           }
 
-          MarkdownWebView(markdown: doc.content)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+          SelfSizingMarkdownView(markdown: doc.content, minHeight: 200)
         }
       }
     }
