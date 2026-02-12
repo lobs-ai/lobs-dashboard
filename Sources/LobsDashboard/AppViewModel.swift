@@ -5578,11 +5578,10 @@ final class AppViewModel: ObservableObject {
 
   /// Load worker status asynchronously (off main thread)
   private func loadWorkerStatusAsync(store: LobsControlStore) async {
-    let data: (WorkerStatus?, WorkerHistory?, MainSessionUsage?)? = await Task.detached { () -> (WorkerStatus?, WorkerHistory?, MainSessionUsage?)? in
+    let data: (WorkerStatus?, WorkerHistory?)? = await Task.detached { () -> (WorkerStatus?, WorkerHistory?)? in
       do {
         let status = try store.loadWorkerStatus()
         let history = try store.loadWorkerHistory()
-        // Main session usage is no longer tracked - all usage comes from worker history
         return (status, history)
       } catch {
         return nil
@@ -5594,6 +5593,7 @@ final class AppViewModel: ObservableObject {
     await MainActor.run {
       self.workerStatus = status
       self.workerHistory = history
+      // Main session usage is no longer tracked - all usage comes from worker history
       self.mainSessionUsage = nil
     }
   }
