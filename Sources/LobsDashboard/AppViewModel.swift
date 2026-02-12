@@ -209,6 +209,10 @@ final class AppViewModel: ObservableObject {
   /// Prevents auto-refresh from overwriting freshly-posted messages.
   private var pendingThreadWrites: [String: InboxThread] = [:]
 
+  // Agent Documents (Reports & Research)
+  @Published var agentDocuments: [AgentDocument] = []
+  @Published var readDocumentIds: Set<String> = []
+
   // Inbox read-state persistence (repo-backed)
   private var isApplyingInboxReadState: Bool = false
   private var inboxReadStateCommitTask: Task<Void, Never>? = nil
