@@ -2647,10 +2647,10 @@ final class AppViewModel: ObservableObject {
 
   /// Total unread inbox count.
   /// Includes unread docs AND docs with unread follow-up thread messages.
-  /// Only counts actual inbox items (not artifacts) to match what InboxView displays.
+  /// Only counts actual inbox items from inbox/ (not state/inbox/, not artifacts) to match what InboxView displays.
   var unreadInboxCount: Int {
     inboxItems.filter { item in
-      !item.relativePath.hasPrefix("artifacts/") &&
+      item.relativePath.hasPrefix("inbox/") &&
       (!item.isRead || unreadFollowupCount(docId: item.id) > 0)
     }.count
   }
