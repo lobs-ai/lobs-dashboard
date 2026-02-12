@@ -1092,3 +1092,85 @@ struct NotificationPreferences: Codable {
 }
 
 extension NotificationType: CaseIterable {}
+
+// MARK: - Documents
+
+enum DocumentSource: String, Codable, CaseIterable, Hashable {
+  case writer = "writer"
+  case researcher = "researcher"
+  
+  var displayName: String {
+    rawValue.capitalized
+  }
+  
+  var icon: String {
+    switch self {
+    case .writer: return "doc.text.fill"
+    case .researcher: return "magnifyingglass"
+    }
+  }
+}
+
+enum DocumentStatus: String, Codable, CaseIterable, Hashable {
+  case pending = "pending"
+  case approved = "approved"
+  case rejected = "rejected"
+  
+  var displayName: String {
+    rawValue.capitalized
+  }
+  
+  var color: String {
+    switch self {
+    case .pending: return "orange"
+    case .approved: return "green"
+    case .rejected: return "red"
+    }
+  }
+}
+
+struct AgentDocument: Identifiable, Codable, Hashable {
+  var id: String  // Unique ID (relative path or UUID)
+  var title: String
+  var filename: String
+  var relativePath: String
+  var content: String  // Full markdown content (may be truncated for large files)
+  var contentIsTruncated: Bool  // True if content was truncated for performance
+  var source: DocumentSource
+  var status: DocumentStatus?  // Only applicable for reports (pending/approved/rejected)
+  var topic: String?  // Research topic subdirectory name
+  var projectId: String?  // Optional project association
+  var taskId: String?  // Optional task association
+  var date: Date  // Creation or modification date
+  var isRead: Bool  // Read status (managed by AppViewModel)
+  
+  init(
+    id: String,
+    title: String,
+    filename: String,
+    relativePath: String,
+    content: String,
+    contentIsTruncated: Bool = false,
+    source: DocumentSource,
+    status: DocumentStatus? = nil,
+    topic: String? = nil,
+    projectId: String? = nil,
+    taskId: String? = nil,
+    date: Date,
+    isRead: Bool = false
+  ) {
+    self.id = id
+    self.title = title
+    self.filename = filename
+    self.relativePath = relativePath
+    self.content = content
+    self.contentIsTruncated = contentIsTruncated
+    self.source = source
+    self.status = status
+    self.topic = topic
+    self.projectId = projectId
+    self.taskId = taskId
+    self.date = date
+    self.isRead = isRead
+  }
+}
