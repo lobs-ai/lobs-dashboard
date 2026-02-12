@@ -40,6 +40,20 @@ struct CommandPaletteView: View {
   private var results: [CommandResult] {
     var items: [CommandResult] = []
     
+    // Home/Overview - always available in all mode
+    if filterMode == .all {
+      items.append(CommandResult(
+        id: "nav:home",
+        icon: "house.fill",
+        title: "Home",
+        subtitle: "Go to overview",
+        category: "Navigation",
+        action: {
+          vm.showOverview = true
+        }
+      ))
+    }
+    
     // Projects
     if filterMode == .all || filterMode == .projects {
       items.append(contentsOf: projectResults())
