@@ -135,6 +135,36 @@ struct AIUsageView: View {
     return byModel.map { ($0.key, $0.value.tokens, $0.value.cost) }
       .sorted { $0.2 > $1.2 }
   }
+  
+  /// Agent type breakdown from worker runs.
+  private var agentBreakdown: [(String, Int, Int, Double)] {
+    var byAgent: [String: (runs: Int, tokens: Int, cost: Double)] = [:]
+    for run in filteredWorkerRuns {
+      let agent = run.agentType
+      let tokens = run.totalTokens ?? 0
+      let cost = run.totalCostUSD ?? 0
+      byAgent[agent, default: (0, 0, 0)].runs += 1
+      byAgent[agent, default: (0, 0, 0)].tokens += tokens
+      byAgent[agent, default: (0, 0, 0)].cost += cost
+    }
+    return byAgent.map { ($0.key, $0.value.runs, $0.value.tokens, $0.value.cost) }
+      .sorted { $0.3 > $1.3 }  // Sort by cost descending
+  }
+  
+  /// Project breakdown from worker runs (using taskLog data).
+  private var projectBreakdown: [(String, Int, Int, Double)] {
+    var byProject: [String: (runs: Int, tokens: Int, cost: Double)] = [:]
+    for run in filteredWorkerRuns {
+      let project = run.primaryProject ?? "unknown"
+      let tokens = run.totalTokens ?? 0
+      let cost = run.totalCostUSD ?? 0
+      byProject[project, default: (0, 0, 0)].runs += 1
+      byProject[project, default: (0, 0, 0)].tokens += tokens
+      byProject[project, default: (0, 0, 0)].cost += cost
+    }
+    return byProject.map { ($0.key, $0.value.runs, $0.value.tokens, $0.value.cost) }
+      .sorted { $0.3 > $1.3 }  // Sort by cost descending
+  }
 
   // MARK: - Helpers
 
@@ -231,6 +261,15 @@ struct AIUsageView: View {
 
           // Model breakdown
           ModelBreakdownView(models: modelBreakdown)
+        }
+        
+        // Agent and Project breakdowns
+        HStack(alignment: .top, spacing: 24) {
+          // Agent type breakdown
+          AgentBreakdownView(agents: agentBreakdown)
+          
+          // Project breakdown
+          ProjectBreakdownView(projects: projectBreakdown)
         }
       }
       .padding(32)
@@ -604,6 +643,169 @@ private struct ModelBreakdownView: View {
     if model.contains("haiku") { return .green }
     if model.contains("gpt") { return .orange }
     return .gray
+  }
+}
+
+// MARK: - Agent Breakdown View
+
+private struct AgentBreakdownView: View {
+  let agents: [(String, Int, Int, Double)]  // (agent, runs, tokens, cost)
+
+  private var maxCost: Double {
+    max(agents.map(\.3).max() ?? 1, 0.01)
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      SectionHeaderWithInfo(
+        title: "By Agent",
+        tooltip: "Token usage and cost broken down by agent type.\nShows which AI assistants (programmer, researcher, writer, etc.) are consuming the most resources."
+      )
+
+      if agents.isEmpty {
+        Text("No agent data yet")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+      } else {
+        ForEach(agents, id: \.0) { agent, runs, tokens, cost in
+          VStack(alignment: .leading, spacing: 4) {
+            HStack {
+              HStack(spacing: 6) {
+                Text(agentEmoji(agent))
+                  .font(.system(size: 14))
+                Text(agent.capitalized)
+                  .font(.footnote)
+                  .fontWeight(.medium)
+              }
+              Spacer()
+              Text(String(format: "$%.2f", cost))
+                .font(.footnote.monospacedDigit())
+                .fontWeight(.medium)
+            }
+            HStack(spacing: 8) {
+              GeometryReader { geo in
+                RoundedRectangle(cornerRadius: 3)
+                  .fill(agentColor(agent).opacity(0.5))
+                  .frame(width: max(4, geo.size.width * CGFloat(cost / maxCost)))
+              }
+              .frame(height: 8)
+
+              VStack(alignment: .trailing, spacing: 1) {
+                Text(formatTokens(tokens))
+                  .font(.system(size: 10).monospacedDigit())
+                  .foregroundStyle(.tertiary)
+                Text("\(runs) runs")
+                  .font(.system(size: 9).monospacedDigit())
+                  .foregroundStyle(.quaternary)
+              }
+              .frame(width: 60, alignment: .trailing)
+            }
+          }
+          if agent != agents.last?.0 {
+            Divider()
+          }
+        }
+      }
+    }
+    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+    .padding(20)
+    .background(ATheme.cardBg)
+    .clipShape(RoundedRectangle(cornerRadius: ATheme.cardRadius))
+    .overlay(
+      RoundedRectangle(cornerRadius: ATheme.cardRadius)
+        .stroke(ATheme.border, lineWidth: 0.5)
+    )
+  }
+
+  private func agentColor(_ agent: String) -> Color {
+    switch agent.lowercased() {
+    case "programmer": return .blue
+    case "architect": return .purple
+    case "researcher": return .green
+    case "reviewer": return .orange
+    case "writer": return .pink
+    default: return .gray
+    }
+  }
+  
+  private func agentEmoji(_ agent: String) -> String {
+    switch agent.lowercased() {
+    case "programmer": return "🔧"
+    case "architect": return "🏗️"
+    case "researcher": return "🔬"
+    case "reviewer": return "🔍"
+    case "writer": return "✍️"
+    default: return "🤖"
+    }
+  }
+}
+
+// MARK: - Project Breakdown View
+
+private struct ProjectBreakdownView: View {
+  let projects: [(String, Int, Int, Double)]  // (project, runs, tokens, cost)
+
+  private var maxCost: Double {
+    max(projects.map(\.3).max() ?? 1, 0.01)
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      SectionHeaderWithInfo(
+        title: "By Project",
+        tooltip: "Token usage and cost broken down by project.\nShows which projects are consuming the most AI resources."
+      )
+
+      if projects.isEmpty {
+        Text("No project data yet")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+      } else {
+        ForEach(projects, id: \.0) { project, runs, tokens, cost in
+          VStack(alignment: .leading, spacing: 4) {
+            HStack {
+              Text(project)
+                .font(.footnote)
+                .fontWeight(.medium)
+                .lineLimit(1)
+              Spacer()
+              Text(String(format: "$%.2f", cost))
+                .font(.footnote.monospacedDigit())
+                .fontWeight(.medium)
+            }
+            HStack(spacing: 8) {
+              GeometryReader { geo in
+                RoundedRectangle(cornerRadius: 3)
+                  .fill(Color.indigo.opacity(0.5))
+                  .frame(width: max(4, geo.size.width * CGFloat(cost / maxCost)))
+              }
+              .frame(height: 8)
+
+              VStack(alignment: .trailing, spacing: 1) {
+                Text(formatTokens(tokens))
+                  .font(.system(size: 10).monospacedDigit())
+                  .foregroundStyle(.tertiary)
+                Text("\(runs) runs")
+                  .font(.system(size: 9).monospacedDigit())
+                  .foregroundStyle(.quaternary)
+              }
+              .frame(width: 60, alignment: .trailing)
+            }
+          }
+          if project != projects.last?.0 {
+            Divider()
+          }
+        }
+      }
+    }
+    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+    .padding(20)
+    .background(ATheme.cardBg)
+    .clipShape(RoundedRectangle(cornerRadius: ATheme.cardRadius))
+    .overlay(
+      RoundedRectangle(cornerRadius: ATheme.cardRadius)
+        .stroke(ATheme.border, lineWidth: 0.5)
+    )
   }
 }
 

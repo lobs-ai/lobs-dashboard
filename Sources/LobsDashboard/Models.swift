@@ -869,8 +869,29 @@ struct WorkerHistoryRun: Codable, Identifiable {
 
   /// GitHub compare URL for changes in this run (if available).
   var githubCompareURL: String?
+  
+  /// Task ID this run was executing (optional).
+  var taskId: String?
+  
+  /// Whether the run succeeded (optional).
+  var succeeded: Bool?
+  
+  /// Source of the usage data (optional, e.g., "estimate", "actual").
+  var source: String?
 
   var id: String { "\(workerId ?? "unknown")-\(startedAt?.timeIntervalSince1970 ?? 0)" }
+  
+  /// Extract agent type from workerId (e.g., "programmer-1234-ABC" → "programmer").
+  var agentType: String {
+    guard let workerId = workerId else { return "unknown" }
+    let parts = workerId.split(separator: "-")
+    return parts.first.map(String.init) ?? "unknown"
+  }
+  
+  /// Extract first project from taskLog.
+  var primaryProject: String? {
+    taskLog?.first?.project
+  }
 }
 
 struct WorkerHistory: Codable {
