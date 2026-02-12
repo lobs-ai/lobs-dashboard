@@ -439,7 +439,7 @@ private struct InboxItemRow: View {
 
           HStack(spacing: 8) {
             // Source badge
-            let isInbox = item.relativePath.hasPrefix("inbox/")
+            let isInbox = item.relativePath.hasPrefix("inbox/") || item.relativePath.hasPrefix("state/inbox/")
             HStack(spacing: 3) {
               Image(systemName: isInbox ? "tray" : "doc.text")
                 .font(.system(size: 9))

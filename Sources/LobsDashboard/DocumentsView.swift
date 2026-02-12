@@ -231,7 +231,7 @@ struct DocumentsView: View {
         }
       }
     }
-    .background(Theme.boardBg)
+    .background(Theme.bg)
     .frame(minWidth: 900, idealWidth: 1200, minHeight: 600, idealHeight: 800)
     .onExitCommand {
       withAnimation(.easeInOut(duration: 0.25)) {

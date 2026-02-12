@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct AgentDetailSheet: View {
   let agentType: String
@@ -32,10 +33,15 @@ struct AgentDetailSheet: View {
     .frame(minWidth: 520, minHeight: 500)
     .background(Theme.boardBg)
     .onAppear(perform: loadData)
-    .onExitCommand {
-      withAnimation(.easeInOut(duration: 0.25)) {
-        vm.selectedAgentType = nil
+    .overlay {
+      // Use custom escape key monitor instead of onExitCommand
+      // to avoid Cmd+W accidentally closing the entire app window
+      EscapeKeyMonitor {
+        withAnimation(.easeInOut(duration: 0.25)) {
+          vm.selectedAgentType = nil
+        }
       }
+      .frame(width: 0, height: 0)
     }
   }
 
@@ -187,6 +193,14 @@ struct AgentDetailSheet: View {
             RoundedRectangle(cornerRadius: 6)
               .stroke(Theme.border)
           )
+          .overlay {
+            // Custom escape handler for TextEditor - cancel editing on escape
+            TextEditorEscapeHandler {
+              isEditingPersonality = false
+              editedPersonality = personality
+            }
+            .frame(width: 0, height: 0)
+          }
       } else {
         Text(personality.isEmpty ? "(no personality set)" : personality)
           .font(.system(size: 12, design: .monospaced))
@@ -289,5 +303,86 @@ struct AgentDetailSheet: View {
         self.isSaving = false
       }
     }
+  }
+}
+
+// MARK: - Escape Key Monitor
+
+/// NSEvent-based escape key handler for dismissing overlays.
+/// Only responds to Escape key (not Cmd+W) to avoid accidentally closing the app window.
+/// Skips interception when a text field is focused.
+private struct EscapeKeyMonitor: NSViewRepresentable {
+  let onEscape: () -> Void
+
+  func makeNSView(context: Context) -> NSView {
+    let view = NSView()
+    context.coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+      // Let text fields handle their own key events
+      if let responder = NSApp.keyWindow?.firstResponder,
+         responder is NSTextView || responder is NSTextField {
+        return event
+      }
+      // Only handle escape key (keyCode 53)
+      if event.keyCode == 53 {
+        DispatchQueue.main.async { self.onEscape() }
+        return nil
+      }
+      return event
+    }
+    return view
+  }
+
+  func updateNSView(_ nsView: NSView, context: Context) {}
+
+  static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+    if let monitor = coordinator.monitor {
+      NSEvent.removeMonitor(monitor)
+    }
+  }
+
+  func makeCoordinator() -> Coordinator { Coordinator() }
+
+  class Coordinator {
+    var monitor: Any?
+  }
+}
+
+// MARK: - TextEditor Escape Handler
+
+/// NSEvent-based escape key handler specifically for TextEditor.
+/// Only intercepts escape when a text view is focused (opposite of EscapeKeyMonitor).
+/// This allows escape to cancel editing mode in the personality editor.
+private struct TextEditorEscapeHandler: NSViewRepresentable {
+  let onEscape: () -> Void
+
+  func makeNSView(context: Context) -> NSView {
+    let view = NSView()
+    context.coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+      // Only handle escape when a text view IS focused (to cancel editing)
+      if let responder = NSApp.keyWindow?.firstResponder,
+         responder is NSTextView {
+        // Check if it's the escape key
+        if event.keyCode == 53 {
+          DispatchQueue.main.async { self.onEscape() }
+          return nil
+        }
+      }
+      return event
+    }
+    return view
+  }
+
+  func updateNSView(_ nsView: NSView, context: Context) {}
+
+  static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+    if let monitor = coordinator.monitor {
+      NSEvent.removeMonitor(monitor)
+    }
+  }
+
+  func makeCoordinator() -> Coordinator { Coordinator() }
+
+  class Coordinator {
+    var monitor: Any?
   }
 }

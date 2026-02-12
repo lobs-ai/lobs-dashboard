@@ -110,7 +110,12 @@ final class AppViewModel: ObservableObject {
     // Check onboarding state first - it's the source of truth for completion.
     // This handles cases where config is missing or was reset but user already
     // completed onboarding.
-    let onboardingState = OnboardingStateManager.load(preferredWorkspacePath: config?.controlRepoPath)
+    // Load from workspace (parent of control repo), not control repo itself
+    let workspacePath: String? = {
+      guard let controlPath = config?.controlRepoPath, !controlPath.isEmpty else { return nil }
+      return URL(fileURLWithPath: controlPath).deletingLastPathComponent().path
+    }()
+    let onboardingState = OnboardingStateManager.load(preferredWorkspacePath: workspacePath)
     
     // If onboarding is complete according to the state, we're done.
     if onboardingState.isCompleted(.done) {

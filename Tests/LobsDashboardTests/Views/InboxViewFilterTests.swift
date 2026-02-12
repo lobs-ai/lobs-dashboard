@@ -3,13 +3,13 @@ import SwiftUI
 @testable import LobsDashboard
 
 /// Tests for InboxView filtering logic, specifically verifying that artifacts
-/// are excluded from the inbox view.
+/// are excluded from the inbox view while both inbox/ and state/inbox/ items are shown.
 @MainActor
 final class InboxViewFilterTests: XCTestCase {
   
-  /// Test that artifacts (items not in inbox/) are filtered out from the inbox view
+  /// Test that artifacts are filtered out while inbox and state/inbox items are kept
   func testArtifactsAreFilteredOut() {
-    // Given: AppViewModel with both inbox items and artifacts
+    // Given: AppViewModel with inbox items, state/inbox items, and artifacts
     let vm = AppViewModel()
     
     let inboxItem1 = InboxItem(
@@ -31,6 +31,18 @@ final class InboxViewFilterTests: XCTestCase {
       relativePath: "inbox/doc2.md",
       summary: "Another inbox item",
       content: "Inbox content 2",
+      modifiedAt: Date(),
+      isRead: false,
+      contentIsTruncated: false
+    )
+    
+    let stateInboxItem = InboxItem(
+      id: "state/inbox/suggestion1.json",
+      title: "Suggestion 1",
+      filename: "suggestion1.json",
+      relativePath: "state/inbox/suggestion1.json",
+      summary: "This is a state/inbox suggestion",
+      content: "Suggestion content",
       modifiedAt: Date(),
       isRead: false,
       contentIsTruncated: false
@@ -60,26 +72,24 @@ final class InboxViewFilterTests: XCTestCase {
       contentIsTruncated: false
     )
     
-    vm.inboxItems = [inboxItem1, artifact1, inboxItem2, artifact2]
+    vm.inboxItems = [inboxItem1, artifact1, stateInboxItem, inboxItem2, artifact2]
     
-    // When: Create InboxView (which internally uses filteredItems)
-    // We can't directly test the view's private computed property, but we can verify
-    // the expected behavior through the view model's data structure
+    // When: Filter using the same logic as InboxView
+    // The InboxView filters items with: items.filter { !$0.relativePath.hasPrefix("artifacts/") }
+    let filteredItems = vm.inboxItems.filter { !$0.relativePath.hasPrefix("artifacts/") }
     
-    // The InboxView filters items with: items.filter { $0.relativePath.hasPrefix("inbox/") }
-    let filteredItems = vm.inboxItems.filter { $0.relativePath.hasPrefix("inbox/") }
-    
-    // Then: Only inbox items should remain
-    XCTAssertEqual(filteredItems.count, 2, "Should have 2 inbox items after filtering")
+    // Then: Inbox and state/inbox items should remain, artifacts should be excluded
+    XCTAssertEqual(filteredItems.count, 3, "Should have 3 items after filtering (2 inbox + 1 state/inbox)")
     XCTAssertTrue(filteredItems.contains(where: { $0.id == "inbox/doc1.md" }), "Should contain inbox item 1")
     XCTAssertTrue(filteredItems.contains(where: { $0.id == "inbox/doc2.md" }), "Should contain inbox item 2")
+    XCTAssertTrue(filteredItems.contains(where: { $0.id == "state/inbox/suggestion1.json" }), "Should contain state/inbox item")
     XCTAssertFalse(filteredItems.contains(where: { $0.id == "artifacts/design1.md" }), "Should not contain artifact 1")
     XCTAssertFalse(filteredItems.contains(where: { $0.id == "artifacts/spec2.md" }), "Should not contain artifact 2")
   }
   
-  /// Test that items with different artifact paths are all filtered out
-  func testDifferentArtifactPathsAreFilteredOut() {
-    // Given: AppViewModel with inbox items and artifacts in various locations
+  /// Test that only artifacts/ paths are filtered out, not other directories
+  func testOnlyArtifactsPathIsFilteredOut() {
+    // Given: AppViewModel with inbox items and items in various locations
     let vm = AppViewModel()
     
     let inboxItem = InboxItem(
@@ -94,7 +104,19 @@ final class InboxViewFilterTests: XCTestCase {
       contentIsTruncated: false
     )
     
-    let artifactInArtifacts = InboxItem(
+    let stateInboxItem = InboxItem(
+      id: "state/inbox/suggestion.json",
+      title: "Suggestion",
+      filename: "suggestion.json",
+      relativePath: "state/inbox/suggestion.json",
+      summary: "State inbox item",
+      content: "Content",
+      modifiedAt: Date(),
+      isRead: false,
+      contentIsTruncated: false
+    )
+    
+    let artifactItem = InboxItem(
       id: "artifacts/doc.md",
       title: "Artifact in artifacts/",
       filename: "doc.md",
@@ -106,38 +128,16 @@ final class InboxViewFilterTests: XCTestCase {
       contentIsTruncated: false
     )
     
-    let artifactInDocs = InboxItem(
-      id: "docs/doc.md",
-      title: "Artifact in docs/",
-      filename: "doc.md",
-      relativePath: "docs/doc.md",
-      summary: "Doc artifact",
-      content: "Content",
-      modifiedAt: Date(),
-      isRead: false,
-      contentIsTruncated: false
-    )
-    
-    let artifactInOther = InboxItem(
-      id: "other/doc.md",
-      title: "Artifact in other/",
-      filename: "doc.md",
-      relativePath: "other/doc.md",
-      summary: "Other artifact",
-      content: "Content",
-      modifiedAt: Date(),
-      isRead: false,
-      contentIsTruncated: false
-    )
-    
-    vm.inboxItems = [inboxItem, artifactInArtifacts, artifactInDocs, artifactInOther]
+    vm.inboxItems = [inboxItem, stateInboxItem, artifactItem]
     
     // When: Filter using the same logic as InboxView
-    let filteredItems = vm.inboxItems.filter { $0.relativePath.hasPrefix("inbox/") }
+    let filteredItems = vm.inboxItems.filter { !$0.relativePath.hasPrefix("artifacts/") }
     
-    // Then: Only the inbox item should remain
-    XCTAssertEqual(filteredItems.count, 1, "Should have only 1 inbox item")
-    XCTAssertEqual(filteredItems[0].id, "inbox/doc.md", "Should be the inbox item")
+    // Then: Only artifacts/ should be filtered out
+    XCTAssertEqual(filteredItems.count, 2, "Should have 2 items (inbox + state/inbox)")
+    XCTAssertTrue(filteredItems.contains(where: { $0.id == "inbox/doc.md" }), "Should contain inbox item")
+    XCTAssertTrue(filteredItems.contains(where: { $0.id == "state/inbox/suggestion.json" }), "Should contain state/inbox item")
+    XCTAssertFalse(filteredItems.contains(where: { $0.id == "artifacts/doc.md" }), "Should not contain artifact")
   }
   
   /// Test that filtering works correctly when there are only artifacts
@@ -172,7 +172,7 @@ final class InboxViewFilterTests: XCTestCase {
     vm.inboxItems = [artifact1, artifact2]
     
     // When: Filter using the same logic as InboxView
-    let filteredItems = vm.inboxItems.filter { $0.relativePath.hasPrefix("inbox/") }
+    let filteredItems = vm.inboxItems.filter { !$0.relativePath.hasPrefix("artifacts/") }
     
     // Then: No items should be shown
     XCTAssertEqual(filteredItems.count, 0, "Should have 0 items when only artifacts exist")
@@ -180,7 +180,7 @@ final class InboxViewFilterTests: XCTestCase {
   
   /// Test that filtering works correctly when there are only inbox items
   func testOnlyInboxItemsResultsInFullList() {
-    // Given: AppViewModel with only inbox items, no artifacts
+    // Given: AppViewModel with inbox and state/inbox items, no artifacts
     let vm = AppViewModel()
     
     let inboxItem1 = InboxItem(
@@ -207,20 +207,33 @@ final class InboxViewFilterTests: XCTestCase {
       contentIsTruncated: false
     )
     
-    vm.inboxItems = [inboxItem1, inboxItem2]
+    let stateInboxItem = InboxItem(
+      id: "state/inbox/suggestion.json",
+      title: "Suggestion",
+      filename: "suggestion.json",
+      relativePath: "state/inbox/suggestion.json",
+      summary: "State inbox item",
+      content: "Suggestion content",
+      modifiedAt: Date(),
+      isRead: false,
+      contentIsTruncated: false
+    )
+    
+    vm.inboxItems = [inboxItem1, inboxItem2, stateInboxItem]
     
     // When: Filter using the same logic as InboxView
-    let filteredItems = vm.inboxItems.filter { $0.relativePath.hasPrefix("inbox/") }
+    let filteredItems = vm.inboxItems.filter { !$0.relativePath.hasPrefix("artifacts/") }
     
     // Then: All items should be shown
-    XCTAssertEqual(filteredItems.count, 2, "Should have all 2 inbox items")
+    XCTAssertEqual(filteredItems.count, 3, "Should have all 3 inbox items (2 inbox + 1 state/inbox)")
     XCTAssertTrue(filteredItems.contains(where: { $0.id == "inbox/doc1.md" }), "Should contain inbox item 1")
     XCTAssertTrue(filteredItems.contains(where: { $0.id == "inbox/doc2.md" }), "Should contain inbox item 2")
+    XCTAssertTrue(filteredItems.contains(where: { $0.id == "state/inbox/suggestion.json" }), "Should contain state/inbox item")
   }
   
   /// Test that artifact filtering preserves the order of inbox items
   func testArtifactFilteringPreservesOrder() {
-    // Given: AppViewModel with mixed inbox items and artifacts
+    // Given: AppViewModel with mixed inbox items, state/inbox items, and artifacts
     let vm = AppViewModel()
     
     let inboxItem1 = InboxItem(
@@ -247,12 +260,12 @@ final class InboxViewFilterTests: XCTestCase {
       contentIsTruncated: false
     )
     
-    let inboxItem2 = InboxItem(
-      id: "inbox/c.md",
+    let stateInboxItem = InboxItem(
+      id: "state/inbox/c.json",
       title: "C",
-      filename: "c.md",
-      relativePath: "inbox/c.md",
-      summary: "Item C",
+      filename: "c.json",
+      relativePath: "state/inbox/c.json",
+      summary: "State inbox item C",
       content: "Content C",
       modifiedAt: Date(),
       isRead: false,
@@ -271,7 +284,7 @@ final class InboxViewFilterTests: XCTestCase {
       contentIsTruncated: false
     )
     
-    let inboxItem3 = InboxItem(
+    let inboxItem2 = InboxItem(
       id: "inbox/e.md",
       title: "E",
       filename: "e.md",
@@ -283,21 +296,21 @@ final class InboxViewFilterTests: XCTestCase {
       contentIsTruncated: false
     )
     
-    vm.inboxItems = [inboxItem1, artifact1, inboxItem2, artifact2, inboxItem3]
+    vm.inboxItems = [inboxItem1, artifact1, stateInboxItem, artifact2, inboxItem2]
     
     // When: Filter using the same logic as InboxView
-    let filteredItems = vm.inboxItems.filter { $0.relativePath.hasPrefix("inbox/") }
+    let filteredItems = vm.inboxItems.filter { !$0.relativePath.hasPrefix("artifacts/") }
     
-    // Then: Inbox items should be in their original order
-    XCTAssertEqual(filteredItems.count, 3, "Should have 3 inbox items")
+    // Then: Non-artifact items should be in their original order
+    XCTAssertEqual(filteredItems.count, 3, "Should have 3 non-artifact items")
     XCTAssertEqual(filteredItems[0].id, "inbox/a.md", "First item should be A")
-    XCTAssertEqual(filteredItems[1].id, "inbox/c.md", "Second item should be C")
+    XCTAssertEqual(filteredItems[1].id, "state/inbox/c.json", "Second item should be C")
     XCTAssertEqual(filteredItems[2].id, "inbox/e.md", "Third item should be E")
   }
   
-  /// Test that unread count only includes inbox items, not artifacts
+  /// Test that unread count correctly excludes artifacts
   func testUnreadCountExcludesArtifacts() {
-    // Given: AppViewModel with unread inbox items and unread artifacts
+    // Given: AppViewModel with unread inbox items, state/inbox items, and artifacts
     let vm = AppViewModel()
     
     let unreadInboxItem = InboxItem(
@@ -324,6 +337,18 @@ final class InboxViewFilterTests: XCTestCase {
       contentIsTruncated: false
     )
     
+    let unreadStateInboxItem = InboxItem(
+      id: "state/inbox/suggestion.json",
+      title: "Unread Suggestion",
+      filename: "suggestion.json",
+      relativePath: "state/inbox/suggestion.json",
+      summary: "Unread state/inbox item",
+      content: "Content",
+      modifiedAt: Date(),
+      isRead: false,
+      contentIsTruncated: false
+    )
+    
     let unreadArtifact = InboxItem(
       id: "artifacts/design.md",
       title: "Unread Artifact",
@@ -336,24 +361,41 @@ final class InboxViewFilterTests: XCTestCase {
       contentIsTruncated: false
     )
     
-    vm.inboxItems = [unreadInboxItem, readInboxItem, unreadArtifact]
+    vm.inboxItems = [unreadInboxItem, readInboxItem, unreadStateInboxItem, unreadArtifact]
     vm.readItemIds.insert("inbox/doc2.md")
     
-    // When: Calculate unread count
+    // When: Calculate unread count (should match unreadInboxCount implementation)
     let unreadCount = vm.unreadInboxCount
     
-    // Then: Only the unread inbox item should be counted
-    // Note: unreadInboxCount counts ALL items in vm.inboxItems that are unread,
-    // so if artifacts are in the list, they'll be counted too. This test documents
-    // current behavior - the filtering happens in the view, not the count.
-    // The unreadInboxCount currently includes artifacts if they're unread.
-    // This is acceptable since the VIEW filters them out.
-    XCTAssertEqual(unreadCount, 2, "Current implementation counts all unread items in inboxItems, including artifacts")
+    // Then: Should count only unread non-artifact items (inbox + state/inbox)
+    // unreadInboxCount filters: !item.relativePath.hasPrefix("artifacts/") && !item.isRead
+    XCTAssertEqual(unreadCount, 2, "Should count 2 unread items (inbox + state/inbox, excluding artifact)")
     
-    // But when filtered in the view, only inbox items appear:
+    // Verify the same logic when filtering in the view:
     let visibleUnreadItems = vm.inboxItems
-      .filter { $0.relativePath.hasPrefix("inbox/") }
+      .filter { !$0.relativePath.hasPrefix("artifacts/") }
       .filter { !$0.isRead }
-    XCTAssertEqual(visibleUnreadItems.count, 1, "Only 1 unread inbox item should be visible in the view")
+    XCTAssertEqual(visibleUnreadItems.count, 2, "Should have 2 unread items visible in the view")
+  }
+  
+  /// Test that state/inbox items are correctly identified as inbox items (not artifacts) in badge logic
+  func testStateInboxItemsAreNotLabeledAsArtifacts() {
+    // This test documents the badge logic behavior - verifying that state/inbox items
+    // are correctly identified as inbox items for badge display purposes
+    
+    // Given: Various item paths
+    let inboxPath = "inbox/doc.md"
+    let stateInboxPath = "state/inbox/suggestion.json"
+    let artifactPath = "artifacts/design.md"
+    
+    // When: Apply the badge logic (isInbox check)
+    let inboxIsInbox = inboxPath.hasPrefix("inbox/") || inboxPath.hasPrefix("state/inbox/")
+    let stateInboxIsInbox = stateInboxPath.hasPrefix("inbox/") || stateInboxPath.hasPrefix("state/inbox/")
+    let artifactIsInbox = artifactPath.hasPrefix("inbox/") || artifactPath.hasPrefix("state/inbox/")
+    
+    // Then: Both inbox/ and state/inbox/ should be identified as inbox items
+    XCTAssertTrue(inboxIsInbox, "inbox/ items should show Inbox badge")
+    XCTAssertTrue(stateInboxIsInbox, "state/inbox/ items should show Inbox badge")
+    XCTAssertFalse(artifactIsInbox, "artifacts/ items should show Artifact badge")
   }
 }
