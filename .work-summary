@@ -1,0 +1,1 @@
+Fixed onboarding showing at 100% completion. Root cause: onboardingSteps cached config.onboardingComplete before calling needsOnboarding, which auto-fixes config. Changed to evaluate needsOnboarding directly without caching. Added OnboardingStepEvaluationTests.swift documenting the race condition fix. Build in progress.
