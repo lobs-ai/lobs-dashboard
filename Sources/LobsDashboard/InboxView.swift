@@ -88,8 +88,14 @@ struct InboxView: View {
   private var filteredItems: [InboxItem] {
     var items = vm.inboxItems
 
-    // Filter out artifacts - only show inbox and state/inbox items
-    items = items.filter { !$0.relativePath.hasPrefix("artifacts/") }
+    // Only show actual inbox items (action items, requests, discussions).
+    // Filter out artifacts, documents (reports/research), and system-generated items.
+    items = items.filter { item in
+      // Keep items from inbox/ (action items that need human response)
+      item.relativePath.hasPrefix("inbox/")
+      // Note: state/inbox/ items (system alerts/suggestions) are excluded
+      // Note: artifacts/, state/reports/, state/research/ are AgentDocuments, not InboxItems
+    }
 
     // Filter by read status
     if !showReadItems {

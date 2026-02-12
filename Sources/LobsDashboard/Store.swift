@@ -1180,7 +1180,8 @@ final class LobsControlStore {
       return (finalTitle, content, summary)
     }
 
-    // Scan artifacts/, legacy inbox/, and repo-backed state/inbox/ (JSON suggestions).
+    // Scan inbox/ (action items, requests, discussions) and state/inbox/ (JSON suggestions).
+    // Note: artifacts/ and state/reports/ are loaded separately as AgentDocuments, not InboxItems.
     let dirs: [(URL, String)] = [
       (inboxDirURL, "inbox"),
       (inboxStateDirURL, "state/inbox"),

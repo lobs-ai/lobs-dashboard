@@ -361,8 +361,9 @@ struct OverviewView: View {
 
   private var onboardingSteps: [OnboardingStep] {
     let repoSet = (vm.repoURL != nil)
-    let onboardingComplete = (vm.config?.onboardingComplete ?? false)
     let walkthroughComplete = vm.firstTaskWalkthroughComplete
+    // Don't cache onboardingComplete - needsOnboarding may auto-fix config
+    let onboardingDone = !vm.needsOnboarding
 
     return [
       OnboardingStep(
@@ -372,8 +373,8 @@ struct OverviewView: View {
       ),
       OnboardingStep(
         title: "Finish onboarding",
-        isComplete: onboardingComplete && !vm.needsOnboarding,
-        detail: (onboardingComplete && !vm.needsOnboarding) ? nil : "Run the setup wizard to validate your repo + server settings."
+        isComplete: onboardingDone,
+        detail: onboardingDone ? nil : "Run the setup wizard to validate your repo + server settings."
       ),
       OnboardingStep(
         title: "First task walkthrough",
@@ -392,9 +393,10 @@ struct OverviewView: View {
 
   @ViewBuilder
   private var onboardingStatusSection: some View {
-    // Only show onboarding section if progress is incomplete
-    // Remove the needsOnboarding check to avoid showing at 100%
-    if onboardingProgress < 1.0 {
+    // Only show onboarding section if onboarding is needed OR progress is incomplete.
+    // Hide section only when BOTH conditions are false (complete + not needed).
+    // This ensures proper handling of edge cases where state files are out of sync.
+    if vm.needsOnboarding || onboardingProgress < 1.0 {
       let steps = onboardingSteps
       let incomplete = steps.contains(where: { !$0.isComplete })
 
