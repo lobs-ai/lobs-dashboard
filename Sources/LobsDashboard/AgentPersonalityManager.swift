@@ -1,13 +1,7 @@
 import Foundation
 
-/// TODO: Migrate to API-based agent personality management
-///
-/// Agent personality should be managed through lobs-server API endpoints.
-/// This file is stubbed out until API endpoints are available.
-///
-/// Endpoints needed:
-/// - GET /api/agent/personality
-/// - PUT /api/agent/personality
+/// Agent personality manager using lobs-server API endpoints.
+/// Uses /api/agents/{agent_type}/files/{filename} to read/write personality files.
 ///
 /// Files (stored on server):
 /// - SOUL.md      — agent persona + tone
@@ -64,11 +58,25 @@ struct AgentPersonalityManager {
   static let userFileName = "USER.md"
   static let identityFileName = "IDENTITY.md"
 
-  // MARK: - Read (STUBBED OUT)
+  // MARK: - Read from API
 
+  @MainActor
+  static func load(api: APIService, agentType: String = "worker") async throws -> Files {
+    async let soul = api.loadAgentFile(agentType: agentType, filename: soulFileName)
+    async let user = api.loadAgentFile(agentType: agentType, filename: userFileName)
+    async let identity = api.loadAgentFile(agentType: agentType, filename: identityFileName)
+    
+    let (soulContent, userContent, identityContent) = try await (soul, user, identity)
+    
+    return Files(
+      soul: soulContent ?? "",
+      user: userContent ?? "",
+      identity: identityContent ?? ""
+    )
+  }
+  
+  // Legacy synchronous version (returns defaults)
   static func load() -> Files {
-    // TODO: Load from API instead of disk
-    // For now, return generated defaults
     return generateFiles(from: .default)
   }
 
@@ -153,12 +161,23 @@ This file is used to tune how the agent communicates with you.
     return Files(soul: soul, user: user, identity: identity)
   }
 
-  // MARK: - Write (STUBBED OUT)
+  // MARK: - Write to API
 
   @MainActor
+  static func save(files: Files, api: APIService, agentType: String = "worker", commitMessage: String? = nil) async -> (success: Bool, warning: String?) {
+    do {
+      try await api.saveAgentFile(agentType: agentType, filename: soulFileName, content: files.soul)
+      try await api.saveAgentFile(agentType: agentType, filename: userFileName, content: files.user)
+      try await api.saveAgentFile(agentType: agentType, filename: identityFileName, content: files.identity)
+      return (true, nil)
+    } catch {
+      return (false, "Failed to save personality files: \(error.localizedDescription)")
+    }
+  }
+  
+  // Legacy version without API (returns error)
+  @MainActor
   static func save(files: Files, commitMessage: String? = nil) async -> (success: Bool, warning: String?) {
-    // TODO: Save to API instead of disk
-    // For now, just return success
-    return (true, "Personality management temporarily disabled (API integration pending)")
+    return (false, "API instance required for saving personality files")
   }
 }

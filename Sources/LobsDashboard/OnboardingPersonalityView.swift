@@ -7,6 +7,8 @@ struct OnboardingPersonalityView: View {
 
   let onBack: (() -> Void)?
   let onContinue: () -> Void
+  
+  private var api: APIService { vm.api }
   var continueTitle: String = "Save & Continue"
   var showBackButton: Bool = true
 
@@ -281,16 +283,22 @@ struct OnboardingPersonalityView: View {
   }
 
   private func loadInitial() {
-    // TODO: In API mode, agent personality should be loaded from API
-    // For now, load from generated defaults (no file access)
-    let existing = AgentPersonalityManager.load()
-    soulText = existing.soul
-    userText = existing.user
-    identityText = existing.identity
-
-    // Also pre-fill the form from defaults so the user has something sensible.
-    // (We don't parse existing markdown back into the form.)
-    input = .default
+    Task { @MainActor in
+      do {
+        let existing = try await AgentPersonalityManager.load(api: api, agentType: "worker")
+        soulText = existing.soul.isEmpty ? AgentPersonalityManager.generateFiles(from: .default).soul : existing.soul
+        userText = existing.user.isEmpty ? AgentPersonalityManager.generateFiles(from: .default).user : existing.user
+        identityText = existing.identity.isEmpty ? AgentPersonalityManager.generateFiles(from: .default).identity : existing.identity
+        input = .default
+      } catch {
+        // If loading fails, use defaults
+        let generated = AgentPersonalityManager.generateFiles(from: .default)
+        soulText = generated.soul
+        userText = generated.user
+        identityText = generated.identity
+        input = .default
+      }
+    }
   }
 
   private func regenerateFromForm() {
@@ -310,9 +318,10 @@ struct OnboardingPersonalityView: View {
     isSaving = true
 
     Task { @MainActor in
-      // TODO: Save to API instead of disk
       let result = await AgentPersonalityManager.save(
         files: .init(soul: soulText, user: userText, identity: identityText),
+        api: api,
+        agentType: "worker",
         commitMessage: "Update agent personality files"
       )
 

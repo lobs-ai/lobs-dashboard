@@ -400,6 +400,17 @@ final class APIService {
     )
   }
   
+  func loadTaskArtifact(taskId: String) async throws -> String {
+    struct ArtifactContent: Codable {
+      let content: String
+    }
+    let artifact: ArtifactContent = try await request(
+      method: "GET",
+      path: "/api/tasks/\(taskId)/artifact"
+    )
+    return artifact.content
+  }
+  
   // MARK: - Inbox
   
   func loadInboxItems() async throws -> [InboxItem] {

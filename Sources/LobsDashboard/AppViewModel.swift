@@ -867,8 +867,7 @@ final class AppViewModel: ObservableObject {
           || data.tasks.map({ $0.updatedAt }) != tasks.map({ $0.updatedAt })
           || data.tasks.map({ $0.status.rawValue }) != tasks.map({ $0.status.rawValue }) {
           tasks = data.tasks
-          // TODO: API endpoint needed for artifact loading
-          // try? loadArtifactForSelected()
+          loadArtifactForSelected()
         }
 
         // Refresh cached Overview stats (runs in background)
@@ -1370,8 +1369,7 @@ final class AppViewModel: ObservableObject {
         tasks = data.tasks
         lastError = nil
         
-        // TODO: API endpoint needed for artifact loading
-        // try? loadArtifactForSelected()
+        loadArtifactForSelected()
 
         // Refresh cached Overview stats (runs in background)
         self.refreshOverviewResearchStats()
@@ -1392,8 +1390,6 @@ final class AppViewModel: ObservableObject {
           self.loadProjectReadme()
           self.loadTemplates()
           self.loadTextDumps()
-          // TODO: API endpoint needed for project last commit tracking
-          // self.refreshProjectLastCommitAt()
         }
       }
 
@@ -1406,12 +1402,8 @@ final class AppViewModel: ObservableObject {
     }
   }
 
-  /// Sync GitHub cache by running the gh-sync script for the current project.
+  /// Sync GitHub cache via API for the current project.
   func syncGitHubCache() {
-    guard let repoURL else {
-      flashError("Repo path not set")
-      return
-    }
     guard let currentProject = projects.first(where: { $0.id == selectedProjectId }),
           currentProject.tracking == .github else {
       flashError("Current project is not GitHub-tracked")
@@ -1422,31 +1414,14 @@ final class AppViewModel: ObservableObject {
     isGitHubSyncing = true
     Task {
       do {
-        let ghSyncPath = repoURL.appendingPathComponent("bin/gh-sync").path
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: ghSyncPath)
-        process.arguments = [currentProject.id]
-        process.currentDirectoryURL = repoURL
-
-        try process.run()
-        process.waitUntilExit()
-
-        if process.terminationStatus != 0 {
-          await MainActor.run {
-            flashError("gh-sync failed")
-            isGitHubSyncing = false
-          }
-          return
-        }
-
-        // Reload tasks to pick up the new cache
+        try await api.syncGitHubProject(projectId: currentProject.id)
         await MainActor.run {
           isGitHubSyncing = false
           reload()
         }
       } catch {
         await MainActor.run {
-          flashError("Failed to run gh-sync: \(error.localizedDescription)")
+          flashError("Failed to sync GitHub: \(error.localizedDescription)")
           isGitHubSyncing = false
         }
       }
@@ -4383,8 +4358,23 @@ final class AppViewModel: ObservableObject {
   }
 
   private func loadArtifactForSelected() {
-    // TODO: API endpoint needed for artifact loading
-    artifactText = "(select a task)"
+    guard let selectedId = selectedTaskId else {
+      artifactText = "(select a task)"
+      return
+    }
+    
+    Task {
+      do {
+        let content = try await api.loadTaskArtifact(taskId: selectedId)
+        await MainActor.run {
+          artifactText = content.isEmpty ? "(no artifact)" : content
+        }
+      } catch {
+        await MainActor.run {
+          artifactText = "(artifact load error: \(error.localizedDescription))"
+        }
+      }
+    }
   }
 
   // MARK: - Keyboard Navigation
