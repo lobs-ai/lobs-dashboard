@@ -1,0 +1,1 @@
+Task already complete: "Home" navigation command exists in fuzzy finder (CommandPaletteView.swift line ~52). CommandResult with id "nav:home", house.fill icon, sets vm.showOverview=true. Test file CommandPaletteHomeNavigationTests.swift has 9 tests. No changes needed.
