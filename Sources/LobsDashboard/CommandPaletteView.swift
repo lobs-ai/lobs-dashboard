@@ -256,14 +256,14 @@ struct CommandPaletteView: View {
       isPresented = false
     }
     
-    // Execute action after dismissal animation starts
-    // This prevents heavy view updates from blocking the close animation
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+    // Execute action AFTER dismissal animation completes (0.3s)
+    // This prevents heavy view updates from interfering with the close animation
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
       result.action()
     }
     
-    // Reset state for next time
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+    // Reset state after action executes
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
       searchText = ""
       selectedIndex = 0
     }

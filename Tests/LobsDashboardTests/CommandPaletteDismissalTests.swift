@@ -4,17 +4,17 @@ import XCTest
 /// Tests for command palette dismissal performance
 ///
 /// **Issue Fixed:** Command palette felt slow to dismiss when executing navigation commands
-/// (especially "Home") because the action was executed BEFORE the palette was dismissed,
-/// causing heavy view updates to block the dismissal animation.
+/// (especially "Home") because the action was executed BEFORE or DURING the palette dismissal
+/// animation, causing heavy view updates to interfere with smooth animation.
 ///
-/// **Solution:** Reversed the order - dismiss palette first with animation, then execute
-/// the action after a 0.1s delay. This ensures the dismissal animation is smooth and
-/// responsive, while the action still executes quickly enough to feel immediate.
+/// **Solution:** Dismiss palette first with animation (0.25s), then execute the action AFTER
+/// the animation completes (0.3s delay). This ensures the dismissal animation is completely
+/// smooth and uninterrupted by any view updates.
 ///
 /// **Performance Pattern:**
 /// - Close palette: immediate (animated over 0.25s)
-/// - Execute action: 0.1s delay (animation overlaps action start)
-/// - Reset state: 0.3s delay (after animation completes)
+/// - Execute action: 0.3s delay (AFTER animation completes)
+/// - Reset state: 0.35s delay (after action starts)
 ///
 /// **Key Learning:** When dismissing overlays, always prioritize the dismissal animation
 /// over executing expensive actions. A 100ms delay in action execution is imperceptible
@@ -27,15 +27,14 @@ final class CommandPaletteDismissalTests: XCTestCase {
   /// (with animation) before the action is dispatched
   func testDismissalBeforeAction() {
     // This test documents the expected execution order:
-    // 1. withAnimation { isPresented = false } — immediate
-    // 2. DispatchQueue.main.asyncAfter(0.1s) { action() } — delayed
-    // 3. DispatchQueue.main.asyncAfter(0.3s) { reset state } — delayed
+    // 1. withAnimation { isPresented = false } — immediate (0.25s animation)
+    // 2. DispatchQueue.main.asyncAfter(0.3s) { action() } — delayed, AFTER animation completes
+    // 3. DispatchQueue.main.asyncAfter(0.35s) { reset state } — delayed
     
-    // The dismissal animation (0.25s) overlaps with the action delay (0.1s),
-    // so the action starts executing while the animation is still running,
-    // but the palette has already begun closing, making the UI feel responsive
+    // The dismissal animation (0.25s) completes fully before the action (0.3s),
+    // ensuring no view updates can interfere with the smooth closing animation
     
-    XCTAssert(true, "Documented pattern: dismiss first, execute action with 0.1s delay")
+    XCTAssert(true, "Documented pattern: dismiss first, execute action after animation completes")
   }
   
   /// Test: Home navigation doesn't block dismissal

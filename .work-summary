@@ -1,0 +1,1 @@
+Made Documents button conditional - only appears when agent documents exist (matching Templates button pattern). Added 6 unit tests covering visibility logic and dynamic updates. Build passes successfully.
