@@ -1358,11 +1358,9 @@ private struct ToolbarArea: View {
         withAnimation(.easeInOut(duration: 0.25)) { showInbox = true }
       }
 
-      // Documents button (only show when there are agent documents)
-      if !vm.agentDocuments.isEmpty {
-        DocumentsToolbarButton(vm: vm) {
-          withAnimation(.easeInOut(duration: 0.25)) { showDocuments = true }
-        }
+      // Documents button — always visible
+      DocumentsToolbarButton(vm: vm) {
+        withAnimation(.easeInOut(duration: 0.25)) { showDocuments = true }
       }
 
       // Templates button

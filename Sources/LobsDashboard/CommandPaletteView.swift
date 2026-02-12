@@ -251,18 +251,19 @@ struct CommandPaletteView: View {
     // Save to recents
     saveRecent(result)
     
-    // Close palette immediately for snappy feel
-    withAnimation(.easeOut(duration: 0.15)) {
+    // Close palette first for snappy dismissal
+    withAnimation(.easeInOut(duration: 0.25)) {
       isPresented = false
     }
     
-    // Execute action after brief dismissal
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+    // Execute action AFTER dismissal animation completes (0.3s)
+    // This prevents heavy view updates from interfering with the close animation
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
       result.action()
     }
     
-    // Reset state
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+    // Reset state after action executes
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
       searchText = ""
       selectedIndex = 0
     }
