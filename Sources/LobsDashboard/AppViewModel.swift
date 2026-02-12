@@ -2079,15 +2079,21 @@ final class AppViewModel: ObservableObject {
       researchDocContent = ""
       researchSources = []
       researchDeliverables = []
+      // Stop polling for research if not a research project
+      pollingManager.stopResearchPolling(projectId: selectedProjectId)
       return
     }
-    // TODO: API endpoints needed for research data
-    // For now, clear research data
+    
+    // Start polling for research data
+    pollingManager.startResearchPolling(projectId: selectedProjectId)
+    
+    // Update local state from cache
+    researchDocContent = cache.getResearchDoc(selectedProjectId) ?? ""
+    researchSources = cache.getResearchSources(selectedProjectId)
+    researchRequests = cache.getResearchRequests(selectedProjectId)
+    
+    // Legacy tiles (not used anymore but keep for compatibility)
     researchTiles = []
-    researchRequests = []
-    researchDocContent = ""
-    researchSources = []
-    researchDeliverables = []
   }
 
   // MARK: - Agent Documents (Reports & Research)
@@ -2197,22 +2203,17 @@ final class AppViewModel: ObservableObject {
     guard isTrackerProject else {
       trackerItems = []
       trackerRequests = []
+      // Stop polling for tracker if not a tracker project
+      pollingManager.stopTrackerPolling(projectId: selectedProjectId)
       return
     }
-    Task {
-      do {
-        let items = try await api.loadTrackerItems(projectId: selectedProjectId)
-        let requests = try await api.loadResearchRequests(projectId: selectedProjectId)
-        await MainActor.run {
-          self.trackerItems = items
-          self.trackerRequests = requests
-        }
-      } catch {
-        await MainActor.run {
-          self.flashError("Failed to load tracker data: \(error.localizedDescription)")
-        }
-      }
-    }
+    
+    // Start polling for tracker data
+    pollingManager.startTrackerPolling(projectId: selectedProjectId)
+    
+    // Update local state from cache
+    trackerItems = cache.getTrackerItems(selectedProjectId)
+    trackerRequests = cache.getResearchRequests(selectedProjectId)
   }
 
   func addTrackerItem(title: String, difficulty: String? = nil, tags: [String]? = nil, notes: String? = nil, links: [String]? = nil) {
@@ -2979,25 +2980,27 @@ final class AppViewModel: ObservableObject {
     localMutation: (inout DashboardTask) -> Void,
     gitWork: @escaping (URL) async throws -> Void  // Keep signature for compatibility, URL is ignored
   ) {
-    // 1. Apply local mutation immediately.
-    if let idx = tasks.firstIndex(where: { $0.id == taskId }) {
-      withAnimation(.easeInOut(duration: 0.25)) {
-        localMutation(&tasks[idx])
-        tasks[idx].updatedAt = Date()
-      }
+    // 1. Apply local mutation immediately using cache (UI updates via binding)
+    withAnimation(.easeInOut(duration: 0.25)) {
+      cache.updateTask(taskId, update: localMutation)
     }
 
     // 2. Persist via API in background
     isGitBusy = true
     Task {
       do {
-        if let task = tasks.first(where: { $0.id == taskId }) {
+        if let task = cache.tasks.first(where: { $0.id == taskId }) {
           try await api.saveExistingTask(task)
         }
+        cache.invalidateTasks()
       } catch {
         await MainActor.run {
           self.flashError("Failed to save: \(error.localizedDescription)")
-          self.reload()
+          // Invalidate cache and force reload to get server state
+          self.cache.invalidateTasks()
+          Task {
+            await self.pollingManager.refreshStaleData()
+          }
         }
       }
       await MainActor.run {
@@ -3336,13 +3339,21 @@ final class AppViewModel: ObservableObject {
 
   /// Delete a single task by ID (used from text dump results).
   func deleteTask(taskId: String) {
-    tasks.removeAll { $0.id == taskId }
+    // Optimistically remove from cache (UI updates instantly)
+    cache.removeTask(taskId)
+    
     Task {
       do {
         try await api.deleteTask(taskId: taskId)
+        cache.invalidateTasks()
       } catch {
         await MainActor.run {
           self.flashError("Failed to delete task: \(error.localizedDescription)")
+          // Force reload to restore the task
+          self.cache.invalidateTasks()
+          Task {
+            await self.pollingManager.refreshStaleData()
+          }
         }
       }
     }
@@ -3760,21 +3771,20 @@ final class AppViewModel: ObservableObject {
 
   /// Bulk-move all multi-selected tasks to a new status.
   func bulkMoveSelected(to status: TaskStatus) {
-    guard let repoURL, !multiSelectedTaskIds.isEmpty else { return }
+    guard !multiSelectedTaskIds.isEmpty else { return }
     let ids = multiSelectedTaskIds
 
-    // Apply local mutations immediately
-    for id in ids {
-      if let idx = tasks.firstIndex(where: { $0.id == id }) {
-        withAnimation(.easeInOut(duration: 0.25)) {
-          tasks[idx].status = status
-          tasks[idx].updatedAt = Date()
+    // Apply local mutations immediately to cache
+    withAnimation(.easeInOut(duration: 0.25)) {
+      for id in ids {
+        cache.updateTask(id) { task in
+          task.status = status
           if status == .completed {
-            tasks[idx].workState = nil
-            if tasks[idx].finishedAt == nil { tasks[idx].finishedAt = Date() }
+            task.workState = nil
+            if task.finishedAt == nil { task.finishedAt = Date() }
           } else if status == .active {
-            tasks[idx].workState = .notStarted
-            if tasks[idx].startedAt == nil { tasks[idx].startedAt = Date() }
+            task.workState = .notStarted
+            if task.startedAt == nil { task.startedAt = Date() }
           }
         }
       }
@@ -3784,10 +3794,11 @@ final class AppViewModel: ObservableObject {
     Task {
       do {
         for id in ids {
-          if let task = tasks.first(where: { $0.id == id }) {
+          if let task = cache.tasks.first(where: { $0.id == id }) {
             try await api.saveExistingTask(task)
           }
         }
+        cache.invalidateTasks()
       } catch {
         await MainActor.run {
           self.flashError("Failed to save bulk move: \(error.localizedDescription)")
