@@ -8,10 +8,55 @@ struct DocumentsView: View {
   @Binding var isPresented: Bool
 
   @State private var selectedDocument: AgentDocument? = nil
+  @State private var selectedTopicOrGroup: String? = nil
   @State private var searchText: String = ""
+  @State private var userNotes: String = ""
+  @State private var expandedTopics: Set<String> = []
+  @State private var showFollowUpSheet: Bool = false
   @AppStorage("documentsShowReadItems") private var showReadItems: Bool = true
-  @AppStorage("documentsSourceFilter") private var sourceFilter: String = "all"
-  @AppStorage("documentsStatusFilter") private var statusFilter: String = "all"
+  @AppStorage("documentsGroupByTopic") private var groupByTopic: Bool = true
+
+  // Topic groups for the sidebar
+  private var topicGroups: [(String, [AgentDocument], Int)] {
+    guard groupByTopic else { return [] }
+    
+    var groups: [(String, [AgentDocument], Int)] = []
+    
+    // Reports section (all writer documents)
+    let reports = filteredDocuments.filter { $0.source == .writer }
+    if !reports.isEmpty {
+      let unreadCount = reports.filter { !$0.isRead }.count
+      groups.append(("Reports", reports, unreadCount))
+    }
+    
+    // Research sections grouped by topic
+    let researchDocs = filteredDocuments.filter { $0.source == .researcher }
+    let topicMap = Dictionary(grouping: researchDocs) { $0.topic ?? "Other" }
+    
+    for (topic, docs) in topicMap.sorted(by: { $0.key < $1.key }) {
+      let unreadCount = docs.filter { !$0.isRead }.count
+      groups.append((topic, docs, unreadCount))
+    }
+    
+    return groups
+  }
+  
+  // Filtered documents for current selection
+  private var documentsForCurrentView: [AgentDocument] {
+    if !groupByTopic {
+      return filteredDocuments
+    }
+    
+    guard let selected = selectedTopicOrGroup else {
+      return filteredDocuments
+    }
+    
+    if selected == "Reports" {
+      return filteredDocuments.filter { $0.source == .writer }
+    } else {
+      return filteredDocuments.filter { $0.topic == selected }
+    }
+  }
 
   private var filteredDocuments: [AgentDocument] {
     var docs = vm.agentDocuments
@@ -21,16 +66,6 @@ struct DocumentsView: View {
       docs = docs.filter { !$0.isRead }
     }
 
-    // Filter by source
-    if sourceFilter != "all" {
-      docs = docs.filter { $0.source.rawValue == sourceFilter }
-    }
-
-    // Filter by status (only applicable for reports)
-    if statusFilter != "all" {
-      docs = docs.filter { $0.status?.rawValue == statusFilter }
-    }
-
     // Filter by search text
     let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     if !q.isEmpty {
@@ -38,11 +73,11 @@ struct DocumentsView: View {
         doc.title.lowercased().contains(q)
           || doc.filename.lowercased().contains(q)
           || (doc.topic?.lowercased().contains(q) ?? false)
-          || (doc.projectId?.lowercased().contains(q) ?? false)
+          || (doc.summary?.lowercased().contains(q) ?? false)
       }
     }
 
-    return docs
+    return docs.sorted { $0.date > $1.date }
   }
 
   var body: some View {
@@ -103,56 +138,21 @@ struct DocumentsView: View {
         .background(Color(NSColor.textBackgroundColor))
         .cornerRadius(6)
 
-        // Source filter
-        Menu {
-          Button("All Sources") { sourceFilter = "all" }
-          Divider()
-          ForEach(DocumentSource.allCases, id: \.self) { source in
-            Button(source.displayName) {
-              sourceFilter = source.rawValue
-            }
-          }
-        } label: {
+        // Group by topic toggle
+        Toggle(isOn: $groupByTopic) {
           HStack(spacing: 4) {
-            Image(systemName: sourceFilter == "all" ? "doc.text.fill" : DocumentSource(rawValue: sourceFilter)?.icon ?? "doc.text.fill")
-            Text(sourceFilter == "all" ? "All Sources" : (DocumentSource(rawValue: sourceFilter)?.displayName ?? "All"))
-            Image(systemName: "chevron.down")
-              .font(.system(size: 10))
+            Image(systemName: groupByTopic ? "folder.fill" : "list.bullet")
+            Text(groupByTopic ? "Grouped" : "Flat List")
           }
           .font(.system(size: 13))
-          .padding(.horizontal, 10)
-          .padding(.vertical, 6)
-          .background(Color(NSColor.controlBackgroundColor))
-          .cornerRadius(6)
         }
-        .menuStyle(.borderlessButton)
-        .help("Filter by source")
-
-        // Status filter (only for reports)
-        if filteredDocuments.contains(where: { $0.status != nil }) {
-          Menu {
-            Button("All Statuses") { statusFilter = "all" }
-            Divider()
-            ForEach(DocumentStatus.allCases, id: \.self) { status in
-              Button(status.displayName) {
-                statusFilter = status.rawValue
-              }
-            }
-          } label: {
-            HStack(spacing: 4) {
-              Image(systemName: "flag.fill")
-              Text(statusFilter == "all" ? "All Statuses" : (DocumentStatus(rawValue: statusFilter)?.displayName ?? "All"))
-              Image(systemName: "chevron.down")
-                .font(.system(size: 10))
-            }
-            .font(.system(size: 13))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Color(NSColor.controlBackgroundColor))
-            .cornerRadius(6)
+        .toggleStyle(.button)
+        .buttonStyle(.borderless)
+        .help("Toggle grouped by topic view")
+        .onChange(of: groupByTopic) { newValue in
+          if newValue && selectedTopicOrGroup == nil && !topicGroups.isEmpty {
+            selectedTopicOrGroup = topicGroups.first?.0
           }
-          .menuStyle(.borderlessButton)
-          .help("Filter by status")
         }
 
         // Read filter toggle
@@ -181,43 +181,143 @@ struct DocumentsView: View {
 
       // Content - Split view
       HSplitView {
-        // Left: Document list
-        ScrollView {
-          LazyVStack(spacing: 0) {
-            if filteredDocuments.isEmpty {
-              VStack(spacing: 12) {
-                Image(systemName: "doc.text")
-                  .font(.system(size: 48))
-                  .foregroundStyle(.secondary)
-                Text("No documents")
-                  .font(.headline)
-                Text(searchText.isEmpty ? "Agent documents will appear here" : "No documents match your filters")
-                  .font(.subheadline)
-                  .foregroundStyle(.secondary)
-              }
-              .frame(maxWidth: .infinity)
-              .padding(.vertical, 60)
-            } else {
-              ForEach(filteredDocuments) { doc in
-                DocumentListRow(
-                  doc: doc,
-                  isSelected: selectedDocument?.id == doc.id,
-                  onSelect: {
-                    selectedDocument = doc
-                    if !doc.isRead {
-                      vm.markDocumentRead(doc)
+        // Left: Topic sidebar (when grouped) or document list
+        if groupByTopic {
+          // Topic sidebar
+          VStack(spacing: 0) {
+            ScrollView {
+              LazyVStack(spacing: 1, pinnedViews: []) {
+                ForEach(topicGroups, id: \.0) { topicName, docs, unreadCount in
+                  TopicGroupRow(
+                    topicName: topicName,
+                    documentCount: docs.count,
+                    unreadCount: unreadCount,
+                    isSelected: selectedTopicOrGroup == topicName,
+                    isExpanded: expandedTopics.contains(topicName),
+                    onSelect: {
+                      selectedTopicOrGroup = topicName
+                      // Auto-select first doc in topic
+                      if let firstDoc = docs.first {
+                        selectedDocument = firstDoc
+                        if !firstDoc.isRead {
+                          vm.markDocumentRead(firstDoc)
+                        }
+                      }
+                    },
+                    onToggleExpand: {
+                      if expandedTopics.contains(topicName) {
+                        expandedTopics.remove(topicName)
+                      } else {
+                        expandedTopics.insert(topicName)
+                      }
+                    }
+                  )
+                  
+                  // Show documents under expanded topics
+                  if expandedTopics.contains(topicName) {
+                    ForEach(docs) { doc in
+                      DocumentListRow(
+                        doc: doc,
+                        isSelected: selectedDocument?.id == doc.id,
+                        showTopic: false,
+                        onSelect: {
+                          selectedDocument = doc
+                          selectedTopicOrGroup = topicName
+                          if !doc.isRead {
+                            vm.markDocumentRead(doc)
+                          }
+                        }
+                      )
+                      .padding(.leading, 16)
                     }
                   }
-                )
+                }
               }
             }
           }
+          .frame(minWidth: 260, idealWidth: 320, maxWidth: 400)
+        } else {
+          // Flat list view
+          ScrollView {
+            LazyVStack(spacing: 0) {
+              if filteredDocuments.isEmpty {
+                VStack(spacing: 12) {
+                  Image(systemName: "doc.text")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.secondary)
+                  Text("No documents")
+                    .font(.headline)
+                  Text(searchText.isEmpty ? "Agent documents will appear here" : "No documents match your filters")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 60)
+              } else {
+                ForEach(filteredDocuments) { doc in
+                  DocumentListRow(
+                    doc: doc,
+                    isSelected: selectedDocument?.id == doc.id,
+                    showTopic: true,
+                    onSelect: {
+                      selectedDocument = doc
+                      if !doc.isRead {
+                        vm.markDocumentRead(doc)
+                      }
+                    }
+                  )
+                }
+              }
+            }
+          }
+          .frame(minWidth: 300, idealWidth: 400, maxWidth: 500)
         }
-        .frame(minWidth: 300, idealWidth: 400, maxWidth: 500)
+
+        // Middle: Document list for selected topic (when grouped)
+        if groupByTopic {
+          ScrollView {
+            LazyVStack(spacing: 0) {
+              if documentsForCurrentView.isEmpty {
+                VStack(spacing: 12) {
+                  Image(systemName: "doc.text")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.secondary)
+                  Text("No documents")
+                    .font(.headline)
+                  Text("Select a topic to view documents")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 60)
+              } else {
+                ForEach(documentsForCurrentView) { doc in
+                  DocumentListRow(
+                    doc: doc,
+                    isSelected: selectedDocument?.id == doc.id,
+                    showTopic: false,
+                    onSelect: {
+                      selectedDocument = doc
+                      if !doc.isRead {
+                        vm.markDocumentRead(doc)
+                      }
+                    }
+                  )
+                }
+              }
+            }
+          }
+          .frame(minWidth: 300, idealWidth: 400, maxWidth: 500)
+        }
 
         // Right: Document detail
         if let doc = selectedDocument {
-          DocumentDetailView(doc: doc, vm: vm)
+          DocumentDetailView(
+            doc: doc,
+            vm: vm,
+            userNotes: $userNotes,
+            showFollowUpSheet: $showFollowUpSheet
+          )
         } else {
           VStack(spacing: 12) {
             Image(systemName: "doc.text")
@@ -232,7 +332,12 @@ struct DocumentsView: View {
       }
     }
     .background(Theme.bg)
-    .frame(minWidth: 900, idealWidth: 1200, minHeight: 600, idealHeight: 800)
+    .frame(minWidth: 900, idealWidth: 1400, minHeight: 600, idealHeight: 800)
+    .sheet(isPresented: $showFollowUpSheet) {
+      if let doc = selectedDocument {
+        FollowUpRequestSheet(doc: doc, vm: vm, isPresented: $showFollowUpSheet)
+      }
+    }
     .overlay {
       // Use custom escape key monitor to handle escape even when WKWebView has focus
       DocumentsEscapeKeyMonitor {
@@ -243,14 +348,87 @@ struct DocumentsView: View {
       .frame(width: 0, height: 0)
     }
     .onAppear {
-      // Select first document if none selected
-      if selectedDocument == nil, let first = filteredDocuments.first {
-        selectedDocument = first
-        if !first.isRead {
-          vm.markDocumentRead(first)
+      // Initialize expanded topics
+      if expandedTopics.isEmpty {
+        expandedTopics = Set(topicGroups.prefix(3).map { $0.0 })
+      }
+      
+      // Auto-select first topic and document
+      if groupByTopic {
+        if selectedTopicOrGroup == nil, let firstTopic = topicGroups.first {
+          selectedTopicOrGroup = firstTopic.0
+          if let firstDoc = firstTopic.1.first {
+            selectedDocument = firstDoc
+            if !firstDoc.isRead {
+              vm.markDocumentRead(firstDoc)
+            }
+          }
+        }
+      } else {
+        if selectedDocument == nil, let first = filteredDocuments.first {
+          selectedDocument = first
+          if !first.isRead {
+            vm.markDocumentRead(first)
+          }
         }
       }
     }
+  }
+}
+
+// MARK: - Topic Group Row
+
+private struct TopicGroupRow: View {
+  let topicName: String
+  let documentCount: Int
+  let unreadCount: Int
+  let isSelected: Bool
+  let isExpanded: Bool
+  let onSelect: () -> Void
+  let onToggleExpand: () -> Void
+  
+  var body: some View {
+    Button {
+      onSelect()
+    } label: {
+      HStack(spacing: 8) {
+        Button(action: onToggleExpand) {
+          Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .frame(width: 12)
+        }
+        .buttonStyle(.plain)
+        
+        Image(systemName: topicName == "Reports" ? "doc.text.fill" : "folder.fill")
+          .font(.system(size: 14))
+          .foregroundStyle(topicName == "Reports" ? .blue : .purple)
+        
+        Text(topicName)
+          .font(.system(size: 13, weight: .semibold))
+        
+        Spacer()
+        
+        if unreadCount > 0 {
+          Text("\(unreadCount)")
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.purple)
+            .clipShape(Capsule())
+        }
+        
+        Text("\(documentCount)")
+          .font(.system(size: 11))
+          .foregroundStyle(.secondary)
+      }
+      .padding(.horizontal, 12)
+      .padding(.vertical, 8)
+      .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
   }
 }
 
@@ -295,6 +473,7 @@ private struct DocumentsEscapeKeyMonitor: NSViewRepresentable {
 private struct DocumentListRow: View {
   let doc: AgentDocument
   let isSelected: Bool
+  let showTopic: Bool
   let onSelect: () -> Void
 
   var body: some View {
@@ -304,60 +483,64 @@ private struct DocumentListRow: View {
       HStack(spacing: 12) {
         // Source icon
         Image(systemName: doc.source.icon)
-          .font(.title3)
+          .font(.system(size: 16))
           .foregroundStyle(doc.source == .writer ? .blue : .purple)
-          .frame(width: 24)
+          .frame(width: 20)
 
         VStack(alignment: .leading, spacing: 4) {
           // Title
           HStack(spacing: 6) {
             Text(doc.title)
-              .font(.system(size: 14, weight: doc.isRead ? .regular : .semibold))
+              .font(.system(size: 13, weight: doc.isRead ? .regular : .semibold))
               .lineLimit(2)
               .multilineTextAlignment(.leading)
 
             if !doc.isRead {
               Circle()
-                .fill(.blue)
+                .fill(.purple)
                 .frame(width: 6, height: 6)
             }
+          }
+          
+          // Summary
+          if let summary = doc.summary, !summary.isEmpty {
+            Text(summary)
+              .font(.system(size: 11))
+              .foregroundStyle(.secondary)
+              .lineLimit(2)
+              .multilineTextAlignment(.leading)
           }
 
           // Metadata
           HStack(spacing: 6) {
-            // Source badge
-            Text(doc.source.displayName)
-              .font(.system(size: 11))
-              .padding(.horizontal, 6)
-              .padding(.vertical, 2)
-              .background(doc.source == .writer ? Color.blue.opacity(0.15) : Color.purple.opacity(0.15))
-              .foregroundStyle(doc.source == .writer ? .blue : .purple)
-              .cornerRadius(4)
-
             // Status badge (if applicable)
             if let status = doc.status {
               Text(status.displayName)
-                .font(.system(size: 11))
-                .padding(.horizontal, 6)
+                .font(.system(size: 10))
+                .padding(.horizontal, 5)
                 .padding(.vertical, 2)
                 .background(statusColor(status).opacity(0.15))
                 .foregroundStyle(statusColor(status))
-                .cornerRadius(4)
+                .cornerRadius(3)
             }
 
-            // Topic/Project
-            if let topic = doc.topic {
+            // Topic (if shown)
+            if showTopic, let topic = doc.topic {
               Text(topic)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 10))
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(Color.purple.opacity(0.1))
+                .foregroundStyle(.purple)
+                .cornerRadius(3)
             }
 
             Spacer()
 
             // Date
             Text(doc.date, style: .relative)
-              .font(.system(size: 11))
-              .foregroundStyle(.secondary)
+              .font(.system(size: 10))
+              .foregroundStyle(.tertiary)
           }
         }
 
@@ -386,11 +569,15 @@ private struct DocumentListRow: View {
 private struct DocumentDetailView: View {
   let doc: AgentDocument
   @ObservedObject var vm: AppViewModel
+  @Binding var userNotes: String
+  @Binding var showFollowUpSheet: Bool
+  
+  @State private var showCopiedAlert = false
 
   var body: some View {
     VStack(spacing: 0) {
-      // Header
-      VStack(alignment: .leading, spacing: 8) {
+      // Header with summary
+      VStack(alignment: .leading, spacing: 12) {
         HStack {
           Text(doc.title)
             .font(.title2)
@@ -412,9 +599,24 @@ private struct DocumentDetailView: View {
           .buttonStyle(.plain)
           .help(doc.isRead ? "Mark as unread" : "Mark as read")
         }
+        
+        // Summary box
+        if let summary = doc.summary, !summary.isEmpty {
+          HStack(spacing: 8) {
+            Image(systemName: "text.alignleft")
+              .foregroundStyle(.secondary)
+            Text(summary)
+              .font(.system(size: 13))
+              .foregroundStyle(.secondary)
+          }
+          .padding(12)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .background(Color.secondary.opacity(0.08))
+          .cornerRadius(8)
+        }
 
         // Metadata
-        HStack(spacing: 8) {
+        HStack(spacing: 12) {
           // Source
           Label(doc.source.displayName, systemImage: doc.source.icon)
             .font(.system(size: 12))
@@ -431,8 +633,10 @@ private struct DocumentDetailView: View {
           if let topic = doc.topic {
             Label(topic, systemImage: "folder")
               .font(.system(size: 12))
-              .foregroundStyle(.secondary)
+              .foregroundStyle(.purple)
           }
+
+          Spacer()
 
           // Date
           HStack(spacing: 4) {
@@ -441,22 +645,71 @@ private struct DocumentDetailView: View {
           }
           .font(.system(size: 12))
           .foregroundStyle(.secondary)
-
-          Spacer()
-
-          // Filename
-          Text(doc.filename)
-            .font(.system(size: 11, design: .monospaced))
-            .foregroundStyle(.tertiary)
+        }
+        
+        // Action buttons
+        HStack(spacing: 8) {
+          // Convert to Task
+          Button {
+            convertToTask()
+          } label: {
+            HStack(spacing: 4) {
+              Image(systemName: "plus.square")
+              Text("Convert to Task")
+            }
+            .font(.system(size: 12))
+          }
+          .buttonStyle(.bordered)
+          .help("Create a task from this document")
+          
+          // Request Follow-up
+          Button {
+            showFollowUpSheet = true
+          } label: {
+            HStack(spacing: 4) {
+              Image(systemName: "arrow.turn.down.right")
+              Text("Request Follow-up")
+            }
+            .font(.system(size: 12))
+          }
+          .buttonStyle(.bordered)
+          .help("Create a research request based on this document")
+          
+          // Share/Export
+          Button {
+            copyToClipboard()
+          } label: {
+            HStack(spacing: 4) {
+              Image(systemName: showCopiedAlert ? "checkmark" : "doc.on.clipboard")
+              Text(showCopiedAlert ? "Copied!" : "Copy Content")
+            }
+            .font(.system(size: 12))
+          }
+          .buttonStyle(.bordered)
+          .help("Copy document content to clipboard")
+          
+          // Archive
+          Button {
+            archiveDocument()
+          } label: {
+            HStack(spacing: 4) {
+              Image(systemName: "archivebox")
+              Text("Archive")
+            }
+            .font(.system(size: 12))
+          }
+          .buttonStyle(.bordered)
+          .help("Mark as read and hide from view")
         }
       }
       .padding()
 
       Divider()
 
-      // Content
+      // Content with notes section
       ScrollView {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 16) {
+          // Truncation warning
           if doc.contentIsTruncated {
             HStack(spacing: 8) {
               Image(systemName: "exclamationmark.triangle.fill")
@@ -468,14 +721,122 @@ private struct DocumentDetailView: View {
             .padding()
             .background(Color.orange.opacity(0.1))
             .cornerRadius(8)
-            .padding()
           }
 
-          // Use native markdown rendering instead of WKWebView for better performance
+          // Document content
           NativeMarkdownText(markdown: doc.content)
-            .padding()
+          
+          Divider()
+            .padding(.vertical, 8)
+          
+          // User notes section
+          VStack(alignment: .leading, spacing: 8) {
+            HStack {
+              Label("Your Notes", systemImage: "note.text")
+                .font(.system(size: 14, weight: .semibold))
+              Spacer()
+              Text("Private annotations")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+            }
+            
+            TextEditor(text: $userNotes)
+              .font(.system(size: 13))
+              .frame(minHeight: 100)
+              .padding(8)
+              .background(Color(NSColor.textBackgroundColor))
+              .cornerRadius(6)
+              .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                  .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+              )
+            
+            if !userNotes.isEmpty {
+              Button("Clear Notes") {
+                userNotes = ""
+              }
+              .font(.system(size: 11))
+              .foregroundStyle(.secondary)
+            }
+          }
+          .padding(.top, 8)
         }
+        .padding()
       }
+      
+      Divider()
+      
+      // Footer with file info
+      HStack(spacing: 12) {
+        Text(doc.filename)
+          .font(.system(size: 11, design: .monospaced))
+          .foregroundStyle(.tertiary)
+        
+        Spacer()
+        
+        Text(doc.relativePath)
+          .font(.system(size: 10))
+          .foregroundStyle(.tertiary)
+      }
+      .padding(.horizontal)
+      .padding(.vertical, 8)
+    }
+  }
+  
+  private func convertToTask() {
+    // Create task JSON in ~/lobs-control/state/tasks/
+    guard let repoURL = vm.repoURL else { return }
+    
+    let taskId = UUID().uuidString
+    let title = "Follow up: \(doc.title)"
+    let notes = """
+    Based on document: \(doc.filename)
+    
+    \(doc.summary ?? "")
+    
+    ---
+    
+    Content preview:
+    \(String(doc.content.prefix(500)))
+    """
+    
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      _ = try store.addTask(
+        id: taskId,
+        title: title,
+        owner: TaskOwner.rafe,
+        status: TaskStatus.inbox,
+        projectId: doc.projectId,
+        workState: WorkState.notStarted,
+        reviewState: ReviewState.pending,
+        notes: notes
+      )
+      
+      // Show success feedback
+      NSSound.beep()
+    } catch {
+      print("Failed to create task: \(error)")
+    }
+  }
+  
+  private func archiveDocument() {
+    // Mark as read
+    if !doc.isRead {
+      vm.markDocumentRead(doc)
+    }
+    // Note: In a real implementation, you might want to actually move the file
+    // to an archived directory. For now, marking as read + hiding read items achieves the goal.
+  }
+  
+  private func copyToClipboard() {
+    let pasteboard = NSPasteboard.general
+    pasteboard.clearContents()
+    pasteboard.setString(doc.content, forType: .string)
+    
+    showCopiedAlert = true
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+      showCopiedAlert = false
     }
   }
 
@@ -484,6 +845,102 @@ private struct DocumentDetailView: View {
     case .pending: return .orange
     case .approved: return .green
     case .rejected: return .red
+    }
+  }
+}
+
+// MARK: - Follow-up Request Sheet
+
+private struct FollowUpRequestSheet: View {
+  let doc: AgentDocument
+  @ObservedObject var vm: AppViewModel
+  @Binding var isPresented: Bool
+  
+  @State private var requestPrompt: String = ""
+  
+  var body: some View {
+    VStack(spacing: 16) {
+      HStack {
+        VStack(alignment: .leading, spacing: 4) {
+          Text("Request Follow-up Research")
+            .font(.title3)
+            .fontWeight(.bold)
+          Text("Based on: \(doc.title)")
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+        }
+        Spacer()
+      }
+      
+      TextEditor(text: $requestPrompt)
+        .font(.system(size: 13))
+        .frame(minHeight: 150)
+        .padding(8)
+        .background(Color(NSColor.textBackgroundColor))
+        .cornerRadius(6)
+        .overlay(
+          RoundedRectangle(cornerRadius: 6)
+            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+        )
+      
+      HStack {
+        Button("Cancel") {
+          isPresented = false
+        }
+        .keyboardShortcut(.escape)
+        
+        Spacer()
+        
+        Button("Create Request") {
+          createFollowUpRequest()
+          isPresented = false
+        }
+        .keyboardShortcut(.return)
+        .disabled(requestPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+      }
+    }
+    .padding(20)
+    .frame(width: 500, height: 300)
+    .onAppear {
+      // Pre-fill with suggestion
+      requestPrompt = """
+      Follow up on: \(doc.title)
+      
+      Topic: \(doc.topic ?? "research")
+      
+      Questions to explore:
+      - 
+      """
+    }
+  }
+  
+  private func createFollowUpRequest() {
+    // Create research request
+    guard let repoURL = vm.repoURL else { return }
+    
+    let request = ResearchRequest(
+      id: UUID().uuidString,
+      projectId: doc.topic ?? "research",
+      tileId: nil,
+      prompt: requestPrompt,
+      status: ResearchRequestStatus.open,
+      response: nil,
+      author: "rafe",
+      priority: ResearchPriority.normal,
+      deliverables: nil,
+      editHistory: nil,
+      parentRequestId: nil,
+      assignedWorker: nil,
+      createdAt: Date(),
+      updatedAt: Date()
+    )
+    
+    do {
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.saveRequest(request)
+      NSSound.beep()
+    } catch {
+      print("Failed to create research request: \(error)")
     }
   }
 }
