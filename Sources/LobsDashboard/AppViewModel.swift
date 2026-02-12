@@ -2622,7 +2622,7 @@ final class AppViewModel: ObservableObject {
   /// Only counts actual inbox items (not artifacts) to match what InboxView displays.
   var unreadInboxCount: Int {
     inboxItems.filter { item in
-      item.relativePath.hasPrefix("inbox/") &&
+      !item.relativePath.hasPrefix("artifacts/") &&
       (!item.isRead || unreadFollowupCount(docId: item.id) > 0)
     }.count
   }

@@ -88,8 +88,8 @@ struct InboxView: View {
   private var filteredItems: [InboxItem] {
     var items = vm.inboxItems
 
-    // Filter out artifacts - only show items from inbox/
-    items = items.filter { $0.relativePath.hasPrefix("inbox/") }
+    // Filter out artifacts - only show inbox and state/inbox items
+    items = items.filter { !$0.relativePath.hasPrefix("artifacts/") }
 
     // Filter by read status
     if !showReadItems {
