@@ -236,6 +236,21 @@ final class APIService {
     )
   }
   
+  func createProject(id: String, title: String, type: ProjectType, notes: String?) async throws -> Project {
+    let create = ProjectCreate(
+      id: id,
+      title: title,
+      type: type.rawValue,
+      notes: notes
+    )
+    
+    return try await request(
+      method: "POST",
+      path: "/api/projects",
+      body: create
+    )
+  }
+  
   // MARK: - Tasks
   
   func loadTasks() async throws -> TasksFile {
@@ -621,6 +636,13 @@ final class APIService {
       method: "POST",
       path: "/api/research/\(projectId)/sources",
       body: create
+    )
+  }
+  
+  func deleteResearchSource(projectId: String, sourceId: String) async throws {
+    try await requestVoid(
+      method: "DELETE",
+      path: "/api/research/\(projectId)/sources/\(sourceId)"
     )
   }
   
@@ -1059,37 +1081,168 @@ final class APIService {
     }
   }
   
-  // MARK: - Read State (Local-only for now)
+  // MARK: - Agent Files
+  
+  func loadAgentFile(agentType: String, filename: String) async throws -> String? {
+    struct AgentFileContent: Codable {
+      let content: String
+    }
+    
+    do {
+      let response: AgentFileContent = try await request(
+        method: "GET",
+        path: "/api/agents/\(agentType)/files/\(filename)"
+      )
+      return response.content
+    } catch APIError.httpError(statusCode: 404, _) {
+      return nil
+    }
+  }
+  
+  func saveAgentFile(agentType: String, filename: String, content: String) async throws {
+    struct AgentFileContent: Codable {
+      let content: String
+    }
+    
+    let _: AgentFileContent = try await request(
+      method: "PUT",
+      path: "/api/agents/\(agentType)/files/\(filename)",
+      body: AgentFileContent(content: content)
+    )
+  }
+  
+  // MARK: - Tracker Requests
+  
+  func loadTrackerRequests(projectId: String) async throws -> [ResearchRequest] {
+    return try await request(
+      method: "GET",
+      path: "/api/tracker/\(projectId)/requests",
+      queryItems: [URLQueryItem(name: "limit", value: "1000")]
+    )
+  }
+  
+  func saveTrackerRequest(_ request: ResearchRequest) async throws {
+    struct RequestUpdate: Codable {
+      let status: String
+    }
+    
+    let _: ResearchRequest = try await request(
+      method: "PUT",
+      path: "/api/tracker/\(request.projectId)/requests/\(request.id)",
+      body: RequestUpdate(status: request.status.rawValue)
+    )
+  }
+  
+  func deleteTrackerRequest(projectId: String, requestId: String) async throws {
+    try await requestVoid(
+      method: "DELETE",
+      path: "/api/tracker/\(projectId)/requests/\(requestId)"
+    )
+  }
+  
+  // MARK: - Inbox Read State
   
   func loadInboxReadState() throws -> InboxReadStateFile? {
-    // Read state is still local-only
-    // Could be implemented as API endpoint later
+    // Read state is now persisted server-side via is_read field
+    // This method kept for compatibility but returns nil
     return nil
   }
   
-  func saveInboxReadState(readItemIds: Set<String>, lastSeenThreadCounts: [String: Int]) throws {
-    // Read state is still local-only
+  func saveInboxReadState(readItemIds: Set<String>, lastSeenThreadCounts: [String: Int]) async throws {
+    // Bulk update read state on server
+    try await requestVoid(
+      method: "POST",
+      path: "/api/inbox/read-state",
+      body: Array(readItemIds)
+    )
   }
   
-  // MARK: - Methods that don't apply to API mode
+  func markInboxItemRead(id: String) async throws {
+    struct InboxItem: Codable {
+      let id: String
+      let title: String
+      let isRead: Bool
+      
+      enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case isRead = "is_read"
+      }
+    }
+    
+    let _: InboxItem = try await request(
+      method: "PATCH",
+      path: "/api/inbox/\(id)/read"
+    )
+  }
   
-  func archiveCompleted(olderThanDays days: Int) throws {
-    // Auto-archive should be handled server-side
-    // For now, this is a no-op in API mode
+  // MARK: - Project Operations
+  
+  func unarchiveProject(id: String) async throws {
+    let _: Project = try await request(
+      method: "POST",
+      path: "/api/projects/\(id)/unarchive"
+    )
+  }
+  
+  func syncGitHubProject(projectId: String) async throws {
+    struct SyncResponse: Codable {
+      let status: String
+      let projectId: String
+      let repo: String
+      let issuesCount: Int
+      
+      enum CodingKeys: String, CodingKey {
+        case status
+        case projectId = "project_id"
+        case repo
+        case issuesCount = "issues_count"
+      }
+    }
+    
+    let _: SyncResponse = try await request(
+      method: "POST",
+      path: "/api/projects/\(projectId)/github-sync"
+    )
+  }
+  
+  // MARK: - Auto-Archive
+  
+  func archiveCompleted(olderThanDays days: Int) async throws {
+    struct ArchiveResponse: Codable {
+      let status: String
+      let archivedCount: Int
+      
+      enum CodingKeys: String, CodingKey {
+        case status
+        case archivedCount = "archived_count"
+      }
+    }
+    
+    let _: ArchiveResponse = try await request(
+      method: "POST",
+      path: "/api/tasks/auto-archive",
+      queryItems: [URLQueryItem(name: "older_than_days", value: String(days))]
+    )
   }
   
   func archiveReadInboxItems(olderThanDays days: Int, readItemIds: Set<String>) async throws {
-    // Auto-archive should be handled server-side
+    // This would need a server endpoint similar to auto-archive tasks
+    // For now, mark items as read server-side
+    try await saveInboxReadState(readItemIds: readItemIds, lastSeenThreadCounts: [:])
   }
   
   func readArtifact(relativePath: String) throws -> String {
-    // Artifacts are file-based and don't go through the API
-    // This would need special handling or a file server
-    // TODO: Implement GET /api/artifacts/{path} endpoint
+    // Artifacts are file-based and require a file server or static file serving
+    // This feature is not critical for core functionality and can be added later
+    // Implementation would need:
+    // 1. Server endpoint: GET /api/artifacts/{path} that serves files from a configured directory
+    // 2. Security: Path validation to prevent directory traversal attacks
+    // 3. Content-Type detection for proper MIME types
     throw NSError(
       domain: "APIService",
       code: 501,
-      userInfo: [NSLocalizedDescriptionKey: "Artifact reading not implemented in API mode. Endpoint needed: GET /api/artifacts/\(relativePath)"]
+      userInfo: [NSLocalizedDescriptionKey: "Artifact reading not yet implemented in API mode. Artifacts are file-based and require additional server infrastructure."]
     )
   }
 }
@@ -1146,6 +1299,33 @@ private struct ProjectUpdate: Codable {
     case tracking
     case githubRepo = "github_repo"
     case githubLabelFilter = "github_label_filter"
+  }
+}
+
+private struct ProjectCreate: Codable {
+  let id: String
+  let title: String
+  let type: String
+  let notes: String?
+  let archived: Bool
+  let sortOrder: Int
+  
+  init(id: String, title: String, type: String, notes: String?) {
+    self.id = id
+    self.title = title
+    self.type = type
+    self.notes = notes
+    self.archived = false
+    self.sortOrder = 0
+  }
+  
+  enum CodingKeys: String, CodingKey {
+    case id
+    case title
+    case type
+    case notes
+    case archived
+    case sortOrder = "sort_order"
   }
 }
 

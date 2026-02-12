@@ -2192,9 +2192,19 @@ final class AppViewModel: ObservableObject {
   }
 
   func removeResearchSource(id: String) {
+    guard let projectId = selectedProjectId else { return }
+    
     researchSources.removeAll { $0.id == id }
-    // TODO: API endpoint needed for deleting research sources
-    flashError("Delete research source: API endpoint not implemented")
+    
+    Task {
+      do {
+        try await apiService?.deleteResearchSource(projectId: projectId, sourceId: id)
+      } catch {
+        await MainActor.run {
+          flashError("Failed to delete research source: \(error.localizedDescription)")
+        }
+      }
+    }
   }
 
   // MARK: - Tracker
@@ -2309,14 +2319,23 @@ final class AppViewModel: ObservableObject {
   // MARK: - Inbox
 
   private func applyInboxReadStateFromRepo() {
-    // TODO: API endpoint for inbox read state persistence
-    // For now, read state is kept in local settings only
-    // No server sync yet
+    // Read state is now persisted server-side via is_read field
+    // This method kept for compatibility but is no longer needed
   }
 
   private func persistInboxReadStateDebounced() {
-    // TODO: API endpoint for inbox read state persistence
-    // For now, read state is persisted to local settings only (via @Published didSet)
+    // Persist inbox read state to server
+    Task {
+      do {
+        try await apiService?.saveInboxReadState(
+          readItemIds: inboxReadItemIds,
+          lastSeenThreadCounts: inboxLastSeenThreadCounts
+        )
+      } catch {
+        // Silent fail - read state persistence is non-critical
+        print("Failed to persist inbox read state: \(error)")
+      }
+    }
   }
 
   func loadInboxItems() {
@@ -3412,10 +3431,8 @@ final class AppViewModel: ObservableObject {
 
     Task {
       do {
-        // Create via API (the API doesn't have createProject, so we use the load/save pattern for now)
-        // TODO: Add createProject API endpoint
-        // For now, just let the next reload pick it up from the server
-        _ = try await api.loadProjects()
+        // Create via API
+        _ = try await apiService?.createProject(id: id, title: trimmedTitle, type: type, notes: trimmedNotes)
         
         // Save README if notes exist
         if let notes = trimmedNotes, !notes.isEmpty {
@@ -3572,19 +3589,8 @@ final class AppViewModel: ObservableObject {
 
     Task {
       do {
-        // TODO: Add unarchiveProject API endpoint
-        // For now, use the generic update
-        let pfile = try await api.loadProjects()
-        if let project = pfile.projects.first(where: { $0.id == id }) {
-          var updated = project
-          updated.archived = false
-          updated.updatedAt = Date()
-          try await api.saveProjects(ProjectsFile(
-            schemaVersion: pfile.schemaVersion,
-            generatedAt: Date(),
-            projects: pfile.projects.map { $0.id == id ? updated : $0 }
-          ))
-        }
+        try await apiService?.unarchiveProject(id: id)
+        await silentReload()
       } catch {
         await MainActor.run {
           self.flashError("Failed to unarchive project: \(error.localizedDescription)")

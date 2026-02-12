@@ -264,27 +264,52 @@ struct AgentDetailSheet: View {
   }
 
   private func loadData() {
-    // TODO: Add API endpoints for agent file loading (GET /api/agents/{type}/files/{filename})
-    // For now, agent file editing is disabled in API mode
     Task {
-      await MainActor.run {
-        self.memory = "Agent files not yet available in API mode"
-        self.evolvedTraits = ""
-        self.personality = ""
-        self.editedPersonality = ""
+      do {
+        // Load agent files from API
+        if let memoryContent = try await vm.apiService?.loadAgentFile(agentType: agent.agentType, filename: "MEMORY.md") {
+          await MainActor.run {
+            self.memory = memoryContent
+          }
+        }
+        
+        if let traitsContent = try await vm.apiService?.loadAgentFile(agentType: agent.agentType, filename: "EVOLVED_TRAITS.md") {
+          await MainActor.run {
+            self.evolvedTraits = traitsContent
+          }
+        }
+        
+        if let soulContent = try await vm.apiService?.loadAgentFile(agentType: agent.agentType, filename: "SOUL.md") {
+          await MainActor.run {
+            self.personality = soulContent
+            self.editedPersonality = soulContent
+          }
+        }
+      } catch {
+        await MainActor.run {
+          self.memory = "Error loading agent files: \(error.localizedDescription)"
+        }
       }
     }
   }
 
   private func savePersonality() {
-    // TODO: Add API endpoint for agent file saving (PUT /api/agents/{type}/files/{filename})
-    // For now, agent file editing is disabled in API mode
     isSaving = true
     Task {
-      await MainActor.run {
-        self.personality = self.editedPersonality
-        self.isEditingPersonality = false
-        self.isSaving = false
+      do {
+        // Save personality to API
+        try await vm.apiService?.saveAgentFile(agentType: agent.agentType, filename: "SOUL.md", content: editedPersonality)
+        
+        await MainActor.run {
+          self.personality = self.editedPersonality
+          self.isEditingPersonality = false
+          self.isSaving = false
+        }
+      } catch {
+        await MainActor.run {
+          self.isSaving = false
+          vm.flashError("Failed to save personality: \(error.localizedDescription)")
+        }
       }
     }
   }
