@@ -388,11 +388,39 @@ final class APIService {
   // MARK: - Inbox
   
   func loadInboxItems() async throws -> [InboxItem] {
-    return try await request(
+    struct APIInboxItem: Decodable {
+      let id: String
+      let title: String?
+      let filename: String?
+      let relativePath: String?
+      let content: String?
+      let contentIsTruncated: Bool?
+      let modifiedAt: Date?
+      let isRead: Bool?
+      let summary: String?
+    }
+
+    let items: [APIInboxItem] = try await request(
       method: "GET",
       path: "/api/inbox",
       queryItems: [URLQueryItem(name: "limit", value: "1000")]
     )
+
+    return items.map { item in
+      let fallbackContent = item.content ?? ""
+      let fallbackTitle = item.title ?? item.filename ?? item.id
+      return InboxItem(
+        id: item.id,
+        title: fallbackTitle,
+        filename: item.filename ?? fallbackTitle,
+        relativePath: item.relativePath ?? item.id,
+        content: fallbackContent,
+        contentIsTruncated: item.contentIsTruncated ?? false,
+        modifiedAt: item.modifiedAt ?? .distantPast,
+        isRead: item.isRead ?? false,
+        summary: item.summary ?? String(fallbackContent.prefix(200))
+      )
+    }
   }
   
   func loadInboxThread(docId: String) async throws -> InboxThread? {
