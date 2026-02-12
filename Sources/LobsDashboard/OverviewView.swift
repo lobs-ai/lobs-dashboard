@@ -228,9 +228,9 @@ struct OverviewView: View {
         headerSection
         onboardingStatusSection
         statsSection
+        detailedStatsSection
         activitySection
         velocitySection
-        detailedStatsSection
         AgentGridView(vm: vm)
         workerStatusSection
         syncStatusSection
