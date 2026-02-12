@@ -445,12 +445,42 @@ No formal test suite currently. Validate changes by:
 
 ### Contributing
 
-Contributions are welcome! Please:
+Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for:
+- Development setup and workflow
+- Architecture patterns and best practices
+- Common pitfalls and debugging tips
+- Testing strategies
+- Code style guidelines
+- Pull request process
+
+**Quick Start for Contributors:**
 1. Fork the repository
 2. Create a feature branch
-3. Make your changes
-4. Test thoroughly (especially Git operations)
+3. Make your changes (see [CONTRIBUTING.md](CONTRIBUTING.md) for patterns)
+4. Build and test: `swift build && ./bin/run`
 5. Submit a pull request with clear description
+
+## Documentation
+
+### User Documentation
+- **[README.md](README.md)** (this file) — Overview, installation, usage guide
+- **[SETTINGS_MIGRATION.md](SETTINGS_MIGRATION.md)** — Settings architecture and migration from UserDefaults
+
+### Developer Documentation
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — Development guide, common pitfalls, debugging
+- **[COMMAND_PALETTE.md](COMMAND_PALETTE.md)** — Command palette (⌘K) usage and architecture
+- **[PERFORMANCE_FIXES.md](PERFORMANCE_FIXES.md)** — Background loading and async patterns
+- **[IMPLEMENTATION_NOTES.md](IMPLEMENTATION_NOTES.md)** — Recent implementation notes
+- **[KEYBOARD_SHORTCUTS_UI.md](KEYBOARD_SHORTCUTS_UI.md)** — Keyboard shortcuts documentation
+
+### Design & Planning
+- **[docs/ux-improvement-plan.md](docs/ux-improvement-plan.md)** — UX improvements roadmap
+- **[SETTINGS_AUDIT.md](SETTINGS_AUDIT.md)** — Settings audit and verification
+- **[CHANGES.md](CHANGES.md)** — Recent changes summary
+- **[TASKS.md](TASKS.md)** — Task tracking and planning
+
+### AI Agent Documentation
+- **[AGENTS.md](AGENTS.md)** — AI agent workflow and guidelines
 
 ## License
 
