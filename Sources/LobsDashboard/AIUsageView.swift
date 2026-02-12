@@ -348,10 +348,10 @@ private struct DailyUsageChart: View {
     VStack(alignment: .leading, spacing: 14) {
       SectionHeaderWithInfo(
         title: "Daily Spend",
-        tooltip: "Daily cost breakdown showing Main Session (cyan) and Worker (orange) spending. Stacked bars show relative proportions."
+        tooltip: "Daily cost from worker agent sessions (code implementation, research, file operations)."
       )
 
-      // Stacked bar chart
+      // Bar chart
       HStack(alignment: .bottom, spacing: max(3, 10 - CGFloat(data.count) / 4)) {
         ForEach(data) { point in
           VStack(spacing: 5) {
@@ -362,22 +362,11 @@ private struct DailyUsageChart: View {
                 .foregroundStyle(.secondary)
             }
 
-            // Stacked bar
-            VStack(spacing: 0) {
-              // Main session (top, blue)
-              if point.mainCost > 0 {
-                RoundedRectangle(cornerRadius: 3)
-                  .fill(Color.cyan.opacity(0.7))
-                  .frame(height: max(3, CGFloat(point.mainCost / maxCost) * 180))
-              }
-              // Worker (bottom, orange)
-              if point.workerCost > 0 {
-                RoundedRectangle(cornerRadius: 3)
-                  .fill(Color.orange.opacity(0.7))
-                  .frame(height: max(3, CGFloat(point.workerCost / maxCost) * 180))
-              }
-            }
-            .frame(maxWidth: 48)
+            // Bar
+            RoundedRectangle(cornerRadius: 3)
+              .fill(Color.indigo.opacity(0.7))
+              .frame(height: max(3, CGFloat(point.totalCost / maxCost) * 180))
+              .frame(maxWidth: 48)
 
             // Day label
             Text(shortDay(point.day))
@@ -389,27 +378,6 @@ private struct DailyUsageChart: View {
       }
       .frame(minHeight: 220)
       .padding(.horizontal, 10)
-
-      // Legend
-      HStack(spacing: 20) {
-        HStack(spacing: 6) {
-          RoundedRectangle(cornerRadius: 3)
-            .fill(Color.orange.opacity(0.7))
-            .frame(width: 14, height: 14)
-          Text("Worker")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-        }
-        HStack(spacing: 6) {
-          RoundedRectangle(cornerRadius: 3)
-            .fill(Color.cyan.opacity(0.7))
-            .frame(width: 14, height: 14)
-          Text("Main Session")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-        }
-      }
-      .padding(.leading, 10)
     }
     .padding(20)
     .background(ATheme.cardBg)
