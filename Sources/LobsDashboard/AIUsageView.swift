@@ -67,59 +67,30 @@ struct AIUsageView: View {
     filteredWorkerRuns.reduce(0) { $0 + ($1.outputTokens ?? 0) }
   }
 
-  /// Main session cost for the selected period, derived from daily summaries.
-  /// Returns 0 if main session data is stale (older than 7 days).
-  private var mainSessionCost: Double {
-    guard let usage = mainUsage, usage.isFresh else { return 0 }
-    return filteredDailySummaries(from: usage.dailySummaries).values.reduce(0.0) { $0 + $1.costUSD }
-  }
+  // Main session usage is no longer tracked - all usage comes from worker history
+  private var mainSessionCost: Double { 0 }
+  private var mainSessionTokens: Int { 0 }
+  private var mainSessionInputTokens: Int { 0 }
+  private var mainSessionOutputTokens: Int { 0 }
+  private var isMainSessionStale: Bool { false }
 
-  private var mainSessionTokens: Int {
-    guard let usage = mainUsage, usage.isFresh else { return 0 }
-    return filteredDailySummaries(from: usage.dailySummaries).values.reduce(0) { $0 + $1.inputTokens + $1.outputTokens }
-  }
+  private var totalCost: Double { workerTotalCost }
+  private var totalTokens: Int { workerTotalTokens }
 
-  private var mainSessionInputTokens: Int {
-    guard let usage = mainUsage, usage.isFresh else { return 0 }
-    return filteredDailySummaries(from: usage.dailySummaries).values.reduce(0) { $0 + $1.inputTokens }
-  }
-
-  private var mainSessionOutputTokens: Int {
-    guard let usage = mainUsage, usage.isFresh else { return 0 }
-    return filteredDailySummaries(from: usage.dailySummaries).values.reduce(0) { $0 + $1.outputTokens }
-  }
-  
-  /// True if main session data exists but is stale.
-  private var isMainSessionStale: Bool {
-    guard let usage = mainUsage else { return false }
-    return !usage.isFresh
-  }
-
-  private var totalCost: Double { workerTotalCost + mainSessionCost }
-  private var totalTokens: Int { workerTotalTokens + mainSessionTokens }
-
-  /// Daily cost data combining worker + main session.
+  /// Daily cost data from worker runs.
   private var dailyCosts: [DailyUsagePoint] {
-    var byDay: [String: (worker: Double, main: Double, workerTokens: Int, mainTokens: Int)] = [:]
+    var byDay: [String: (cost: Double, tokens: Int)] = [:]
 
     // Worker runs grouped by day
     for run in filteredWorkerRuns {
       guard let ended = run.endedAt else { continue }
       let day = dayKey(ended)
-      byDay[day, default: (0, 0, 0, 0)].worker += run.totalCostUSD ?? 0
-      byDay[day, default: (0, 0, 0, 0)].workerTokens += run.totalTokens ?? 0
-    }
-
-    // Main session daily summaries
-    if let usage = mainUsage {
-      for (day, summary) in filteredDailySummaries(from: usage.dailySummaries) {
-        byDay[day, default: (0, 0, 0, 0)].main += summary.costUSD
-        byDay[day, default: (0, 0, 0, 0)].mainTokens += summary.inputTokens + summary.outputTokens
-      }
+      byDay[day, default: (0, 0)].cost += run.totalCostUSD ?? 0
+      byDay[day, default: (0, 0)].tokens += run.totalTokens ?? 0
     }
 
     return byDay.map { day, data in
-      DailyUsagePoint(day: day, workerCost: data.worker, mainCost: data.main, workerTokens: data.workerTokens, mainTokens: data.mainTokens)
+      DailyUsagePoint(day: day, workerCost: data.cost, mainCost: 0, workerTokens: data.tokens, mainTokens: 0)
     }
     .sorted { $0.day < $1.day }
   }
@@ -133,11 +104,6 @@ struct AIUsageView: View {
       let cost = run.totalCostUSD ?? 0
       byModel[model, default: (0, 0)].tokens += tokens
       byModel[model, default: (0, 0)].cost += cost
-    }
-    // Add main session (always opus for now)
-    if mainSessionTokens > 0 {
-      byModel["claude-opus-4-5 (main)", default: (0, 0)].tokens += mainSessionTokens
-      byModel["claude-opus-4-5 (main)", default: (0, 0)].cost += mainSessionCost
     }
     return byModel.map { ($0.key, $0.value.tokens, $0.value.cost) }
       .sorted { $0.2 > $1.2 }
@@ -242,38 +208,18 @@ struct AIUsageView: View {
           .frame(maxWidth: 320)
         }
         
-        // Stale data warning
-        if isMainSessionStale, let lastUpdate = mainUsage?.lastUpdateDate {
-          HStack(spacing: 12) {
-            Image(systemName: "exclamationmark.triangle.fill")
-              .foregroundColor(.orange)
-            VStack(alignment: .leading, spacing: 4) {
-              Text("Main session data is outdated")
-                .font(.system(size: 13, weight: .semibold))
-              Text("Last updated \(formatDate(lastUpdate)). Only worker history is included in totals.")
-                .font(.system(size: 12))
-                .foregroundColor(.secondary)
-            }
-            Spacer()
-          }
-          .padding(12)
-          .background(Color.orange.opacity(0.1))
-          .cornerRadius(8)
-          .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.orange.opacity(0.3), lineWidth: 1))
-        }
-
         // Summary cards
         HStack(spacing: 16) {
           UsageSummaryCard(title: "Total Tokens", value: formatTokens(totalTokens), icon: "cpu", color: .indigo,
-            tooltip: "Combined input + output tokens across all sessions")
+            tooltip: "Combined input + output tokens across all worker sessions")
           UsageSummaryCard(title: "Worker Runs", value: "\(filteredWorkerRuns.count)", icon: "arrow.triangle.2.circlepath", color: .purple,
-            tooltip: "Number of task-runner sub-agent sessions in this period")
-          UsageSummaryCard(title: "Worker Cost", value: String(format: "$%.2f", workerTotalCost), icon: "bolt.fill", color: .orange,
-            tooltip: "Cost from task-runner sub-agents — code implementation, research, file operations")
-          UsageSummaryCard(title: "Main Session", value: String(format: "$%.2f", mainSessionCost), icon: "bubble.left.fill", color: .cyan,
-            tooltip: "Cost from Lobs main session — heartbeat checks, conversations, task spawning and coordination")
-          UsageSummaryCard(title: "AI Spend", value: String(format: "$%.2f", totalCost), icon: "dollarsign.circle.fill", color: .mint,
-            tooltip: "Estimated total cost based on model pricing.\nOpus: $5/$25 per 1M in/out\nSonnet: $3/$15 per 1M in/out")
+            tooltip: "Number of worker agent sessions in this period")
+          UsageSummaryCard(title: "Input Tokens", value: formatTokens(workerInputTokens), icon: "arrow.down.circle.fill", color: .blue,
+            tooltip: "Tokens sent to the AI (prompts, context, instructions)")
+          UsageSummaryCard(title: "Output Tokens", value: formatTokens(workerOutputTokens), icon: "arrow.up.circle.fill", color: .green,
+            tooltip: "Tokens generated by the AI (responses, code, analysis)")
+          UsageSummaryCard(title: "Total Cost", value: String(format: "$%.2f", totalCost), icon: "dollarsign.circle.fill", color: .mint,
+            tooltip: "Estimated total cost based on model pricing.\nOpus: $15/$75 per 1M in/out\nSonnet: $3/$15 per 1M in/out")
         }
 
         // Daily usage chart

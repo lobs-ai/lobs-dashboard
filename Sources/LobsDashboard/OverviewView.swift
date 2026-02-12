@@ -392,8 +392,8 @@ struct OverviewView: View {
 
   @ViewBuilder
   private var onboardingStatusSection: some View {
-    // Only show onboarding section if the user hasn't completed it yet
-    if vm.needsOnboarding || onboardingProgress < 1.0 {
+    // Only show onboarding section if the user hasn't completed it yet (strict inequality)
+    if vm.needsOnboarding || onboardingProgress < 1.0 && onboardingProgress > 0 {
       let steps = onboardingSteps
       let incomplete = steps.contains(where: { !$0.isComplete })
 
@@ -1285,7 +1285,7 @@ private struct ProjectCard: View {
 
     var icon: String {
       switch self {
-      case .good: return "heart.fill"
+      case .good: return "checkmark.circle.fill"
       case .neutral: return "minus.circle"
       case .warning: return "exclamationmark.triangle.fill"
       }

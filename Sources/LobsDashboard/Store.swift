@@ -1183,7 +1183,6 @@ final class LobsControlStore {
     // Scan artifacts/, legacy inbox/, and repo-backed state/inbox/ (JSON suggestions).
     let dirs: [(URL, String)] = [
       (inboxDirURL, "inbox"),
-      (artifactsDirURL, "artifacts"),
       (inboxStateDirURL, "state/inbox"),
     ]
 

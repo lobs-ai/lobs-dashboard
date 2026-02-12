@@ -233,10 +233,14 @@ struct DocumentsView: View {
     }
     .background(Theme.bg)
     .frame(minWidth: 900, idealWidth: 1200, minHeight: 600, idealHeight: 800)
-    .onExitCommand {
-      withAnimation(.easeInOut(duration: 0.25)) {
-        isPresented = false
+    .overlay {
+      // Use custom escape key monitor to handle escape even when WKWebView has focus
+      DocumentsEscapeKeyMonitor {
+        withAnimation(.easeInOut(duration: 0.25)) {
+          isPresented = false
+        }
       }
+      .frame(width: 0, height: 0)
     }
     .onAppear {
       // Select first document if none selected
@@ -247,6 +251,42 @@ struct DocumentsView: View {
         }
       }
     }
+  }
+}
+
+// MARK: - Documents Escape Key Monitor
+
+/// NSEvent-based escape key handler for DocumentsView.
+/// Handles escape even when WKWebView (markdown content) has focus.
+/// Allows TextField to handle escape first (for clearing search).
+private struct DocumentsEscapeKeyMonitor: NSViewRepresentable {
+  let onEscape: () -> Void
+
+  func makeNSView(context: Context) -> NSView {
+    let view = NSView()
+    context.coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+      // Only handle escape key (keyCode 53)
+      if event.keyCode == 53 {
+        DispatchQueue.main.async { self.onEscape() }
+        return nil
+      }
+      return event
+    }
+    return view
+  }
+
+  func updateNSView(_ nsView: NSView, context: Context) {}
+
+  static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+    if let monitor = coordinator.monitor {
+      NSEvent.removeMonitor(monitor)
+    }
+  }
+
+  func makeCoordinator() -> Coordinator { Coordinator() }
+
+  class Coordinator {
+    var monitor: Any?
   }
 }
 
@@ -431,7 +471,9 @@ private struct DocumentDetailView: View {
             .padding()
           }
 
-          SelfSizingMarkdownView(markdown: doc.content, minHeight: 200)
+          // Use native markdown rendering instead of WKWebView for better performance
+          NativeMarkdownText(markdown: doc.content)
+            .padding()
         }
       }
     }
