@@ -765,8 +765,9 @@ struct AgentDocument: Identifiable, Hashable, Codable {
   var taskId: String?     // Task that generated this document
   var date: Date          // File modification date or extracted date
   var isRead: Bool        // Tracked locally
+  var summary: String?    // High-level summary extracted from first paragraph
   
-  init(id: String, title: String, filename: String, relativePath: String, content: String, contentIsTruncated: Bool, source: DocumentSource, status: DocumentStatus?, topic: String?, projectId: String?, taskId: String?, date: Date, isRead: Bool) {
+  init(id: String, title: String, filename: String, relativePath: String, content: String, contentIsTruncated: Bool, source: DocumentSource, status: DocumentStatus?, topic: String?, projectId: String?, taskId: String?, date: Date, isRead: Bool, summary: String? = nil) {
     self.id = id
     self.title = title
     self.filename = filename
@@ -780,6 +781,7 @@ struct AgentDocument: Identifiable, Hashable, Codable {
     self.taskId = taskId
     self.date = date
     self.isRead = isRead
+    self.summary = summary
   }
 }
 
