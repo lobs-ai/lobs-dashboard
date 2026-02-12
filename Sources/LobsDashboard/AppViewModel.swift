@@ -107,9 +107,13 @@ final class AppViewModel: ObservableObject {
   /// Other setup checks (repo/workspace/server readiness) are surfaced in the UI
   /// but should not trap users inside onboarding when sections are skipped.
   var needsOnboarding: Bool {
-    // Check onboarding state first - it's the source of truth for completion.
-    // This handles cases where config is missing or was reset but user already
-    // completed onboarding.
+    // Check config FIRST - it's the authoritative source of truth.
+    // This prevents onboarding from reappearing if state files are missing/corrupted.
+    if let config = config, config.onboardingComplete {
+      return false
+    }
+    
+    // If config doesn't exist or doesn't say complete, check the onboarding state.
     // Load from workspace (parent of control repo), not control repo itself
     let workspacePath: String? = {
       guard let controlPath = config?.controlRepoPath, !controlPath.isEmpty else { return nil }
@@ -117,17 +121,15 @@ final class AppViewModel: ObservableObject {
     }()
     let onboardingState = OnboardingStateManager.load(preferredWorkspacePath: workspacePath)
     
-    // If onboarding is complete according to the state, we're done.
+    // If onboarding is complete according to the state, auto-fix the config.
     if onboardingState.isCompleted(.done) {
       // Auto-fix: Create or update config to match the completion state.
       if let config = config {
-        // Config exists but completion flag might be wrong - fix it.
-        if !config.onboardingComplete {
-          var updatedConfig = config
-          updatedConfig.onboardingComplete = true
-          self.config = updatedConfig
-          saveConfig()
-        }
+        // Config exists but completion flag is wrong - fix it.
+        var updatedConfig = config
+        updatedConfig.onboardingComplete = true
+        self.config = updatedConfig
+        saveConfig()
       } else {
         // Config is missing entirely - create one with onboarding complete.
         // Use workspace path from onboarding state if available.
@@ -141,11 +143,6 @@ final class AppViewModel: ObservableObject {
         self.config = newConfig
         saveConfig()
       }
-      return false
-    }
-    
-    // If config exists and says onboarding is complete, trust it.
-    if let config = config, config.onboardingComplete {
       return false
     }
     
