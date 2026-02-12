@@ -57,16 +57,16 @@ final class CommandPaletteDismissalTests: XCTestCase {
     XCTAssert(true, "Home navigation executes AFTER dismissal animation completes")
   }
   
-  /// Test: Action delay is imperceptible (0.1s)
+  /// Test: Action delay is acceptable (0.3s)
   ///
-  /// 100ms is below the human perception threshold for "instant" interactions
-  /// (typically ~150-200ms), so the delay doesn't feel sluggish
-  func testActionDelayImperceptible() {
-    let actionDelay: TimeInterval = 0.1
-    let perceptionThreshold: TimeInterval = 0.15
+  /// 300ms is still within acceptable response time for UI interactions.
+  /// The key is that the dismissal animation is smooth and complete before any action fires.
+  func testActionDelayAcceptable() {
+    let actionDelay: TimeInterval = 0.3
+    let acceptableResponseTime: TimeInterval = 0.5 // < 500ms feels responsive
     
-    XCTAssertLessThan(actionDelay, perceptionThreshold,
-                     "Action delay should be below perception threshold")
+    XCTAssertLessThan(actionDelay, acceptableResponseTime,
+                     "Action delay should be within acceptable response time")
   }
   
   /// Test: Animation duration vs action timing
@@ -74,16 +74,16 @@ final class CommandPaletteDismissalTests: XCTestCase {
   /// Verifies the timing relationships ensure smooth experience
   func testAnimationAndActionTiming() {
     let dismissAnimationDuration: TimeInterval = 0.25
-    let actionDelay: TimeInterval = 0.1
-    let stateResetDelay: TimeInterval = 0.3
+    let actionDelay: TimeInterval = 0.3
+    let stateResetDelay: TimeInterval = 0.35
     
-    // Action starts during animation
-    XCTAssertLessThan(actionDelay, dismissAnimationDuration,
-                     "Action should start before animation completes")
+    // Action starts AFTER animation completes
+    XCTAssertGreaterThan(actionDelay, dismissAnimationDuration,
+                     "Action should start after animation completes for smoothness")
     
-    // State reset after animation completes
-    XCTAssertGreaterThanOrEqual(stateResetDelay, dismissAnimationDuration,
-                               "State reset should wait for animation to complete")
+    // State reset after action starts
+    XCTAssertGreaterThan(stateResetDelay, actionDelay,
+                               "State reset should happen after action begins")
   }
   
   /// Test: Recents are saved immediately
@@ -94,7 +94,7 @@ final class CommandPaletteDismissalTests: XCTestCase {
     // Expected order:
     // 1. saveRecent(result) — immediate, synchronous
     // 2. withAnimation { isPresented = false } — immediate, animated
-    // 3. asyncAfter(0.1s) { action() } — delayed
+    // 3. asyncAfter(0.3s) { action() } — delayed, after animation
     
     XCTAssert(true, "Recents saved synchronously before any async operations")
   }
@@ -103,13 +103,16 @@ final class CommandPaletteDismissalTests: XCTestCase {
   ///
   /// Resetting searchText and selectedIndex too early would cause
   /// the palette to briefly show default state before disappearing.
-  /// 0.3s delay ensures the palette is fully gone before reset.
+  /// 0.35s delay ensures the palette is fully gone and action has started before reset.
   func testStateResetAfterDismissal() {
-    let stateResetDelay: TimeInterval = 0.3
+    let stateResetDelay: TimeInterval = 0.35
     let dismissAnimationDuration: TimeInterval = 0.25
+    let actionDelay: TimeInterval = 0.3
     
     XCTAssertGreaterThan(stateResetDelay, dismissAnimationDuration,
                         "State should reset after dismissal completes to avoid visual glitches")
+    XCTAssertGreaterThan(stateResetDelay, actionDelay,
+                        "State should reset after action begins")
   }
   
   /// Test: Heavy view updates don't affect dismissal smoothness
