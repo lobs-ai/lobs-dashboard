@@ -909,26 +909,6 @@ private struct ToolbarArea: View {
           .fontWeight(.bold)
       }
 
-      // Push Notification Settings
-      Button {
-        showNotificationPopover.toggle()
-      } label: {
-        HStack(spacing: 4) {
-          Image(systemName: "bell.fill")
-            .foregroundStyle(.purple)
-            .font(.footnote)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(Color.purple.opacity(0.12))
-        .clipShape(Capsule())
-      }
-      .buttonStyle(.plain)
-      .help("Push Notification Settings")
-      .popover(isPresented: $showNotificationPopover, arrowEdge: .bottom) {
-        NotificationPreferencesPopover(vm: vm)
-      }
-
       // Update available indicator
       if vm.dashboardUpdateAvailable {
         Button {
@@ -1053,6 +1033,26 @@ private struct ToolbarArea: View {
           .padding(12)
           .frame(minWidth: 280, maxWidth: 400)
         }
+      }
+
+      // Push Notification Settings
+      Button {
+        showNotificationPopover.toggle()
+      } label: {
+        HStack(spacing: 4) {
+          Image(systemName: "bell.fill")
+            .foregroundStyle(.purple)
+            .font(.footnote)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.purple.opacity(0.12))
+        .clipShape(Capsule())
+      }
+      .buttonStyle(.plain)
+      .help("Push Notification Settings")
+      .popover(isPresented: $showNotificationPopover, arrowEdge: .bottom) {
+        NotificationPreferencesPopover(vm: vm)
       }
 
       Spacer()
