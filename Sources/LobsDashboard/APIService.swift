@@ -1085,7 +1085,12 @@ final class APIService {
   func readArtifact(relativePath: String) throws -> String {
     // Artifacts are file-based and don't go through the API
     // This would need special handling or a file server
-    return ""
+    // TODO: Implement GET /api/artifacts/{path} endpoint
+    throw NSError(
+      domain: "APIService",
+      code: 501,
+      userInfo: [NSLocalizedDescriptionKey: "Artifact reading not implemented in API mode. Endpoint needed: GET /api/artifacts/\(relativePath)"]
+    )
   }
 }
 

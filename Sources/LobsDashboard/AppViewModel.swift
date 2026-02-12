@@ -2456,9 +2456,7 @@ final class AppViewModel: ObservableObject {
     }.count
   }
 
-  func inboxResponseText(docId: String) -> String {
-    inboxResponsesByDocId[docId]?.response ?? ""
-  }
+  // REMOVED: inboxResponseText() - dead code (never called), replaced by inboxThreadsByDocId
 
   func saveInboxResponse(docId: String, response: String) {
     Task {
