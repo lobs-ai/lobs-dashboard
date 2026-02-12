@@ -802,6 +802,7 @@ final class AppViewModel: ObservableObject {
         await self.loadInboxItemsAsync(store: store)
         await self.loadWorkerStatusAsync(store: store)
         await self.loadAgentStatusesAsync(store: store)
+        await self.loadAgentDocumentsAsync(store: store)
       }
 
       // Check for updates in background (low priority)
@@ -5586,6 +5587,26 @@ final class AppViewModel: ObservableObject {
     guard let statuses else { return }
     await MainActor.run {
       self.agentStatuses = statuses
+    }
+  }
+
+  /// Load agent documents (reports & research) asynchronously
+  private func loadAgentDocumentsAsync(store: LobsControlStore) async {
+    let docs: [AgentDocument]? = await Task.detached {
+      try? store.loadAgentDocuments()
+    }.value
+    guard var documents = docs else { return }
+    
+    // Capture read state before main actor
+    let readIds = await readDocumentIds
+    
+    // Apply read state
+    for i in documents.indices {
+      documents[i].isRead = readIds.contains(documents[i].id)
+    }
+    
+    await MainActor.run {
+      self.agentDocuments = documents
     }
   }
 
