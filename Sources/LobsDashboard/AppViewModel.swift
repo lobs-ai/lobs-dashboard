@@ -1183,15 +1183,15 @@ final class AppViewModel: ObservableObject {
 
     isGitBusy = true
     Task {
+      // Try to sync, but don't fail if it errors - we can still load local data
       do {
         // Run git sync off the main thread to avoid UI lag
         try await syncRepoAsync(repoURL: repoURL)
       } catch {
         await MainActor.run {
           lastError = String(describing: error)
-          isGitBusy = false
         }
-        return
+        // Continue to load data even if sync failed
       }
 
       // Capture main-actor properties before detaching
@@ -1238,6 +1238,7 @@ final class AppViewModel: ObservableObject {
 
           return (loadedProjects, file.tasks, hasGitHubProject, githubSyncTime)
         } catch {
+          print("⚠️ Failed to load data: \(error.localizedDescription)")
           return nil
         }
       }.value

@@ -157,6 +157,83 @@ struct DashboardTask: Codable, Identifiable, Hashable {
   var createdAt: Date
   var updatedAt: Date
 
+  // Custom decoding to handle legacy tasks missing createdAt or owner
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+
+    id = try container.decode(String.self, forKey: .id)
+    title = try container.decode(String.self, forKey: .title)
+    status = try container.decode(TaskStatus.self, forKey: .status)
+    updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+
+    // Default owner to "lobs" if missing (legacy tasks)
+    owner = (try? container.decode(TaskOwner.self, forKey: .owner)) ?? .lobs
+
+    // Default createdAt to updatedAt if missing (legacy tasks)
+    createdAt = (try? container.decode(Date.self, forKey: .createdAt)) ?? updatedAt
+
+    // Optional fields
+    workState = try? container.decode(WorkState.self, forKey: .workState)
+    reviewState = try? container.decode(ReviewState.self, forKey: .reviewState)
+    projectId = try? container.decode(String.self, forKey: .projectId)
+    artifactPath = try? container.decode(String.self, forKey: .artifactPath)
+    notes = try? container.decode(String.self, forKey: .notes)
+    startedAt = try? container.decode(Date.self, forKey: .startedAt)
+    finishedAt = try? container.decode(Date.self, forKey: .finishedAt)
+    sortOrder = try? container.decode(Int.self, forKey: .sortOrder)
+    blockedBy = try? container.decode([String].self, forKey: .blockedBy)
+    pinned = try? container.decode(Bool.self, forKey: .pinned)
+    shape = try? container.decode(TaskShape.self, forKey: .shape)
+    githubIssueNumber = try? container.decode(Int.self, forKey: .githubIssueNumber)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id, title, status, owner, createdAt, updatedAt
+    case workState, reviewState, projectId, artifactPath, notes
+    case startedAt, finishedAt, sortOrder, blockedBy, pinned, shape, githubIssueNumber
+  }
+
+  // Memberwise initializer for creating tasks programmatically
+  init(
+    id: String,
+    title: String,
+    status: TaskStatus,
+    owner: TaskOwner,
+    createdAt: Date,
+    updatedAt: Date,
+    workState: WorkState? = nil,
+    reviewState: ReviewState? = nil,
+    projectId: String? = nil,
+    artifactPath: String? = nil,
+    notes: String? = nil,
+    startedAt: Date? = nil,
+    finishedAt: Date? = nil,
+    sortOrder: Int? = nil,
+    blockedBy: [String]? = nil,
+    pinned: Bool? = nil,
+    shape: TaskShape? = nil,
+    githubIssueNumber: Int? = nil
+  ) {
+    self.id = id
+    self.title = title
+    self.status = status
+    self.owner = owner
+    self.createdAt = createdAt
+    self.updatedAt = updatedAt
+    self.workState = workState
+    self.reviewState = reviewState
+    self.projectId = projectId
+    self.artifactPath = artifactPath
+    self.notes = notes
+    self.startedAt = startedAt
+    self.finishedAt = finishedAt
+    self.sortOrder = sortOrder
+    self.blockedBy = blockedBy
+    self.pinned = pinned
+    self.shape = shape
+    self.githubIssueNumber = githubIssueNumber
+  }
+
   // Optional fields (schema evolves)
 
   /// Whether work has started / is in progress / is blocked.
