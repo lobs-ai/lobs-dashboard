@@ -3139,7 +3139,7 @@ private struct TaskDetailPopover: View {
                     lastAutosavedNotes = editNotes
                   }
                 )
-                .frame(minHeight: 80, height: notesHeight)
+                .frame(height: notesHeight)
                 .onChange(of: editNotes) { _ in scheduleAutosave() }
                 
                 // Resize handle
