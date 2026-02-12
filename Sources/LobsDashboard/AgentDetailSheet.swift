@@ -32,6 +32,11 @@ struct AgentDetailSheet: View {
     .frame(minWidth: 520, minHeight: 500)
     .background(Theme.boardBg)
     .onAppear(perform: loadData)
+    .onExitCommand {
+      withAnimation(.easeInOut(duration: 0.25)) {
+        vm.selectedAgentType = nil
+      }
+    }
   }
 
   // MARK: - Header
