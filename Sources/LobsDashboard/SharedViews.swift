@@ -97,7 +97,7 @@ struct NativeMarkdownText: View {
       i += 1
     }
     flushText()
-    return blocks
+    return result
   }
 
   var body: some View {

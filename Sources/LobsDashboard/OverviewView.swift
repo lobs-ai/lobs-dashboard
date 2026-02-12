@@ -229,14 +229,13 @@ struct OverviewView: View {
         onboardingStatusSection
         statsSection
         detailedStatsSection
+        velocitySection
         activitySection
+        AgentGridView(vm: vm)
+        syncStatusSection
         projectCardsSection
         columnsSection
         inboxColumnsSection
-        velocitySection
-        AgentGridView(vm: vm)
-        workerStatusSection
-        syncStatusSection
         tipsAndDocsSection
       }
       .padding(24)
