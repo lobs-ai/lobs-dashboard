@@ -2775,11 +2775,8 @@ final class AppViewModel: ObservableObject {
     } catch {
       // Keep last known history on transient decode/read errors.
     }
-    do {
-      mainSessionUsage = try s.loadMainSessionUsage()
-    } catch {
-      // Keep last known usage on transient decode/read errors.
-    }
+    // Main session usage is no longer tracked - all usage comes from worker history
+    mainSessionUsage = nil
 
     // Detect worker state changes and send macOS notifications
     if let old = oldStatus, let new = workerStatus {
@@ -5588,19 +5585,19 @@ final class AppViewModel: ObservableObject {
       do {
         let status = try store.loadWorkerStatus()
         let history = try store.loadWorkerHistory()
-        let usage = try store.loadMainSessionUsage()
-        return (status, history, usage)
+        // Main session usage is no longer tracked - all usage comes from worker history
+        return (status, history)
       } catch {
         return nil
       }
     }.value
     
-    guard let (status, history, usage) = data else { return }
+    guard let (status, history) = data else { return }
     
     await MainActor.run {
       self.workerStatus = status
       self.workerHistory = history
-      self.mainSessionUsage = usage
+      self.mainSessionUsage = nil
     }
   }
 
