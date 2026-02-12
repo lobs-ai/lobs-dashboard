@@ -389,9 +389,12 @@ private struct DocumentDetailView: View {
           }
 
           // Date
-          Label(doc.date, style: .date)
-            .font(.system(size: 12))
-            .foregroundStyle(.secondary)
+          HStack(spacing: 4) {
+            Image(systemName: "calendar")
+            Text(doc.date, style: .date)
+          }
+          .font(.system(size: 12))
+          .foregroundStyle(.secondary)
 
           Spacer()
 
