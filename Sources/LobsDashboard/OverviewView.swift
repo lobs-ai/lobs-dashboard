@@ -229,10 +229,10 @@ struct OverviewView: View {
         onboardingStatusSection
         statsSection
         detailedStatsSection
+        activitySection
         projectCardsSection
         columnsSection
         inboxColumnsSection
-        activitySection
         velocitySection
         AgentGridView(vm: vm)
         workerStatusSection
