@@ -318,6 +318,14 @@ private struct AgentDetailEscapeKeyMonitor: NSViewRepresentable {
     context.coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
       // Only handle escape key (keyCode 53)
       if event.keyCode == 53 {
+        // When not editing personality, check if any text field is focused
+        // and let it handle escape first (e.g., for autocomplete dismissal)
+        if !self.isEditingPersonality {
+          if let responder = NSApp.keyWindow?.firstResponder,
+             responder is NSTextView || responder is NSTextField {
+            return event
+          }
+        }
         DispatchQueue.main.async { self.onEscape() }
         return nil
       }
