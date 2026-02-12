@@ -732,6 +732,51 @@ struct InboxThread: Codable, Identifiable, Hashable {
   }
 }
 
+// MARK: - Agent Documents (Reports & Research)
+
+enum DocumentSource: String, Codable, Hashable {
+  case writer
+  case researcher
+}
+
+enum DocumentStatus: String, Codable, Hashable {
+  case pending
+  case approved
+  case rejected
+}
+
+struct AgentDocument: Identifiable, Hashable, Codable {
+  var id: String          // Full path: "reports/pending/foo.md" or "research/topic/bar.md"
+  var title: String       // Extracted from filename or first heading
+  var filename: String
+  var relativePath: String // Relative to state/
+  var content: String
+  var contentIsTruncated: Bool
+  var source: DocumentSource  // writer or researcher
+  var status: DocumentStatus? // For reports only (pending/approved/rejected)
+  var topic: String?      // For research: the subdirectory name
+  var projectId: String?  // For reports: associated project
+  var taskId: String?     // Task that generated this document
+  var date: Date          // File modification date or extracted date
+  var isRead: Bool        // Tracked locally
+  
+  init(id: String, title: String, filename: String, relativePath: String, content: String, contentIsTruncated: Bool, source: DocumentSource, status: DocumentStatus?, topic: String?, projectId: String?, taskId: String?, date: Date, isRead: Bool) {
+    self.id = id
+    self.title = title
+    self.filename = filename
+    self.relativePath = relativePath
+    self.content = content
+    self.contentIsTruncated = contentIsTruncated
+    self.source = source
+    self.status = status
+    self.topic = topic
+    self.projectId = projectId
+    self.taskId = taskId
+    self.date = date
+    self.isRead = isRead
+  }
+}
+
 // MARK: - Task Templates
 
 struct TaskTemplateItem: Codable, Identifiable, Hashable {

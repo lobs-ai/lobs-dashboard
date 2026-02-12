@@ -1356,6 +1356,135 @@ final class LobsControlStore {
     return result
   }
 
+  // MARK: - Agent Documents (Reports & Research)
+
+  /// Load all agent-produced documents from state/reports/ and state/research/
+  func loadAgentDocuments() throws -> [AgentDocument] {
+    var documents: [AgentDocument] = []
+    let fm = FileManager.default
+
+    // Load reports from state/reports/{pending,approved,rejected}/
+    let reportStatuses: [(String, DocumentStatus)] = [
+      ("pending", .pending),
+      ("approved", .approved),
+      ("rejected", .rejected)
+    ]
+
+    for (subdir, status) in reportStatuses {
+      let reportsDir = stateRootURL.appendingPathComponent("reports").appendingPathComponent(subdir)
+      guard fm.fileExists(atPath: reportsDir.path) else { continue }
+
+      let files = try fm.contentsOfDirectory(
+        at: reportsDir,
+        includingPropertiesForKeys: [.contentModificationDateKey],
+        options: [.skipsHiddenFiles]
+      )
+
+      for fileURL in files where fileURL.pathExtension.lowercased() == "md" {
+        let attrs = try fm.attributesOfItem(atPath: fileURL.path)
+        let modDate = (attrs[.modificationDate] as? Date) ?? Date()
+        let filename = fileURL.lastPathComponent
+        let relativePath = "reports/\(subdir)/\(filename)"
+
+        // Load preview (first 64KB for performance)
+        let maxPreviewBytes = 64 * 1024
+        let previewData: Data = {
+          if let handle = try? FileHandle(forReadingFrom: fileURL) {
+            defer { try? handle.close() }
+            return handle.readData(ofLength: maxPreviewBytes)
+          }
+          return (try? Data(contentsOf: fileURL)) ?? Data()
+        }()
+
+        let content = String(data: previewData, encoding: .utf8) ?? ""
+        let fileSize = (attrs[.size] as? NSNumber)?.intValue ?? 0
+        let isTruncated = fileSize > previewData.count
+
+        let title = extractTitle(from: content, filename: filename)
+
+        documents.append(AgentDocument(
+          id: relativePath,
+          title: title,
+          filename: filename,
+          relativePath: relativePath,
+          content: content,
+          contentIsTruncated: isTruncated,
+          source: .writer,
+          status: status,
+          topic: nil,
+          projectId: nil,
+          taskId: nil,
+          date: modDate,
+          isRead: false
+        ))
+      }
+    }
+
+    // Load research documents from state/research/{topic}/
+    let researchDir = stateRootURL.appendingPathComponent("research")
+    guard fm.fileExists(atPath: researchDir.path) else { return documents }
+
+    let topicDirs = try fm.contentsOfDirectory(
+      at: researchDir,
+      includingPropertiesForKeys: [.isDirectoryKey],
+      options: [.skipsHiddenFiles]
+    ).filter { url in
+      (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+    }
+
+    for topicDir in topicDirs {
+      let topic = topicDir.lastPathComponent
+      let files = try fm.contentsOfDirectory(
+        at: topicDir,
+        includingPropertiesForKeys: [.contentModificationDateKey],
+        options: [.skipsHiddenFiles]
+      )
+
+      for fileURL in files where fileURL.pathExtension.lowercased() == "md" {
+        let attrs = try fm.attributesOfItem(atPath: fileURL.path)
+        let modDate = (attrs[.modificationDate] as? Date) ?? Date()
+        let filename = fileURL.lastPathComponent
+        let relativePath = "research/\(topic)/\(filename)"
+
+        // Load preview (first 64KB for performance)
+        let maxPreviewBytes = 64 * 1024
+        let previewData: Data = {
+          if let handle = try? FileHandle(forReadingFrom: fileURL) {
+            defer { try? handle.close() }
+            return handle.readData(ofLength: maxPreviewBytes)
+          }
+          return (try? Data(contentsOf: fileURL)) ?? Data()
+        }()
+
+        let content = String(data: previewData, encoding: .utf8) ?? ""
+        let fileSize = (attrs[.size] as? NSNumber)?.intValue ?? 0
+        let isTruncated = fileSize > previewData.count
+
+        let title = extractTitle(from: content, filename: filename)
+
+        documents.append(AgentDocument(
+          id: relativePath,
+          title: title,
+          filename: filename,
+          relativePath: relativePath,
+          content: content,
+          contentIsTruncated: isTruncated,
+          source: .researcher,
+          status: nil,
+          topic: topic,
+          projectId: nil,
+          taskId: nil,
+          date: modDate,
+          isRead: false
+        ))
+      }
+    }
+
+    // Sort by date (newest first)
+    documents.sort { $0.date > $1.date }
+    return documents
+  }
+
   // MARK: - Research Document (doc-based)
 
   private func researchDocURL(projectId: String) -> URL {
