@@ -231,6 +231,7 @@ struct DocumentsView: View {
         }
       }
     }
+    .background(Theme.boardBg)
     .frame(minWidth: 900, idealWidth: 1200, minHeight: 600, idealHeight: 800)
     .onAppear {
       // Select first document if none selected
