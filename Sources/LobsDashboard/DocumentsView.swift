@@ -240,7 +240,7 @@ private struct DocumentRow: View {
         VStack {
           Image(systemName: document.source == .writer ? "doc.text.fill" : "magnifyingglass")
             .font(.system(size: 16))
-            .foregroundStyle(document.isRead ? .secondary : .blue)
+            .foregroundStyle(document.isRead ? .secondary : Color.blue)
         }
         .frame(width: 24)
         .padding(.top, 2)
