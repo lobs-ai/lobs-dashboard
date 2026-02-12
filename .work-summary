@@ -1,1 +1,0 @@
-Fixed inbox unread count to only track inbox/ items (not state/inbox/). Changed unreadInboxCount filter from excluding artifacts to explicitly including only inbox/ items, matching InboxView display logic. Updated 8 unit tests. Build passes successfully.
