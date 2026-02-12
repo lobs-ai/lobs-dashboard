@@ -796,6 +796,269 @@ final class APIService {
     )
   }
   
+  func saveTextDump(_ dump: TextDump) async throws {
+    struct DumpUpdate: Codable {
+      let content: String
+      let source: String?
+      let context: String?
+      let status: String
+    }
+    
+    let update = DumpUpdate(
+      content: dump.content,
+      source: dump.source,
+      context: dump.context,
+      status: dump.status.rawValue
+    )
+    
+    let _: TextDump = try await request(
+      method: "PUT",
+      path: "/api/text-dumps/\(dump.id)",
+      body: update
+    )
+  }
+  
+  // MARK: - Templates
+  
+  func saveTemplate(_ template: TaskTemplate) async throws {
+    struct TemplateUpdate: Codable {
+      let id: String
+      let title: String
+      let owner: String
+      let workState: String?
+      let reviewState: String?
+      let projectId: String?
+      let notes: String?
+      let shape: String?
+      
+      enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case owner
+        case workState = "work_state"
+        case reviewState = "review_state"
+        case projectId = "project_id"
+        case notes
+        case shape
+      }
+    }
+    
+    let update = TemplateUpdate(
+      id: template.id,
+      title: template.title,
+      owner: template.owner.rawValue,
+      workState: template.workState?.rawValue,
+      reviewState: template.reviewState?.rawValue,
+      projectId: template.projectId,
+      notes: template.notes,
+      shape: template.shape?.rawValue
+    )
+    
+    let _: TaskTemplate = try await request(
+      method: "PUT",
+      path: "/api/templates/\(template.id)",
+      body: update
+    )
+  }
+  
+  func deleteTemplate(id: String) async throws {
+    try await requestVoid(
+      method: "DELETE",
+      path: "/api/templates/\(id)"
+    )
+  }
+  
+  // MARK: - Tiles
+  
+  func loadTiles(projectId: String) async throws -> [Tile] {
+    return try await request(
+      method: "GET",
+      path: "/api/tiles/\(projectId)",
+      queryItems: [URLQueryItem(name: "limit", value: "1000")]
+    )
+  }
+  
+  func saveTile(_ tile: Tile) async throws {
+    struct TileUpdate: Codable {
+      let id: String
+      let projectId: String
+      let title: String
+      let status: String
+      let category: String?
+      let notes: String?
+      
+      enum CodingKeys: String, CodingKey {
+        case id
+        case projectId = "project_id"
+        case title
+        case status
+        case category
+        case notes
+      }
+    }
+    
+    let update = TileUpdate(
+      id: tile.id,
+      projectId: tile.projectId,
+      title: tile.title,
+      status: tile.status.rawValue,
+      category: tile.category,
+      notes: tile.notes
+    )
+    
+    let _: Tile = try await request(
+      method: "PUT",
+      path: "/api/tiles/\(tile.projectId)/\(tile.id)",
+      body: update
+    )
+  }
+  
+  func deleteTile(projectId: String, tileId: String) async throws {
+    try await requestVoid(
+      method: "DELETE",
+      path: "/api/tiles/\(projectId)/\(tileId)"
+    )
+  }
+  
+  // MARK: - Requests (research requests)
+  
+  func saveRequest(_ request: ResearchRequest) async throws {
+    try await updateResearchRequest(
+      projectId: request.projectId,
+      requestId: request.id,
+      status: request.status
+    )
+  }
+  
+  // MARK: - Deliverables
+  
+  func loadResearchDeliverables(projectId: String) async throws -> [ResearchDeliverable] {
+    struct DeliverableResponse: Codable {
+      let projectId: String
+      let filename: String
+      let content: String
+      let updatedAt: Date
+      
+      enum CodingKeys: String, CodingKey {
+        case projectId = "project_id"
+        case filename
+        case content
+        case updatedAt = "updated_at"
+      }
+    }
+    
+    do {
+      let deliverables: [DeliverableResponse] = try await request(
+        method: "GET",
+        path: "/api/research/\(projectId)/deliverables",
+        queryItems: [URLQueryItem(name: "limit", value: "1000")]
+      )
+      
+      return deliverables.map { d in
+        ResearchDeliverable(
+          id: d.filename,
+          projectId: d.projectId,
+          filename: d.filename,
+          content: d.content,
+          updatedAt: d.updatedAt
+        )
+      }
+    } catch APIError.httpError(statusCode: 404, _) {
+      return []
+    }
+  }
+  
+  func saveResearchDeliverable(projectId: String, filename: String, content: String) async throws {
+    struct DeliverableUpdate: Codable {
+      let filename: String
+      let content: String
+    }
+    
+    struct DeliverableResponse: Codable {
+      let projectId: String
+      let filename: String
+      let content: String
+      
+      enum CodingKeys: String, CodingKey {
+        case projectId = "project_id"
+        case filename
+        case content
+      }
+    }
+    
+    let _: DeliverableResponse = try await request(
+      method: "PUT",
+      path: "/api/research/\(projectId)/deliverables/\(filename)",
+      body: DeliverableUpdate(filename: filename, content: content)
+    )
+  }
+  
+  // MARK: - Inbox responses
+  
+  func saveInboxResponse(docId: String, response: String) async throws -> InboxThread {
+    struct ResponseCreate: Codable {
+      let response: String
+    }
+    
+    struct ThreadResponse: Codable {
+      let thread: InboxThread?
+      let messages: [InboxThreadMessage]
+    }
+    
+    let result: ThreadResponse = try await request(
+      method: "POST",
+      path: "/api/inbox/\(docId)/response",
+      body: ResponseCreate(response: response)
+    )
+    
+    guard var thread = result.thread else {
+      throw APIError.invalidResponse
+    }
+    
+    thread.messages = result.messages
+    return thread
+  }
+  
+  // MARK: - Project README
+  
+  func saveProjectReadme(projectId: String, content: String) async throws {
+    struct ReadmeUpdate: Codable {
+      let content: String
+    }
+    
+    struct ReadmeResponse: Codable {
+      let projectId: String
+      let content: String
+      
+      enum CodingKeys: String, CodingKey {
+        case projectId = "project_id"
+        case content
+      }
+    }
+    
+    let _: ReadmeResponse = try await request(
+      method: "PUT",
+      path: "/api/projects/\(projectId)/readme",
+      body: ReadmeUpdate(content: content)
+    )
+  }
+  
+  // MARK: - Bulk delete operations
+  
+  func deleteResearchData(projectId: String) async throws {
+    try await requestVoid(
+      method: "DELETE",
+      path: "/api/research/\(projectId)"
+    )
+  }
+  
+  func deleteTrackerData(projectId: String) async throws {
+    let items = try await loadTrackerItems(projectId: projectId)
+    for item in items {
+      try await deleteTrackerItem(projectId: projectId, itemId: item.id)
+    }
+  }
+  
   // MARK: - Read State (Local-only for now)
   
   func loadInboxReadState() throws -> InboxReadStateFile? {

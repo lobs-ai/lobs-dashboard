@@ -717,23 +717,24 @@ private struct DocumentDetailView: View {
     \(String(doc.content.prefix(500)))
     """
     
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      _ = try store.addTask(
-        id: taskId,
-        title: title,
-        owner: TaskOwner.rafe,
-        status: TaskStatus.inbox,
-        projectId: doc.projectId,
-        workState: WorkState.notStarted,
-        reviewState: ReviewState.pending,
-        notes: notes
-      )
-      
-      // Show success feedback
-      NSSound.beep()
-    } catch {
-      print("Failed to create task: \(error)")
+    Task {
+      do {
+        _ = try await vm.api.addTask(
+          id: taskId,
+          title: title,
+          owner: TaskOwner.rafe,
+          status: TaskStatus.inbox,
+          projectId: doc.projectId,
+          workState: WorkState.notStarted,
+          reviewState: ReviewState.pending,
+          notes: notes
+        )
+        
+        // Show success feedback
+        NSSound.beep()
+      } catch {
+        print("Failed to create task: \(error)")
+      }
     }
   }
   
@@ -852,12 +853,13 @@ private struct FollowUpRequestSheet: View {
       updatedAt: Date()
     )
     
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.saveRequest(request)
-      NSSound.beep()
-    } catch {
-      print("Failed to create research request: \(error)")
+    Task {
+      do {
+        try await vm.api.saveRequest(request)
+        NSSound.beep()
+      } catch {
+        print("Failed to create research request: \(error)")
+      }
     }
   }
 }

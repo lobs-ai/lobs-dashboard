@@ -281,6 +281,8 @@ struct OnboardingPersonalityView: View {
   }
 
   private func loadInitial() {
+    // TODO: In API mode, agent personality should be loaded from API
+    // For now, onboarding still uses direct file access
     guard let repoPath = vm.config?.controlRepoPath, !repoPath.isEmpty else {
       // This view should only be reachable after repo config exists.
       regenerateFromForm()

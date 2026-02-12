@@ -264,38 +264,23 @@ struct AgentDetailSheet: View {
   }
 
   private func loadData() {
-    guard let repoURL = vm.repoURL else { return }
-    Task.detached {
-      let store = LobsControlStore(repoRoot: repoURL)
-      let mem = store.loadAgentFile(agentType: agentType, filename: "MEMORY.md") ?? ""
-      let traits = store.loadAgentFile(agentType: agentType, filename: "EVOLVED_TRAITS.md") ?? ""
-      let soul = store.loadAgentFile(agentType: agentType, filename: "SOUL.md") ?? ""
+    // TODO: Add API endpoints for agent file loading (GET /api/agents/{type}/files/{filename})
+    // For now, agent file editing is disabled in API mode
+    Task {
       await MainActor.run {
-        self.memory = mem
-        self.evolvedTraits = traits
-        self.personality = soul
-        self.editedPersonality = soul
+        self.memory = "Agent files not yet available in API mode"
+        self.evolvedTraits = ""
+        self.personality = ""
+        self.editedPersonality = ""
       }
     }
   }
 
   private func savePersonality() {
-    guard let repoURL = vm.repoURL else { return }
+    // TODO: Add API endpoint for agent file saving (PUT /api/agents/{type}/files/{filename})
+    // For now, agent file editing is disabled in API mode
     isSaving = true
-    Task.detached {
-      let store = LobsControlStore(repoRoot: repoURL)
-      do {
-        try store.saveAgentFile(agentType: agentType, filename: "SOUL.md", content: editedPersonality)
-        // Best-effort git commit
-        let cwd = repoURL
-        _ = await Git.runAsyncWithErrorHandling(["add", "memory/\(agentType)/SOUL.md"], cwd: cwd)
-        _ = await Git.runAsyncWithErrorHandling(
-          ["commit", "-m", "agents: update \(agentType) personality"],
-          cwd: cwd
-        )
-      } catch {
-        // Silent failure — file saved even if git fails
-      }
+    Task {
       await MainActor.run {
         self.personality = self.editedPersonality
         self.isEditingPersonality = false

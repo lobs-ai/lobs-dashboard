@@ -3,16 +3,19 @@ import Foundation
 /// Application configuration model
 /// Stored in ~/.lobs/config.json for local-only settings
 struct AppConfig: Codable {
-    /// Git URL for the control repository (e.g., "git@github.com:user/lobs-control.git")
+    /// DEPRECATED: Git URL for the control repository
+    /// In API mode, state is managed by the server. This is kept for git UI features only.
     var controlRepoUrl: String
     
-    /// Local filesystem path to the control repository (e.g., "/Users/them/lobs-control")
+    /// DEPRECATED: Local filesystem path to the control repository
+    /// In API mode, state is managed by the server. This is kept for git UI features only.
     var controlRepoPath: String
     
     /// Whether the user has completed initial onboarding
     var onboardingComplete: Bool
     
     /// URL of the lobs-server API (default: http://localhost:8000)
+    /// This is the PRIMARY configuration for state management
     var serverURL: String
     
     /// User preferences and UI state

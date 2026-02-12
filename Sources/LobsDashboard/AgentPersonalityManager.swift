@@ -1,9 +1,12 @@
 import Foundation
 
-/// Reads/writes the agent personality prompt files stored in the control repo.
+/// DEPRECATED: Direct file-based agent personality management
 ///
-/// These files are consumed by OpenClaw (either directly or via the orchestrator) to shape
-/// how the worker communicates.
+/// This manager reads/writes agent personality files directly to disk and uses Git.run for commits.
+/// In API mode, agent personality should be managed through API endpoints instead.
+///
+/// This file is kept for backward compatibility but should NOT be used for new features.
+/// TODO: Migrate to API-based agent personality management
 ///
 /// Files:
 /// - SOUL.md      — agent persona + tone

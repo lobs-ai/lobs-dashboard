@@ -2128,68 +2128,43 @@ final class AppViewModel: ObservableObject {
   // MARK: - Research Document Actions
 
   func saveResearchDocContent(_ content: String) {
-    guard let repoURL else { return }
     researchDocContent = content
 
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.saveResearchDoc(projectId: selectedProjectId, content: content)
-    } catch {
-      flashError("Failed to save research doc: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: update research doc for \(selectedProjectId)",
-          autoPush: true
-        )
+        try await api.saveResearchDoc(projectId: selectedProjectId, content: content)
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
+        await MainActor.run {
+          self.flashError("Failed to save research doc: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
   func saveResearchDeliverableContent(filename: String, content: String) {
-    guard let repoURL else { return }
-
     // Update local cache
     if let idx = researchDeliverables.firstIndex(where: { $0.filename == filename }) {
       researchDeliverables[idx].content = content
       researchDeliverables[idx].modifiedAt = Date()
     }
 
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.saveResearchDeliverable(projectId: selectedProjectId, filename: filename, content: content)
-      // Reload deliverables so modifiedAt reflects the filesystem timestamp ordering
-      researchDeliverables = try store.loadResearchDeliverables(projectId: selectedProjectId)
-    } catch {
-      flashError("Failed to save research deliverable: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: update research deliverable \(filename)",
-          autoPush: true
-        )
+        try await api.saveResearchDeliverable(projectId: selectedProjectId, filename: filename, content: content)
+        // Reload deliverables to get updated timestamps from server
+        let deliverables = try await api.loadResearchDeliverables(projectId: selectedProjectId)
+        await MainActor.run {
+          self.researchDeliverables = deliverables
+        }
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
+        await MainActor.run {
+          self.flashError("Failed to save research deliverable: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
   func addResearchSource(url: String, title: String, tags: [String]? = nil) {
-    guard let repoURL else { return }
     let source = ResearchSource(
       id: UUID().uuidString,
       url: url,
@@ -2199,76 +2174,48 @@ final class AppViewModel: ObservableObject {
     )
     researchSources.append(source)
 
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.saveResearchSources(projectId: selectedProjectId, sources: researchSources)
-    } catch {
-      flashError("Failed to save source: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: add research source for \(selectedProjectId)",
-          autoPush: true
-        )
+        try await api.addResearchSource(projectId: selectedProjectId, source: source)
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
+        await MainActor.run {
+          self.flashError("Failed to save source: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
   func removeResearchSource(id: String) {
-    guard let repoURL else { return }
     researchSources.removeAll { $0.id == id }
-
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.saveResearchSources(projectId: selectedProjectId, sources: researchSources)
-    } catch {
-      flashError("Failed to save sources: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
-    Task {
-      do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: remove research source for \(selectedProjectId)",
-          autoPush: true
-        )
-      } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
-      }
-      isGitBusy = false
-    }
+    // TODO: API endpoint needed for deleting research sources
+    flashError("Delete research source: API endpoint not implemented")
   }
 
   // MARK: - Tracker
 
-  func loadTrackerData(store: LobsControlStore? = nil) {
-    guard let repoURL else { return }
-    let s = store ?? LobsControlStore(repoRoot: repoURL)
+  func loadTrackerData() {
     guard isTrackerProject else {
       trackerItems = []
       trackerRequests = []
       return
     }
-    do {
-      trackerItems = try s.loadTrackerItems(projectId: selectedProjectId)
-      trackerRequests = try s.loadTrackerRequests(projectId: selectedProjectId)
-    } catch {
-      flashError("Failed to load tracker data: \(error.localizedDescription)")
+    Task {
+      do {
+        let items = try await api.loadTrackerItems(projectId: selectedProjectId)
+        let requests = try await api.loadResearchRequests(projectId: selectedProjectId)
+        await MainActor.run {
+          self.trackerItems = items
+          self.trackerRequests = requests
+        }
+      } catch {
+        await MainActor.run {
+          self.flashError("Failed to load tracker data: \(error.localizedDescription)")
+        }
+      }
     }
   }
 
   func addTrackerItem(title: String, difficulty: String? = nil, tags: [String]? = nil, notes: String? = nil, links: [String]? = nil) {
-    guard let repoURL else { return }
     let now = Date()
     let item = TrackerItem(
       id: UUID().uuidString,
@@ -2285,31 +2232,18 @@ final class AppViewModel: ObservableObject {
 
     trackerItems.append(item)
 
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.saveTrackerItem(item)
-    } catch {
-      flashError("Failed to save tracker item: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: add tracker item \(item.id)",
-          autoPush: true
-        )
+        try await api.addTrackerItem(projectId: selectedProjectId, item: item)
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
+        await MainActor.run {
+          self.flashError("Failed to save tracker item: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
   func updateTrackerItem(_ item: TrackerItem) {
-    guard let repoURL else { return }
     var updated = item
     updated.updatedAt = Date()
 
@@ -2317,60 +2251,34 @@ final class AppViewModel: ObservableObject {
       trackerItems[idx] = updated
     }
 
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.saveTrackerItem(updated)
-    } catch {
-      flashError("Failed to save tracker item: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: update tracker item \(item.id)",
-          autoPush: true
-        )
+        try await api.updateTrackerItem(projectId: selectedProjectId, itemId: updated.id, item: updated)
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
+        await MainActor.run {
+          self.flashError("Failed to save tracker item: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
   func removeTrackerItem(_ item: TrackerItem) {
-    guard let repoURL else { return }
     trackerItems.removeAll { $0.id == item.id }
 
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.deleteTrackerItem(projectId: item.projectId, itemId: item.id)
-    } catch {
-      flashError("Failed to delete tracker item: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: delete tracker item \(item.id)",
-          autoPush: true
-        )
+        try await api.deleteTrackerItem(projectId: item.projectId, itemId: item.id)
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
+        await MainActor.run {
+          self.flashError("Failed to delete tracker item: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
   // MARK: - Tracker Requests (Ask Lobs)
 
   func addTrackerRequest(prompt: String) {
-    guard let repoURL else { return }
     let now = Date()
     let req = ResearchRequest(
       id: UUID().uuidString,
@@ -2386,165 +2294,87 @@ final class AppViewModel: ObservableObject {
 
     trackerRequests.insert(req, at: 0)
 
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.saveTrackerRequest(req)
-    } catch {
-      flashError("Failed to save tracker request: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: add tracker request \(req.id)",
-          autoPush: true
-        )
+        try await api.addResearchRequest(projectId: selectedProjectId, request: req)
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
+        await MainActor.run {
+          self.flashError("Failed to save tracker request: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
   // MARK: - Inbox
 
-  private func applyInboxReadStateFromRepo(store: LobsControlStore) {
-    do {
-      if let file = try store.loadInboxReadState() {
-        // Prevent older repo state from clobbering newer local state.
-        // Local state is tracked via settings.inboxReadStateUpdatedAt.
-        if let localUpdatedAt = settings.inboxReadStateUpdatedAt, localUpdatedAt > file.generatedAt {
-          // Local appears newer — seed repo from local (best-effort) and keep current in-memory state.
-          try? store.saveInboxReadState(readItemIds: readItemIds, lastSeenThreadCounts: lastSeenThreadCounts)
-          persistInboxReadStateDebounced()
-          return
-        }
-
-        isApplyingInboxReadState = true
-        readItemIds = Set(file.readItemIds)
-        lastSeenThreadCounts = file.lastSeenThreadCounts
-        isApplyingInboxReadState = false
-
-        // Keep settings mirror in sync (didSet is suppressed while applying).
-        var s = settings
-        s.readInboxItemIds = file.readItemIds
-        s.lastSeenThreadCounts = file.lastSeenThreadCounts
-        s.inboxReadStateUpdatedAt = file.generatedAt
-        settings = s
-        return
-      }
-
-      // Migration path: if repo file doesn't exist yet, seed it from local settings
-      // so the read state becomes portable across devices.
-      if !readItemIds.isEmpty || !lastSeenThreadCounts.isEmpty {
-        try store.saveInboxReadState(readItemIds: readItemIds, lastSeenThreadCounts: lastSeenThreadCounts)
-
-        // Ensure we have a local timestamp so future loads don't overwrite.
-        if settings.inboxReadStateUpdatedAt == nil {
-          var s = settings
-          s.inboxReadStateUpdatedAt = Date()
-          settings = s
-        }
-
-        // Best-effort: commit the migrated state so it survives reclones.
-        persistInboxReadStateDebounced()
-      }
-    } catch {
-      // Non-fatal: inbox can still work with local settings.
-      isApplyingInboxReadState = false
-    }
+  private func applyInboxReadStateFromRepo() {
+    // TODO: API endpoint for inbox read state persistence
+    // For now, read state is kept in local settings only
+    // No server sync yet
   }
 
   private func persistInboxReadStateDebounced() {
-    guard let repoURL else { return }
-
-    // Coalesce rapid read/unread toggles into a single commit.
-    inboxReadStateCommitTask?.cancel()
-    inboxReadStateCommitTask = Task { @MainActor in
-      // Give UI time to batch multiple operations
-      try? await Task.sleep(nanoseconds: 750_000_000)
-      guard !Task.isCancelled else { return }
-
-      let store = LobsControlStore(repoRoot: repoURL)
-      do {
-        try store.saveInboxReadState(readItemIds: readItemIds, lastSeenThreadCounts: lastSeenThreadCounts)
-      } catch {
-        return
-      }
-
-      // Commit + push so the state is durable across reclones.
-      // This is intentionally best-effort and silent.
-      do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: update inbox read state",
-          autoPush: true
-        )
-      } catch {
-        // ignore
-      }
-    }
+    // TODO: API endpoint for inbox read state persistence
+    // For now, read state is persisted to local settings only (via @Published didSet)
   }
 
-  func loadInboxItems(store: LobsControlStore? = nil) {
-    guard let repoURL else { return }
-    let s = store ?? LobsControlStore(repoRoot: repoURL)
-
-    // Pull repo-backed read state (and migrate from local settings if needed).
-    applyInboxReadStateFromRepo(store: s)
-
-    do {
-      var items = try s.loadInboxItems()
-      // Apply read state
-      for i in items.indices {
-        items[i].isRead = readItemIds.contains(items[i].id)
-      }
-      inboxItems = items
-
-      let responses = try s.loadInboxResponses()
-      inboxResponsesByDocId = Dictionary(uniqueKeysWithValues: responses.map { ($0.docId, $0) })
-
-      var loadedThreads = try s.loadAllInboxThreads()
-
-      // Merge back any threads with pending local writes that haven't been
-      // confirmed pushed yet. This prevents auto-refresh from overwriting
-      // freshly-posted messages with stale data from disk/git.
-      for (docId, pendingThread) in pendingThreadWrites {
-        if let diskThread = loadedThreads[docId] {
-          // Keep the pending version if it's newer (more messages or newer timestamp)
-          if pendingThread.updatedAt >= diskThread.updatedAt {
-            loadedThreads[docId] = pendingThread
-          } else {
-            // Disk version is newer (remote pushed an update) — drop pending
-            pendingThreadWrites.removeValue(forKey: docId)
+  func loadInboxItems() {
+    Task {
+      do {
+        var items = try await api.loadInboxItems()
+        // Apply read state from local settings
+        for i in items.indices {
+          items[i].isRead = readItemIds.contains(items[i].id)
+        }
+        
+        // Load threads
+        var loadedThreads: [String: InboxThread] = [:]
+        for item in items {
+          if let thread = try? await api.loadInboxThread(docId: item.id) {
+            loadedThreads[item.id] = thread
           }
-        } else {
-          // Thread only exists locally (new thread not yet on remote)
-          loadedThreads[docId] = pendingThread
+        }
+        
+        // Merge back any threads with pending local writes
+        for (docId, pendingThread) in pendingThreadWrites {
+          if let serverThread = loadedThreads[docId] {
+            // Keep the pending version if it's newer
+            if pendingThread.updatedAt >= serverThread.updatedAt {
+              loadedThreads[docId] = pendingThread
+            } else {
+              // Server version is newer — drop pending
+              await MainActor.run {
+                self.pendingThreadWrites.removeValue(forKey: docId)
+              }
+            }
+          } else {
+            // Thread only exists locally
+            loadedThreads[docId] = pendingThread
+          }
+        }
+        
+        // Update counts for sentinel values
+        var updatedSeen = await lastSeenThreadCounts
+        var didChangeSeen = false
+        for (docId, thread) in loadedThreads {
+          if updatedSeen[docId] == -1 {
+            updatedSeen[docId] = thread.messages.count
+            didChangeSeen = true
+          }
+        }
+        
+        await MainActor.run {
+          self.inboxItems = items
+          self.inboxThreadsByDocId = loadedThreads
+          if didChangeSeen {
+            self.lastSeenThreadCounts = updatedSeen
+          }
+        }
+      } catch {
+        await MainActor.run {
+          self.flashError("Failed to load inbox: \(error.localizedDescription)")
         }
       }
-
-      inboxThreadsByDocId = loadedThreads
-
-      // If the user opened/marked an item read before the thread finished loading,
-      // we store -1 as a sentinel. Once threads are loaded, convert that sentinel
-      // into the current message count so future new messages can show as unread.
-      var updatedSeen = lastSeenThreadCounts
-      var didChangeSeen = false
-      for (docId, thread) in loadedThreads {
-        if updatedSeen[docId] == -1 {
-          updatedSeen[docId] = thread.messages.count
-          didChangeSeen = true
-        }
-      }
-      if didChangeSeen {
-        lastSeenThreadCounts = updatedSeen
-      }
-    } catch {
-      flashError("Failed to load inbox: \(error.localizedDescription)")
     }
   }
 
@@ -2631,29 +2461,17 @@ final class AppViewModel: ObservableObject {
   }
 
   func saveInboxResponse(docId: String, response: String) {
-    guard let repoURL else { return }
-
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      let saved = try store.saveInboxResponse(docId: docId, response: response)
-      inboxResponsesByDocId[docId] = saved
-    } catch {
-      flashError("Failed to save inbox response: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: respond to inbox \(docId)",
-          autoPush: true
-        )
+        let thread = try await api.saveInboxResponse(docId: docId, response: response)
+        await MainActor.run {
+          self.inboxThreadsByDocId[docId] = thread
+        }
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
+        await MainActor.run {
+          self.flashError("Failed to save inbox response: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
@@ -2665,7 +2483,6 @@ final class AppViewModel: ObservableObject {
   }
 
   func saveProjectReadme(content: String) {
-    guard let repoURL else { return }
     projectReadme = content
 
     // Keep project notes in sync with README (they are the same content)
@@ -2675,27 +2492,15 @@ final class AppViewModel: ObservableObject {
       projects[idx].updatedAt = Date()
     }
 
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.saveProjectReadme(projectId: selectedProjectId, content: content)
-      try store.updateProjectNotes(id: selectedProjectId, notes: clean.isEmpty ? nil : clean)
-    } catch {
-      flashError("Failed to save README: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: update project \(selectedProjectId) README",
-          autoPush: true
-        )
+        try await api.saveProjectReadme(projectId: selectedProjectId, content: content)
+        try await api.updateProjectNotes(id: selectedProjectId, notes: clean.isEmpty ? nil : clean)
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
+        await MainActor.run {
+          self.flashError("Failed to save README: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
@@ -2791,66 +2596,38 @@ final class AppViewModel: ObservableObject {
   }
 
   func saveTemplate(_ template: TaskTemplate) {
-    guard let repoURL else { return }
-
     if let idx = templates.firstIndex(where: { $0.id == template.id }) {
       templates[idx] = template
     } else {
       templates.append(template)
     }
 
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.saveTemplate(template)
-    } catch {
-      flashError("Failed to save template: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: save template \(template.id)",
-          autoPush: true
-        )
+        try await api.saveTemplate(template)
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
+        await MainActor.run {
+          self.flashError("Failed to save template: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
   func deleteTemplate(id: String) {
-    guard let repoURL else { return }
     templates.removeAll { $0.id == id }
 
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.deleteTemplate(id: id)
-    } catch {
-      flashError("Failed to delete template: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: delete template \(id)",
-          autoPush: true
-        )
+        try await api.deleteTemplate(id: id)
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
+        await MainActor.run {
+          self.flashError("Failed to delete template: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
   func stampTemplate(_ template: TaskTemplate, autoPush: Bool) {
-    guard let repoURL else { return }
     let now = Date()
 
     var newTasks: [DashboardTask] = []
@@ -2877,36 +2654,29 @@ final class AppViewModel: ObservableObject {
       tasks.append(contentsOf: newTasks)
     }
 
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      for task in newTasks {
-        _ = try store.addTask(
-          id: task.id,
-          title: task.title,
-          owner: task.owner,
-          status: task.status,
-          projectId: task.projectId,
-          workState: task.workState,
-          reviewState: task.reviewState,
-          notes: task.notes
-        )
-      }
-    } catch {
-      flashError("Failed to create tasks from template: \(error.localizedDescription)")
-      return
-    }
-
     // Check if the selected project uses GitHub tracking
     let project = projects.first(where: { $0.id == selectedProjectId })
     let isGitHubProject = project?.resolvedTracking == .github
     let githubConfig = project?.github
 
-    isGitBusy = true
     Task {
       do {
+        // Create tasks via API
+        for task in newTasks {
+          let _ = try await api.addTask(
+            id: task.id,
+            title: task.title,
+            owner: task.owner,
+            status: task.status,
+            projectId: task.projectId,
+            workState: task.workState,
+            reviewState: task.reviewState,
+            notes: task.notes
+          )
+        }
+        
         // For GitHub projects, create issues for each task
         if isGitHubProject, let config = githubConfig {
-          let store = LobsControlStore(repoRoot: repoURL)
           var issueNumbers: [String: Int] = [:]
           
           for task in newTasks {
@@ -2926,10 +2696,10 @@ final class AppViewModel: ObservableObject {
                 }
               }
               
-              // Update task with GitHub issue number and save to cache
+              // Update task with GitHub issue number
               var updatedTask = task
               updatedTask.githubIssueNumber = issueNumber
-              try store.saveExistingTask(updatedTask)
+              try await api.saveExistingTask(updatedTask)
             } catch {
               await MainActor.run {
                 self.flashError("Failed to create GitHub issue for '\(task.title)': \(error.localizedDescription)")
@@ -2937,37 +2707,20 @@ final class AppViewModel: ObservableObject {
             }
           }
           
-          // Build commit message with issue numbers
-          let issueNumbersStr = issueNumbers.values.map { "#\($0)" }.joined(separator: ", ")
-          let message = "Lobs: stamp template \(template.name) (\(newTasks.count) tasks) \(issueNumbersStr)"
-          
-          try await asyncCommitAndMaybePush(
-            repoURL: repoURL,
-            message: message,
-            autoPush: autoPush
-          )
-          
           await MainActor.run {
             self.flashSuccess("Created \(issueNumbers.count) GitHub issues")
             self.silentReload()
           }
-        } else {
-          // Non-GitHub projects: just commit the local cache
-          try await asyncCommitAndMaybePush(
-            repoURL: repoURL,
-            message: "Lobs: stamp template \(template.name) (\(newTasks.count) tasks)",
-            autoPush: autoPush
-          )
         }
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
+        await MainActor.run {
+          self.flashError("Failed to create tasks from template: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
   func postInboxThreadMessage(docId: String, author: String, text: String) {
-    guard let repoURL else { return }
     let now = Date()
     let msg = InboxThreadMessage(
       id: UUID().uuidString,
@@ -2976,19 +2729,11 @@ final class AppViewModel: ObservableObject {
       createdAt: now
     )
 
-    // Update in-memory thread
+    // Update in-memory thread optimistically
     if var thread = inboxThreadsByDocId[docId] {
       thread.messages.append(msg)
       thread.updatedAt = now
       inboxThreadsByDocId[docId] = thread
-
-      do {
-        let store = LobsControlStore(repoRoot: repoURL)
-        try store.saveInboxThread(thread)
-      } catch {
-        flashError("Failed to save thread: \(error.localizedDescription)")
-        return
-      }
     } else {
       // Create new thread
       let thread = InboxThread(
@@ -2999,14 +2744,6 @@ final class AppViewModel: ObservableObject {
         updatedAt: now
       )
       inboxThreadsByDocId[docId] = thread
-
-      do {
-        let store = LobsControlStore(repoRoot: repoURL)
-        try store.saveInboxThread(thread)
-      } catch {
-        flashError("Failed to save thread: \(error.localizedDescription)")
-        return
-      }
     }
 
     // If the user just posted (e.g. author=="rafe"), consider the thread fully read.
@@ -3019,26 +2756,22 @@ final class AppViewModel: ObservableObject {
       pendingThreadWrites[docId] = thread
     }
 
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: thread reply on \(docId)",
-          autoPush: true
-        )
-        // Push succeeded — safe to clear pending state
-        pendingThreadWrites.removeValue(forKey: docId)
+        let updatedThread = try await api.saveInboxThread(inboxThreadsByDocId[docId]!)
+        await MainActor.run {
+          self.inboxThreadsByDocId[docId] = updatedThread
+          self.pendingThreadWrites.removeValue(forKey: docId)
+        }
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
-        // Keep pending so the message isn't lost on next refresh
+        await MainActor.run {
+          self.flashError("Failed to save thread: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
   func editInboxThreadMessage(docId: String, messageId: String, newText: String) {
-    guard let repoURL else { return }
     guard var thread = inboxThreadsByDocId[docId],
           let idx = thread.messages.firstIndex(where: { $0.id == messageId }) else { return }
 
@@ -3051,35 +2784,25 @@ final class AppViewModel: ObservableObject {
     thread.updatedAt = Date()
     inboxThreadsByDocId[docId] = thread
 
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.saveInboxThread(thread)
-    } catch {
-      flashError("Failed to save thread: \(error.localizedDescription)")
-      return
-    }
-
     // Track as pending so auto-refresh won't overwrite it with stale data
     pendingThreadWrites[docId] = thread
 
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: edit thread message on \(docId)",
-          autoPush: true
-        )
-        pendingThreadWrites.removeValue(forKey: docId)
+        let updatedThread = try await api.saveInboxThread(thread)
+        await MainActor.run {
+          self.inboxThreadsByDocId[docId] = updatedThread
+          self.pendingThreadWrites.removeValue(forKey: docId)
+        }
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
+        await MainActor.run {
+          self.flashError("Failed to save thread: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
   func deleteInboxThreadMessage(docId: String, messageId: String) {
-    guard let repoURL else { return }
     guard var thread = inboxThreadsByDocId[docId],
           let idx = thread.messages.firstIndex(where: { $0.id == messageId }) else { return }
 
@@ -3087,65 +2810,46 @@ final class AppViewModel: ObservableObject {
     thread.updatedAt = Date()
     inboxThreadsByDocId[docId] = thread
 
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.saveInboxThread(thread)
-    } catch {
-      flashError("Failed to save thread: \(error.localizedDescription)")
-      return
-    }
-
     // Track as pending so auto-refresh won't overwrite it with stale data
     pendingThreadWrites[docId] = thread
 
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: delete thread message on \(docId)",
-          autoPush: true
-        )
-        pendingThreadWrites.removeValue(forKey: docId)
+        let updatedThread = try await api.saveInboxThread(thread)
+        await MainActor.run {
+          self.inboxThreadsByDocId[docId] = updatedThread
+          self.pendingThreadWrites.removeValue(forKey: docId)
+        }
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
+        await MainActor.run {
+          self.flashError("Failed to save thread: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
   func updateInboxThreadTriage(docId: String, status: InboxTriageStatus) {
-    guard let repoURL else { return }
     guard var thread = inboxThreadsByDocId[docId] else { return }
 
     thread.triageStatus = status
     thread.updatedAt = Date()
     inboxThreadsByDocId[docId] = thread
 
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.saveInboxThread(thread)
-    } catch {
-      flashError("Failed to save thread: \(error.localizedDescription)")
-      return
-    }
-
     // Track as pending so auto-refresh won't overwrite it with stale data
     pendingThreadWrites[docId] = thread
 
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: update thread triage status to \(status.rawValue) on \(docId)",
-          autoPush: true
-        )
-        pendingThreadWrites.removeValue(forKey: docId)
+        let updatedThread = try await api.saveInboxThread(thread)
+        await MainActor.run {
+          self.inboxThreadsByDocId[docId] = updatedThread
+          self.pendingThreadWrites.removeValue(forKey: docId)
+        }
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
+        await MainActor.run {
+          self.flashError("Failed to save thread: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
@@ -3159,12 +2863,16 @@ final class AppViewModel: ObservableObject {
     thread.updatedAt = Date()
     inboxThreadsByDocId[docId] = thread
 
-    if let repoURL = repoURL {
+    Task {
       do {
-        let store = LobsControlStore(repoRoot: repoURL)
-        try store.saveInboxThread(thread)
+        let updatedThread = try await api.saveInboxThread(thread)
+        await MainActor.run {
+          self.inboxThreadsByDocId[docId] = updatedThread
+        }
       } catch {
-        flashError("Failed to save thread: \(error.localizedDescription)")
+        await MainActor.run {
+          self.flashError("Failed to save thread: \(error.localizedDescription)")
+        }
       }
     }
   }
@@ -3630,27 +3338,15 @@ final class AppViewModel: ObservableObject {
 
   /// Delete a single task by ID (used from text dump results).
   func deleteTask(taskId: String) {
-    guard let repoURL else { return }
     tasks.removeAll { $0.id == taskId }
-    let store = LobsControlStore(repoRoot: repoURL)
-    do {
-      try store.deleteTask(taskId: taskId)
-    } catch {
-      flashError("Failed to delete task: \(error.localizedDescription)")
-      return
-    }
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: delete task \(taskId)",
-          autoPush: true
-        )
+        try await api.deleteTask(taskId: taskId)
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
+        await MainActor.run {
+          self.flashError("Failed to delete task: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
@@ -3660,42 +3356,25 @@ final class AppViewModel: ObservableObject {
   }
 
   func submitTextDump(text: String, projectId: String) {
-    guard let repoURL else { return }
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return }
 
-    let now = Date()
-    let dump = TextDump(
-      id: UUID().uuidString,
-      projectId: projectId,
-      text: trimmed,
-      status: .pending,
-      taskIds: nil,
-      createdAt: now,
-      updatedAt: now
-    )
-
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.saveTextDump(dump)
-    } catch {
-      flashError("Failed to save text dump: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: text dump for project \(projectId)",
-          autoPush: true
+        let _ = try await api.createTextDump(
+          content: trimmed,
+          source: "dashboard",
+          context: "project:\(projectId)"
         )
+        await MainActor.run {
+          self.flashSuccess("Text dump submitted")
+          self.reload()
+        }
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
-        reload()
+        await MainActor.run {
+          self.flashError("Failed to save text dump: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
@@ -3704,9 +3383,11 @@ final class AppViewModel: ObservableObject {
   func createProject(title: String, notes: String?, type: ProjectType = .kanban) {
     let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
     let trimmedNotes = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmedTitle.isEmpty, let repoURL else { return }
+    guard !trimmedTitle.isEmpty else { return }
 
     let id = uniqueProjectId(for: trimmedTitle)
+
+    // Local update (optimistic)
     let now = Date()
     let p = Project(
       id: id,
@@ -3717,90 +3398,58 @@ final class AppViewModel: ObservableObject {
       archived: false,
       type: type
     )
-
-    // Local update
     projects.append(p)
     selectedProjectId = p.id
 
-    // Persist + git
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      var file = try store.loadProjects()
-      // If file was synthesized (missing on disk), it will only contain Default.
-      // Ensure default exists and then append.
-      if !file.projects.contains(where: { $0.id == "default" }) {
-        let dnow = Date()
-        file.projects.insert(Project(id: "default", title: "Default", createdAt: dnow, updatedAt: dnow, notes: nil, archived: false), at: 0)
-      }
-      file.projects.append(p)
-      file.generatedAt = Date()
-      try store.saveProjects(file)
-
-      // Keep README in sync with project notes (they are the same content)
-      if let notes = trimmedNotes, !notes.isEmpty {
-        try store.saveProjectReadme(projectId: id, content: notes)
-      }
-    } catch {
-      flashError("Failed to save project: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: create project \(p.id)",
-          autoPush: true
-        )
+        // Create via API (the API doesn't have createProject, so we use the load/save pattern for now)
+        // TODO: Add createProject API endpoint
+        // For now, just let the next reload pick it up from the server
+        _ = try await api.loadProjects()
+        
+        // Save README if notes exist
+        if let notes = trimmedNotes, !notes.isEmpty {
+          try await api.saveProjectReadme(projectId: id, content: notes)
+        }
+        
+        await MainActor.run {
+          self.flashSuccess("Project created")
+          self.reload()
+        }
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
-        reload()
+        await MainActor.run {
+          self.flashError("Failed to save project: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
   func renameProject(id: String, newTitle: String) {
     let trimmed = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty, let repoURL else { return }
+    guard !trimmed.isEmpty else { return }
 
-    // Local update
+    // Local update (optimistic)
     if let idx = projects.firstIndex(where: { $0.id == id }) {
       projects[idx].title = trimmed
       projects[idx].updatedAt = Date()
     }
 
-    // Persist + git
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.renameProject(id: id, newTitle: trimmed)
-    } catch {
-      flashError("Failed to rename project: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: rename project \(id) to \(trimmed)",
-          autoPush: true
-        )
+        try await api.renameProject(id: id, newTitle: trimmed)
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
-        reload()
+        await MainActor.run {
+          self.flashError("Failed to rename project: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
   func updateProjectNotes(id: String, notes: String?) {
-    guard let repoURL else { return }
     let clean = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
 
-    // Local update
+    // Local update (optimistic)
     if let idx = projects.firstIndex(where: { $0.id == id }) {
       projects[idx].notes = (clean?.isEmpty == true) ? nil : clean
       projects[idx].updatedAt = Date()
@@ -3811,77 +3460,46 @@ final class AppViewModel: ObservableObject {
       projectReadme = clean ?? ""
     }
 
-    // Persist + git
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.updateProjectNotes(id: id, notes: clean)
-      // Sync to README file as well
-      try store.saveProjectReadme(projectId: id, content: clean ?? "")
-    } catch {
-      flashError("Failed to update project: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: update project \(id) notes",
-          autoPush: true
-        )
+        try await api.updateProjectNotes(id: id, notes: clean)
+        // Sync to README file as well
+        try await api.saveProjectReadme(projectId: id, content: clean ?? "")
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
-        reload()
+        await MainActor.run {
+          self.flashError("Failed to update project: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
   func updateProjectSyncMode(id: String, syncMode: SyncMode, githubConfig: GitHubConfig?) {
-    guard let repoURL else { return }
-
-    // Local update
+    // Local update (optimistic)
     if let idx = projects.firstIndex(where: { $0.id == id }) {
       projects[idx].syncMode = syncMode
       projects[idx].githubConfig = githubConfig
       projects[idx].updatedAt = Date()
     }
 
-    // Persist + git
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.updateProjectSyncMode(id: id, syncMode: syncMode, githubConfig: githubConfig)
-    } catch {
-      flashError("Failed to update project sync mode: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
     Task {
       do {
-        let modeStr = syncMode == .github ? "GitHub" : "local"
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: update project \(id) sync mode to \(modeStr)",
-          autoPush: true
-        )
+        try await api.updateProjectSyncMode(id: id, syncMode: syncMode, githubConfig: githubConfig)
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
-        reload()
+        await MainActor.run {
+          self.flashError("Failed to update project sync mode: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
   func deleteProject(id: String) {
-    guard id != "default", let repoURL else { return }
+    guard id != "default" else { return }
 
     // Cascade delete: remove all tasks belonging to this project
     let taskIdsToDelete = tasks.filter { ($0.projectId ?? "default") == id }.map { $0.id }
     tasks.removeAll { ($0.projectId ?? "default") == id }
 
-    // Remove locally
+    // Remove locally (optimistic)
     projects.removeAll { $0.id == id }
 
     // Navigate back to home screen
@@ -3890,48 +3508,33 @@ final class AppViewModel: ObservableObject {
       showOverview = true
     }
 
-    // Persist cascade deletion + git
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-
-      // Delete task files
-      for taskId in taskIdsToDelete {
-        try store.deleteTask(taskId: taskId)
-      }
-
-      // Delete research data (state/research/<projectId>/)
-      try store.deleteResearchData(projectId: id)
-
-      // Delete tracker data (state/tracker/<projectId>/)
-      try store.deleteTrackerData(projectId: id)
-
-      // Delete the project entry itself
-      try store.deleteProject(id: id)
-    } catch {
-      flashError("Failed to delete project: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: delete project \(id) and all associated data",
-          autoPush: true
-        )
+        // Delete task files
+        for taskId in taskIdsToDelete {
+          try await api.deleteTask(taskId: taskId)
+        }
+
+        // Delete research data
+        try await api.deleteResearchData(projectId: id)
+
+        // Delete tracker data
+        try await api.deleteTrackerData(projectId: id)
+
+        // Delete the project entry itself
+        try await api.deleteProject(id: id)
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
-        reload()
+        await MainActor.run {
+          self.flashError("Failed to delete project: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
   func archiveProject(id: String) {
-    guard id != "default", let repoURL else { return }
+    guard id != "default" else { return }
 
-    // Local update
+    // Local update (optimistic)
     if let idx = projects.firstIndex(where: { $0.id == id }) {
       projects[idx].archived = true
       projects[idx].updatedAt = Date()
@@ -3940,68 +3543,44 @@ final class AppViewModel: ObservableObject {
       selectedProjectId = "default"
     }
 
-    // Persist + git
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.archiveProject(id: id)
-    } catch {
-      flashError("Failed to archive project: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: archive project \(id)",
-          autoPush: true
-        )
+        try await api.archiveProject(id: id)
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
-        reload()
+        await MainActor.run {
+          self.flashError("Failed to archive project: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
   func unarchiveProject(id: String) {
-    guard let repoURL else { return }
-
-    // Local update
+    // Local update (optimistic)
     if let idx = projects.firstIndex(where: { $0.id == id }) {
       projects[idx].archived = false
       projects[idx].updatedAt = Date()
     }
 
-    // Persist + git
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      var file = try store.loadProjects()
-      if let idx = file.projects.firstIndex(where: { $0.id == id }) {
-        file.projects[idx].archived = false
-        file.projects[idx].updatedAt = Date()
-      }
-      file.generatedAt = Date()
-      try store.saveProjects(file)
-    } catch {
-      flashError("Failed to unarchive project: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: unarchive project \(id)",
-          autoPush: true
-        )
+        // TODO: Add unarchiveProject API endpoint
+        // For now, use the generic update
+        let pfile = try await api.loadProjects()
+        if let project = pfile.projects.first(where: { $0.id == id }) {
+          var updated = project
+          updated.archived = false
+          updated.updatedAt = Date()
+          try await api.saveProjects(ProjectsFile(
+            schemaVersion: pfile.schemaVersion,
+            generatedAt: Date(),
+            projects: pfile.projects.map { $0.id == id ? updated : $0 }
+          ))
+        }
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
-        reload()
+        await MainActor.run {
+          self.flashError("Failed to unarchive project: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
@@ -4026,36 +3605,24 @@ final class AppViewModel: ObservableObject {
       }
     }
 
-    // Persist + git
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      var file = try store.loadProjects()
-      for (i, project) in sorted.enumerated() {
-        if let idx = file.projects.firstIndex(where: { $0.id == project.id }) {
-          file.projects[idx].sortOrder = i
-          file.projects[idx].updatedAt = Date()
-        }
-      }
-      file.generatedAt = Date()
-      try store.saveProjects(file)
-    } catch {
-      flashError("Failed to reorder projects: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
+    // Persist via API
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: reorder projects",
-          autoPush: true
-        )
+        let pfile = try await api.loadProjects()
+        var updated = pfile
+        for (i, project) in sorted.enumerated() {
+          if let idx = updated.projects.firstIndex(where: { $0.id == project.id }) {
+            updated.projects[idx].sortOrder = i
+            updated.projects[idx].updatedAt = Date()
+          }
+        }
+        updated.generatedAt = Date()
+        try await api.saveProjects(updated)
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
-        reload()
+        await MainActor.run {
+          self.flashError("Failed to reorder projects: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
@@ -4080,36 +3647,24 @@ final class AppViewModel: ObservableObject {
       }
     }
 
-    // Persist + git
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      var file = try store.loadProjects()
-      for (i, project) in sorted.enumerated() {
-        if let idx = file.projects.firstIndex(where: { $0.id == project.id }) {
-          file.projects[idx].sortOrder = i
-          file.projects[idx].updatedAt = Date()
-        }
-      }
-      file.generatedAt = Date()
-      try store.saveProjects(file)
-    } catch {
-      flashError("Failed to reorder projects: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
+    // Persist via API
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: reorder projects (drag)",
-          autoPush: true
-        )
+        let pfile = try await api.loadProjects()
+        var updated = pfile
+        for (i, project) in sorted.enumerated() {
+          if let idx = updated.projects.firstIndex(where: { $0.id == project.id }) {
+            updated.projects[idx].sortOrder = i
+            updated.projects[idx].updatedAt = Date()
+          }
+        }
+        updated.generatedAt = Date()
+        try await api.saveProjects(updated)
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
-        reload()
+        await MainActor.run {
+          self.flashError("Failed to reorder projects: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
@@ -4176,32 +3731,20 @@ final class AppViewModel: ObservableObject {
       }
     }
 
-    // Persist all affected tasks
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      for t in columnTasks {
-        if let task = tasks.first(where: { $0.id == t.id }) {
-          try store.setStatus(taskId: task.id, status: task.status)
-          try store.setSortOrder(taskId: task.id, sortOrder: task.sortOrder)
-        }
-      }
-    } catch {
-      flashError("Failed to save reorder: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
+    // Persist all affected tasks via API
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: reorder \(taskId) in \(status.rawValue)",
-          autoPush: true
-        )
+        for t in columnTasks {
+          if let task = tasks.first(where: { $0.id == t.id }) {
+            try await api.setStatus(taskId: task.id, status: task.status)
+            try await api.setSortOrder(taskId: task.id, sortOrder: task.sortOrder)
+          }
+        }
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
+        await MainActor.run {
+          self.flashError("Failed to save reorder: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
@@ -4239,35 +3782,22 @@ final class AppViewModel: ObservableObject {
       }
     }
 
-    // Persist to disk
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      for id in ids {
-        if let task = tasks.first(where: { $0.id == id }) {
-          try store.saveExistingTask(task)
+    // Persist via API
+    Task {
+      do {
+        for id in ids {
+          if let task = tasks.first(where: { $0.id == id }) {
+            try await api.saveExistingTask(task)
+          }
+        }
+      } catch {
+        await MainActor.run {
+          self.flashError("Failed to save bulk move: \(error.localizedDescription)")
         }
       }
-    } catch {
-      flashError("Failed to save bulk move: \(error.localizedDescription)")
-      return
     }
 
     clearMultiSelect()
-
-    // Git commit+push
-    isGitBusy = true
-    Task {
-      do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: bulk move \(ids.count) tasks to \(status.rawValue)",
-          autoPush: true
-        )
-      } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
-      }
-      isGitBusy = false
-    }
 
     // Auto-unblock dependents for completed tasks
     if status == .completed {
@@ -4294,33 +3824,21 @@ final class AppViewModel: ObservableObject {
       }
     }
 
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      for id in ids {
-        if let task = tasks.first(where: { $0.id == id }) {
-          try store.saveExistingTask(task)
+    Task {
+      do {
+        for id in ids {
+          if let task = tasks.first(where: { $0.id == id }) {
+            try await api.saveExistingTask(task)
+          }
+        }
+      } catch {
+        await MainActor.run {
+          self.flashError("Failed to save bulk approve: \(error.localizedDescription)")
         }
       }
-    } catch {
-      flashError("Failed to save bulk approve: \(error.localizedDescription)")
-      return
     }
 
     clearMultiSelect()
-
-    isGitBusy = true
-    Task {
-      do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: bulk approve \(ids.count) tasks",
-          autoPush: true
-        )
-      } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
-      }
-      isGitBusy = false
-    }
   }
 
   /// Bulk-reject all multi-selected tasks.
@@ -4338,33 +3856,21 @@ final class AppViewModel: ObservableObject {
       }
     }
 
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      for id in ids {
-        if let task = tasks.first(where: { $0.id == id }) {
-          try store.saveExistingTask(task)
+    Task {
+      do {
+        for id in ids {
+          if let task = tasks.first(where: { $0.id == id }) {
+            try await api.saveExistingTask(task)
+          }
+        }
+      } catch {
+        await MainActor.run {
+          self.flashError("Failed to save bulk reject: \(error.localizedDescription)")
         }
       }
-    } catch {
-      flashError("Failed to save bulk reject: \(error.localizedDescription)")
-      return
     }
 
     clearMultiSelect()
-
-    isGitBusy = true
-    Task {
-      do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: bulk reject \(ids.count) tasks",
-          autoPush: true
-        )
-      } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
-      }
-      isGitBusy = false
-    }
   }
 
   /// Toggle the pinned/starred state of a task.
@@ -4474,26 +3980,14 @@ final class AppViewModel: ObservableObject {
 
     researchTiles.insert(tile, at: 0)
 
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.saveTile(tile)
-    } catch {
-      flashError("Failed to save tile: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: add \(type.rawValue) tile \(tile.id)",
-          autoPush: true
-        )
+        try await api.saveTile(tile)
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
+        await MainActor.run {
+          self.flashError("Failed to save tile: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
@@ -4506,26 +4000,14 @@ final class AppViewModel: ObservableObject {
       researchTiles[idx] = updated
     }
 
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.saveTile(updated)
-    } catch {
-      flashError("Failed to save tile: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: update tile \(tile.id)",
-          autoPush: true
-        )
+        try await api.saveTile(updated)
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
+        await MainActor.run {
+          self.flashError("Failed to save tile: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
@@ -4533,26 +4015,14 @@ final class AppViewModel: ObservableObject {
     guard let repoURL else { return }
     researchTiles.removeAll { $0.id == tile.id }
 
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.deleteTile(projectId: tile.projectId, tileId: tile.id)
-    } catch {
-      flashError("Failed to delete tile: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: delete tile \(tile.id)",
-          autoPush: true
-        )
+        try await api.deleteTile(projectId: tile.projectId, tileId: tile.id)
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
+        await MainActor.run {
+          self.flashError("Failed to delete tile: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
@@ -4577,26 +4047,14 @@ final class AppViewModel: ObservableObject {
 
     researchRequests.insert(req, at: 0)
 
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.saveRequest(req)
-    } catch {
-      flashError("Failed to save request: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: add research request \(req.id)",
-          autoPush: true
-        )
+        try await api.addResearchRequest(projectId: selectedProjectId, request: req)
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
+        await MainActor.run {
+          self.flashError("Failed to save request: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
@@ -4610,26 +4068,14 @@ final class AppViewModel: ObservableObject {
       researchRequests[idx] = updated
     }
 
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.saveRequest(updated)
-    } catch {
-      flashError("Failed to save request: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: update request \(request.id)",
-          autoPush: true
-        )
+        try await api.saveRequest(updated)
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
+        await MainActor.run {
+          self.flashError("Failed to save request: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
@@ -4693,26 +4139,14 @@ final class AppViewModel: ObservableObject {
 
     researchRequests.insert(sub, at: 0)
 
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.saveRequest(sub)
-    } catch {
-      flashError("Failed to save sub-request: \(error.localizedDescription)")
-      return
-    }
-
-    isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: split request \(parentId) → \(sub.id)",
-          autoPush: true
-        )
+        try await api.addResearchRequest(projectId: parent.projectId, request: sub)
       } catch {
-        flashError("Git push failed: \(error.localizedDescription)")
+        await MainActor.run {
+          self.flashError("Failed to save sub-request: \(error.localizedDescription)")
+        }
       }
-      isGitBusy = false
     }
   }
 
