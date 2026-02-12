@@ -162,6 +162,19 @@ struct ContentView: View {
         .padding(.top, 52)
       }
 
+      // Dashboard notifications overlay
+      VStack(spacing: 8) {
+        ForEach(vm.notifications.filter { !$0.dismissed }) { notification in
+          NotificationToast(notification: notification) {
+            vm.dismissNotification(id: notification.id)
+          }
+          .transition(.move(edge: .top).combined(with: .opacity))
+        }
+      }
+      .zIndex(101)
+      .padding(.top, 52)
+      .padding(.horizontal, 20)
+
       // Sync blocked warning — rebase conflict
       if vm.syncBlockedByUncommitted {
         HStack(spacing: 8) {
@@ -2162,6 +2175,60 @@ private struct SuccessBanner: View {
         .stroke(Color.green.opacity(0.15))
     )
     .padding(.horizontal, 20)
+  }
+}
+
+private struct NotificationToast: View {
+  let notification: DashboardNotification
+  let dismiss: () -> Void
+
+  private var iconName: String {
+    switch notification.type {
+    case .reminder: return "bell.fill"
+    case .blocker: return "exclamationmark.triangle.fill"
+    case .error: return "xmark.circle.fill"
+    case .success: return "checkmark.circle.fill"
+    case .info: return "info.circle.fill"
+    case .warning: return "exclamationmark.circle.fill"
+    }
+  }
+
+  private var accentColor: Color {
+    switch notification.type {
+    case .reminder: return .purple
+    case .blocker: return .red
+    case .error: return .red
+    case .success: return .green
+    case .info: return .blue
+    case .warning: return .orange
+    }
+  }
+
+  var body: some View {
+    HStack(spacing: 8) {
+      Image(systemName: iconName)
+        .foregroundStyle(accentColor)
+      Text(notification.message)
+        .font(.footnote)
+        .lineLimit(2)
+      Spacer()
+      Button {
+        dismiss()
+      } label: {
+        Image(systemName: "xmark")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+      }
+      .buttonStyle(.plain)
+    }
+    .padding(.horizontal, 16)
+    .padding(.vertical, 10)
+    .background(accentColor.opacity(0.08))
+    .clipShape(RoundedRectangle(cornerRadius: 10))
+    .overlay(
+      RoundedRectangle(cornerRadius: 10)
+        .stroke(accentColor.opacity(0.15))
+    )
   }
 }
 
