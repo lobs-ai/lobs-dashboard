@@ -2764,6 +2764,10 @@ private struct TaskTile: View {
           MiniTag(text: "\(shapeIcon(shape)) \(shapeLabel(shape))", color: shapeColor(shape))
         }
 
+        if let agent = task.agent {
+          MiniTag(text: "\(agentIcon(agent)) \(agent.capitalized)", color: .cyan)
+        }
+
         if let ws = task.workState {
           MiniTag(text: workStateLabel(ws), color: workStateColor(ws))
         }

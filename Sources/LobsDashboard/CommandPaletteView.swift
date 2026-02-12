@@ -812,3 +812,26 @@ func shapeColor(_ shape: TaskShape) -> Color {
   case .admin: return .blue
   }
 }
+
+// MARK: - Agent Helpers
+
+func availableAgentTypes() -> [(String, String, String)] {
+  [
+    ("programmer", "🛠️", "Code implementation, bug fixes"),
+    ("researcher", "🔬", "Research and investigation"),
+    ("reviewer", "🔍", "Code review and feedback"),
+    ("writer", "✍️", "Documentation and writing"),
+    ("architect", "🏗️", "System design and architecture")
+  ]
+}
+
+func agentIcon(_ agent: String) -> String {
+  switch agent.lowercased() {
+  case "programmer": return "🛠️"
+  case "researcher": return "🔬"
+  case "reviewer": return "🔍"
+  case "writer": return "✍️"
+  case "architect": return "🏗️"
+  default: return "🤖"
+  }
+}
