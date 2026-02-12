@@ -258,7 +258,13 @@ final class AppViewModel: ObservableObject {
 
   // Agent Documents (Reports & Research)
   @Published var agentDocuments: [AgentDocument] = []
-  @Published var readDocumentIds: Set<String> = []
+  @Published var readDocumentIds: Set<String> = [] {
+    didSet {
+      var s = settings
+      s.readDocumentIds = Array(readDocumentIds)
+      settings = s
+    }
+  }
 
   // Inbox read-state persistence (repo-backed)
   private var isApplyingInboxReadState: Bool = false
@@ -573,6 +579,7 @@ final class AppViewModel: ObservableObject {
       autoRefreshIntervalSeconds = s.autoRefreshIntervalSeconds
       readItemIds = Set(s.readInboxItemIds)
       lastSeenThreadCounts = s.lastSeenThreadCounts
+      readDocumentIds = Set(s.readDocumentIds)
       reviewedDumpIds = Set(s.reviewedTextDumpIds)
       appearanceMode = s.appearanceMode
       quickCaptureHotkeyMode = s.quickCaptureHotkeyMode
