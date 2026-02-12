@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// High-level guide for setting up the server-side components.
+/// High-level guide for setting up lobs-server.
 /// This is informational only — the actual setup happens on your server.
 struct OnboardingServerGuideView: View {
   var body: some View {
@@ -28,9 +28,8 @@ struct OnboardingServerGuideView: View {
 
             Text("""
               • **Dashboard** (this app) — runs on your Mac, shows tasks and state
-              • **Control repo** — shared Git repository with tasks, projects, and state
-              • **OpenClaw** — the AI runtime that executes tasks (runs on server)
-              • **Orchestrator** — monitors the control repo and spawns workers (runs on server)
+              • **lobs-server** — REST API server that manages tasks, agents, and state
+              • **OpenClaw** — the AI runtime that executes tasks (integrated into lobs-server)
               """)
               .font(.system(size: 13))
               .foregroundColor(.secondary)
@@ -49,8 +48,8 @@ struct OnboardingServerGuideView: View {
             Text("""
               • Linux server, Mac mini, or similar always-on machine
               • Node.js 18+ (for OpenClaw)
-              • Python 3.10+ (for orchestrator)
-              • Git access to your control repo
+              • Python 3.10+ (for lobs-server)
+              • Anthropic API key
               """)
               .font(.system(size: 13))
               .foregroundColor(.secondary)
@@ -69,9 +68,8 @@ struct OnboardingServerGuideView: View {
             VStack(alignment: .leading, spacing: 12) {
               setupStep(number: 1, title: "Install OpenClaw", command: "npm install -g openclaw")
               setupStep(number: 2, title: "Configure OpenClaw", command: "openclaw config set auth.anthropicApiKey <key>")
-              setupStep(number: 3, title: "Clone repos", command: "git clone <your-control-repo>")
-              setupStep(number: 4, title: "Clone orchestrator", command: "git clone https://github.com/RafeSymonds/lobs-orchestrator")
-              setupStep(number: 5, title: "Start orchestrator", command: "cd lobs-orchestrator && python3 main.py")
+              setupStep(number: 3, title: "Clone lobs-server", command: "git clone <your-lobs-server-repo>")
+              setupStep(number: 4, title: "Start lobs-server", command: "cd lobs-server && python3 main.py")
             }
           }
           .padding(16)
@@ -86,8 +84,6 @@ struct OnboardingServerGuideView: View {
 
             HStack(spacing: 16) {
               Link("OpenClaw Docs", destination: URL(string: "https://docs.openclaw.ai")!)
-                .font(.system(size: 13))
-              Link("Orchestrator Repo", destination: URL(string: "https://github.com/RafeSymonds/lobs-orchestrator")!)
                 .font(.system(size: 13))
             }
           }

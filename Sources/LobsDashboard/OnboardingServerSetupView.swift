@@ -34,7 +34,7 @@ struct OnboardingServerSetupView: View {
                     .foregroundColor(.primary)
                 
                 // Subtitle
-                Text("Optional: Set up the Lobs orchestrator on your server")
+                Text("Optional: Set up lobs-server on your machine")
                     .font(.system(size: 14))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -72,7 +72,7 @@ struct OnboardingServerSetupView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "checkmark.circle")
                             .foregroundColor(.secondary)
-                        Text("Python 3.10+ (required for orchestrator)")
+                        Text("Python 3.10+ (required for lobs-server)")
                             .font(.system(size: 14))
                     }
                 }
@@ -125,11 +125,11 @@ struct OnboardingServerSetupView: View {
                 // Step 3
                 StepBlock(
                     number: 3,
-                    title: "Clone the orchestrator + install dependencies:",
-                    command: "git clone https://github.com/RafeSymonds/lobs-orchestrator.git ~/lobs-orchestrator\ncd ~/lobs-orchestrator && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt",
+                    title: "Clone lobs-server:",
+                    command: "git clone <your-lobs-server-repo> ~/lobs-server\ncd ~/lobs-server && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt",
                     isCopied: copiedIndex == 3,
                     onCopy: {
-                        copyToClipboard("git clone https://github.com/RafeSymonds/lobs-orchestrator.git ~/lobs-orchestrator\ncd ~/lobs-orchestrator && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt")
+                        copyToClipboard("git clone <your-lobs-server-repo> ~/lobs-server\ncd ~/lobs-server && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt")
                         copiedIndex = 3
                         resetCopyState(for: 3)
                     }
@@ -138,11 +138,11 @@ struct OnboardingServerSetupView: View {
                 // Step 4
                 StepBlock(
                     number: 4,
-                    title: "The server now includes the orchestrator (no separate setup needed):",
-                    command: "# Orchestrator is built into lobs-server\n# No additional configuration required",
+                    title: "Start lobs-server (test run):",
+                    command: "cd ~/lobs-server && source .venv/bin/activate && python3 main.py",
                     isCopied: copiedIndex == 4,
                     onCopy: {
-                        copyToClipboard("# Orchestrator is built into lobs-server\n# No additional configuration required")
+                        copyToClipboard("cd ~/lobs-server && source .venv/bin/activate && python3 main.py")
                         copiedIndex = 4
                         resetCopyState(for: 4)
                     }
@@ -151,26 +151,13 @@ struct OnboardingServerSetupView: View {
                 // Step 5
                 StepBlock(
                     number: 5,
-                    title: "Start the orchestrator (test run):",
-                    command: "cd ~/lobs-orchestrator && source .venv/bin/activate && python3 main.py",
+                    title: "Set up as a systemd service (optional, Linux):",
+                    command: "# See lobs-server README for systemd setup",
                     isCopied: copiedIndex == 5,
                     onCopy: {
-                        copyToClipboard("cd ~/lobs-orchestrator && source .venv/bin/activate && python3 main.py")
+                        copyToClipboard("# See lobs-server README for systemd setup")
                         copiedIndex = 5
                         resetCopyState(for: 5)
-                    }
-                )
-
-                // Step 6
-                StepBlock(
-                    number: 6,
-                    title: "Set up as a systemd service (optional, Linux):",
-                    command: "# See orchestrator README for systemd setup\n# https://github.com/RafeSymonds/lobs-orchestrator",
-                    isCopied: copiedIndex == 6,
-                    onCopy: {
-                        copyToClipboard("# See orchestrator README for systemd setup\n# https://github.com/RafeSymonds/lobs-orchestrator")
-                        copiedIndex = 6
-                        resetCopyState(for: 6)
                     }
                 )
                 
@@ -224,7 +211,7 @@ struct OnboardingServerSetupView: View {
                 .cornerRadius(8)
                 
                 Button(action: onContinue) {
-                    Text("Verify Setup")
+                    Text("Continue")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(.white)
                         .frame(width: 120)
@@ -247,206 +234,14 @@ struct OnboardingServerSetupView: View {
         pasteboard.setString(text, forType: .string)
     }
     
-    // MARK: - Prerequisite checks
-    
-    private func prereqDisclosure(
-        title: String,
-        ok: Bool,
-        detail: String,
-        error: String?,
-        expanded: Binding<Bool>,
-        @ViewBuilder help: () -> some View
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
-                Image(systemName: ok ? "checkmark.circle.fill" : "xmark.circle.fill")
-                    .foregroundColor(ok ? .green : .red)
-                    .frame(width: 18)
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.system(size: 14, weight: .medium))
-                    
-                    Text(detail.isEmpty ? (ok ? "OK" : "Not installed") : detail)
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                }
-                
-                Spacer()
-                
-                if !ok {
-                    Button(action: { expanded.wrappedValue.toggle() }) {
-                        Text(expanded.wrappedValue ? "Hide" : "Install")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(Theme.accent)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            
-            if let error, !error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text(error)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(.red)
-                    .textSelection(.enabled)
-            }
-            
-            if !ok && expanded.wrappedValue {
-                help()
-                    .padding(.leading, 30)
-                    .padding(.top, 4)
-            }
-            
-            Divider().opacity(0.6)
-        }
-    }
-    
-    private var nodeHelp: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Install Node.js (18 or newer)")
-                .font(.system(size: 12, weight: .semibold))
-            
-            Text("OpenClaw requires Node.js 18 or newer.")
-                .font(.system(size: 12))
-                .foregroundColor(.secondary)
-            
-            HStack(spacing: 12) {
-                Link("nodejs.org", destination: URL(string: "https://nodejs.org/")!)
-                    .font(.system(size: 12))
-                Link("nvm", destination: URL(string: "https://github.com/nvm-sh/nvm")!)
-                    .font(.system(size: 12))
-            }
-            
-            Text("node --version")
-                .font(.system(size: 12, design: .monospaced))
-                .textSelection(.enabled)
-                .padding(8)
-                .background(Theme.bg.opacity(0.35))
-                .cornerRadius(8)
-        }
-    }
-    
-    private var pythonHelp: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Install Python 3.10+")
-                .font(.system(size: 12, weight: .semibold))
-            
-            Text("The orchestrator requires Python 3.10 or newer.")
-                .font(.system(size: 12))
-                .foregroundColor(.secondary)
-            
-            HStack(spacing: 12) {
-                Link("python.org", destination: URL(string: "https://www.python.org/downloads/")!)
-                    .font(.system(size: 12))
-                Link("Homebrew", destination: URL(string: "https://brew.sh")!)
-                    .font(.system(size: 12))
-            }
-            
-            Text("python3 --version")
-                .font(.system(size: 12, design: .monospaced))
-                .textSelection(.enabled)
-                .padding(8)
-                .background(Theme.bg.opacity(0.35))
-                .cornerRadius(8)
-        }
-    }
-    
-    private func refreshPrereqs() async {
-        await MainActor.run {
-            isChecking = true
-            nodeError = nil
-            pythonError = nil
-            nodeDetail = "Checking…"
-            pythonDetail = "Checking…"
-        }
-        
-        // Node check
-        do {
-            let nodePath = await Shell.which("node")
-            if nodePath == nil {
-                await MainActor.run {
-                    nodeOK = false
-                    nodeDetail = "Not found in PATH"
-                    nodeExpanded = true
-                }
-            } else {
-                let res = await Shell.envAsync("node", ["--version"], timeoutSeconds: commandTimeoutSeconds)
-                let ver = res.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-                let ok = res.ok && nodeVersionAtLeast18(ver)
-                await MainActor.run {
-                    nodeOK = ok
-                    nodeDetail = res.ok ? "Detected \(ver.isEmpty ? "(unknown)" : ver)" : "Node command failed"
-                    nodeError = (res.ok && ok) ? nil : (!res.ok ? cleanError(res) : "Node must be version 18 or newer")
-                    nodeExpanded = !ok
-                }
-            }
-        }
-        
-        // Python check
-        do {
-            let pyPath = await Shell.which("python3")
-            if pyPath == nil {
-                await MainActor.run {
-                    pythonOK = false
-                    pythonDetail = "Not found in PATH"
-                    pythonExpanded = true
-                }
-            } else {
-                let res = await Shell.envAsync("python3", ["--version"], timeoutSeconds: commandTimeoutSeconds)
-                let ver = (res.stdout.isEmpty ? res.stderr : res.stdout).trimmingCharacters(in: .whitespacesAndNewlines)
-                let ok = res.ok && pythonVersionAtLeast3_10(ver)
-                await MainActor.run {
-                    pythonOK = ok
-                    pythonDetail = res.ok ? "Detected \(ver.isEmpty ? "(unknown)" : ver)" : "python3 command failed"
-                    pythonError = (res.ok && ok) ? nil : (!res.ok ? cleanError(res) : "Python must be version 3.10 or newer")
-                    pythonExpanded = !ok
-                }
-            }
-        }
-        
-        await MainActor.run {
-            isChecking = false
-        }
-    }
-    
-    private func cleanError(_ res: Shell.Result) -> String {
-        let stderr = res.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !stderr.isEmpty { return stderr }
-        let stdout = res.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !stdout.isEmpty { return stdout }
-        return "Command failed (exit code \(res.exitCode))"
-    }
-    
-    private func nodeVersionAtLeast18(_ v: String) -> Bool {
-        // v like "v20.11.0" or "20.11.0"
-        let cleaned = v.trimmingCharacters(in: .whitespacesAndNewlines)
-            .trimmingCharacters(in: CharacterSet(charactersIn: "v"))
-        let parts = cleaned.split(separator: ".")
-        guard let majorStr = parts.first, let major = Int(majorStr) else { return false }
-        return major >= 18
-    }
-    
-    private func pythonVersionAtLeast3_10(_ v: String) -> Bool {
-        // "Python 3.11.7" or "3.11.7"
-        let trimmed = v.trimmingCharacters(in: .whitespacesAndNewlines)
-        let cleaned = trimmed.hasPrefix("Python ") ? String(trimmed.dropFirst("Python ".count)) : trimmed
-        let parts = cleaned.split(separator: ".")
-        guard parts.count >= 2,
-              let major = Int(parts[0]),
-              let minor = Int(parts[1]) else { return false }
-        if major > 3 { return true }
-        if major < 3 { return false }
-        return minor >= 10
-    }
-    
     /// Copy all commands to clipboard
     private func copyAllCommands() {
         let allCommands = """
         npm install -g openclaw@latest
         openclaw onboard --install-daemon
-        git clone https://github.com/RafeSymonds/lobs-orchestrator.git ~/lobs-orchestrator
-        cd ~/lobs-orchestrator && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
-        cd ~/lobs-orchestrator && source .venv/bin/activate && python3 main.py
+        git clone <your-lobs-server-repo> ~/lobs-server
+        cd ~/lobs-server && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+        cd ~/lobs-server && source .venv/bin/activate && python3 main.py
         """
         
         copyToClipboard(allCommands)

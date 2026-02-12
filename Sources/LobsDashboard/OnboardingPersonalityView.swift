@@ -282,14 +282,8 @@ struct OnboardingPersonalityView: View {
 
   private func loadInitial() {
     // TODO: In API mode, agent personality should be loaded from API
-    // For now, onboarding still uses direct file access
-    guard let repoPath = vm.config?.controlRepoPath, !repoPath.isEmpty else {
-      // This view should only be reachable after repo config exists.
-      regenerateFromForm()
-      return
-    }
-
-    let existing = AgentPersonalityManager.load(repoPath: repoPath)
+    // For now, load from generated defaults (no file access)
+    let existing = AgentPersonalityManager.load()
     soulText = existing.soul
     userText = existing.user
     identityText = existing.identity
@@ -313,16 +307,11 @@ struct OnboardingPersonalityView: View {
     errorMessage = nil
     warningMessage = nil
 
-    guard let repoPath = vm.config?.controlRepoPath, !repoPath.isEmpty else {
-      errorMessage = "Missing control repo path."
-      return
-    }
-
     isSaving = true
 
     Task { @MainActor in
+      // TODO: Save to API instead of disk
       let result = await AgentPersonalityManager.save(
-        repoPath: repoPath,
         files: .init(soul: soulText, user: userText, identity: identityText),
         commitMessage: "Update agent personality files"
       )

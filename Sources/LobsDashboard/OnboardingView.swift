@@ -17,8 +17,6 @@ struct OnboardingView: View {
 
   // Inputs gathered during onboarding
   @State private var workspacePath: String = LobsPaths.defaultWorkspace
-  @State private var controlRepoUrl: String = ""
-  @State private var isNewControlRepo: Bool = false
 
   @State private var agentName: String = "Lobs"
   @State private var userName: String = ""
@@ -26,7 +24,6 @@ struct OnboardingView: View {
   enum Step: CaseIterable, Identifiable {
     case welcome
     case workspace
-    case cloneRepos
     case serverGuide
     case done
 
@@ -36,7 +33,6 @@ struct OnboardingView: View {
       switch self {
       case .welcome: return "Welcome"
       case .workspace: return "Workspace"
-      case .cloneRepos: return "Clone repos"
       case .serverGuide: return "Server setup"
       case .done: return "Done"
       }
@@ -44,7 +40,7 @@ struct OnboardingView: View {
 
     var isOptional: Bool {
       switch self {
-      case .cloneRepos, .serverGuide:
+      case .serverGuide:
         return true
       default:
         return false
@@ -59,7 +55,6 @@ struct OnboardingView: View {
       switch self {
       case .welcome: return .welcome
       case .workspace: return .workspace
-      case .cloneRepos: return .cloneCoreRepos
       case .serverGuide: return .serverGuide
       case .done: return .done
       }
@@ -238,41 +233,6 @@ struct OnboardingView: View {
         advance()
       }
 
-    case .cloneRepos:
-      Group {
-        if controlRepoUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-          OnboardingRepoSetupView(
-            onComplete: { url, isNew in
-              controlRepoUrl = url
-              isNewControlRepo = isNew
-              // Stay on this step; next view will be clone UI.
-              wizard.configureNext(title: "Next", enabled: true) {
-                // No-op; OnboardingRepoSetupView drives completion.
-              }
-            },
-            onSkip: {
-              // User chose to skip repo setup - mark complete and advance.
-              markCompleted(.cloneCoreRepos)
-              advance()
-            }
-          )
-        } else {
-          OnboardingCloneCoreReposView(
-            workspacePath: workspacePath,
-            controlRepoUrl: controlRepoUrl,
-            isNewControlRepo: isNewControlRepo,
-            onSkip: {
-              markCompleted(.cloneCoreRepos)
-              advance()
-            }
-          ) { controlRepoPath in
-            _ = vm.setControlRepo(path: controlRepoPath.path, repoUrl: controlRepoUrl, onboardingComplete: nil)
-            markCompleted(.cloneCoreRepos)
-            advance()
-          }
-        }
-      }
-
     case .serverGuide:
       OnboardingServerGuideView()
         .onAppear {
@@ -304,12 +264,6 @@ struct OnboardingView: View {
     if let agent = s.agentName { agentName = agent }
     if let user = s.userName { userName = user }
 
-    // If config already has a control repo URL (e.g., user partially set up), reuse it.
-    if controlRepoUrl.isEmpty {
-      let cfgUrl = vm.config?.controlRepoUrl.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-      if !cfgUrl.isEmpty { controlRepoUrl = cfgUrl }
-    }
-
     currentStep = firstIncompleteStep(state: s)
     configureWizardForStep(currentStep)
   }
@@ -335,7 +289,6 @@ struct OnboardingView: View {
   private func firstIncompleteStep(state: OnboardingState) -> Step {
     if !state.isCompleted(.welcome) { return .welcome }
     if !state.isCompleted(.workspace) { return .workspace }
-    if !state.isCompleted(.cloneCoreRepos) { return .cloneRepos }
     if !state.isCompleted(.serverGuide) { return .serverGuide }
     return .done
   }
@@ -357,8 +310,7 @@ struct OnboardingView: View {
   private func nextStep(after step: Step) -> Step {
     switch step {
     case .welcome: return .workspace
-    case .workspace: return .cloneRepos
-    case .cloneRepos: return .serverGuide
+    case .workspace: return .serverGuide
     case .serverGuide: return .done
     case .done: return .done
     }
@@ -368,45 +320,34 @@ struct OnboardingView: View {
     switch step {
     case .welcome: return .welcome
     case .workspace: return .welcome
-    case .cloneRepos: return .workspace
-    case .serverGuide: return .cloneRepos
+    case .serverGuide: return .workspace
     case .done: return .serverGuide
     }
   }
 
   private func completeOnboarding() {
     // Persist onboarding completion.
-    let path = vm.config?.controlRepoPath ?? ""
-    let url = vm.config?.controlRepoUrl
-    
     // Mark the done step as complete in onboarding state first
     onboardingState.markCompleted(.done)
     OnboardingStateManager.save(onboardingState)
     
-    // Try to save the config with onboarding complete flag
-    let ok = vm.setControlRepo(path: path, repoUrl: url, onboardingComplete: true)
-    if !ok {
-      print("⚠️ Failed to persist onboarding completion via setControlRepo, trying direct config update")
-      // Fallback: directly update the config if setControlRepo failed
-      if var config = vm.config {
-        config.onboardingComplete = true
-        vm.config = config
-        // Try to save directly
-        do {
-          try ConfigManager.save(config)
-        } catch {
-          print("⚠️ Direct config save also failed: \(error)")
-        }
-      } else {
-        // No config exists - create a minimal one
-        let newConfig = AppConfig(
-          controlRepoUrl: url ?? "",
-          controlRepoPath: path,
-          onboardingComplete: true
-        )
-        vm.config = newConfig
-        try? ConfigManager.save(newConfig)
+    // Update config to mark onboarding as complete
+    if var config = vm.config {
+      config.onboardingComplete = true
+      vm.config = config
+      // Try to save directly
+      do {
+        try ConfigManager.save(config)
+      } catch {
+        print("⚠️ Failed to save config: \(error)")
       }
+    } else {
+      // No config exists - create a minimal one
+      let newConfig = AppConfig(
+        onboardingComplete: true
+      )
+      vm.config = newConfig
+      try? ConfigManager.save(newConfig)
     }
     
     // Force an immediate published property update by touching the config again

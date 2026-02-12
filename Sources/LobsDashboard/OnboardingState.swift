@@ -37,7 +37,6 @@ enum OnboardingStepID: String, CaseIterable {
   case welcome
   case prereqs  // Legacy, kept for compatibility
   case workspace
-  case cloneCoreRepos
   case installOpenClaw  // Legacy
   case configureOpenClaw  // Legacy
   case agentSetup  // Legacy

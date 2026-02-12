@@ -1,14 +1,15 @@
 import Foundation
 
-/// DEPRECATED: Direct file-based agent personality management
-///
-/// This manager reads/writes agent personality files directly to disk and uses Git.run for commits.
-/// In API mode, agent personality should be managed through API endpoints instead.
-///
-/// This file is kept for backward compatibility but should NOT be used for new features.
 /// TODO: Migrate to API-based agent personality management
 ///
-/// Files:
+/// Agent personality should be managed through lobs-server API endpoints.
+/// This file is stubbed out until API endpoints are available.
+///
+/// Endpoints needed:
+/// - GET /api/agent/personality
+/// - PUT /api/agent/personality
+///
+/// Files (stored on server):
 /// - SOUL.md      — agent persona + tone
 /// - USER.md      — user profile/preferences
 /// - IDENTITY.md  — agent identity (name, vibe, avatar)
@@ -57,35 +58,18 @@ struct AgentPersonalityManager {
     }
   }
 
-  // MARK: - Paths
+  // MARK: - Paths (DISABLED - file-based access removed)
 
   static let soulFileName = "SOUL.md"
   static let userFileName = "USER.md"
   static let identityFileName = "IDENTITY.md"
 
-  static func fileURL(repoPath: String, fileName: String) -> URL {
-    URL(fileURLWithPath: repoPath).appendingPathComponent(fileName)
-  }
+  // MARK: - Read (STUBBED OUT)
 
-  // MARK: - Read
-
-  static func load(repoPath: String) -> Files {
-    let fm = FileManager.default
-
-    func readIfExists(_ name: String) -> String? {
-      let url = fileURL(repoPath: repoPath, fileName: name)
-      guard fm.fileExists(atPath: url.path) else { return nil }
-      return (try? String(contentsOf: url, encoding: .utf8))
-    }
-
-    // If files already exist, preserve them; otherwise generate from defaults.
-    let generated = generateFiles(from: .default)
-
-    return Files(
-      soul: readIfExists(soulFileName) ?? generated.soul,
-      user: readIfExists(userFileName) ?? generated.user,
-      identity: readIfExists(identityFileName) ?? generated.identity
-    )
+  static func load() -> Files {
+    // TODO: Load from API instead of disk
+    // For now, return generated defaults
+    return generateFiles(from: .default)
   }
 
   // MARK: - Generate
@@ -169,39 +153,12 @@ This file is used to tune how the agent communicates with you.
     return Files(soul: soul, user: user, identity: identity)
   }
 
-  // MARK: - Write
+  // MARK: - Write (STUBBED OUT)
 
   @MainActor
-  static func save(repoPath: String, files: Files, commitMessage: String? = nil) async -> (success: Bool, warning: String?) {
-    do {
-      try writeFile(repoPath: repoPath, fileName: soulFileName, content: files.soul)
-      try writeFile(repoPath: repoPath, fileName: userFileName, content: files.user)
-      try writeFile(repoPath: repoPath, fileName: identityFileName, content: files.identity)
-    } catch {
-      return (false, "Failed to write personality files: \(error.localizedDescription)")
-    }
-
-    // Best-effort commit. It's okay if it fails (e.g., user has no git identity set yet).
-    if let message = commitMessage, !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-      let cwd = URL(fileURLWithPath: repoPath)
-
-      let add = await Git.runAsyncWithErrorHandling(["add", "-A"], cwd: cwd)
-      if !add.success {
-        return (true, "Saved files, but could not stage changes in git.")
-      }
-
-      let commit = await Git.runAsyncWithErrorHandling(["commit", "-m", message], cwd: cwd)
-      if !commit.success {
-        // Most common: nothing to commit.
-        return (true, "Saved files. Git commit skipped (\(commit.error?.errorDescription ?? "no changes")).")
-      }
-    }
-
-    return (true, nil)
-  }
-
-  private static func writeFile(repoPath: String, fileName: String, content: String) throws {
-    let url = fileURL(repoPath: repoPath, fileName: fileName)
-    try content.trimmingCharacters(in: .whitespacesAndNewlines).appending("\n").write(to: url, atomically: true, encoding: .utf8)
+  static func save(files: Files, commitMessage: String? = nil) async -> (success: Bool, warning: String?) {
+    // TODO: Save to API instead of disk
+    // For now, just return success
+    return (true, "Personality management temporarily disabled (API integration pending)")
   }
 }

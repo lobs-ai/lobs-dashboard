@@ -34,31 +34,10 @@ struct SetupStatusView: View {
           
           VStack(spacing: 12) {
             statusRow(
-              title: "Workspace",
-              status: workspaceStatus,
-              action: workspaceStatus.needsAction ? { restartWizard() } : nil,
+              title: "Server URL",
+              status: serverStatus,
+              action: serverStatus.needsAction ? { restartWizard() } : nil,
               actionLabel: "Configure"
-            )
-            
-            statusRow(
-              title: "Control Repository",
-              status: controlRepoStatus,
-              action: controlRepoStatus.needsAction ? { restartWizard() } : nil,
-              actionLabel: "Configure"
-            )
-            
-            statusRow(
-              title: "Orchestrator Repository",
-              status: orchestratorRepoStatus,
-              action: orchestratorRepoStatus.needsAction ? { restartWizard() } : nil,
-              actionLabel: "Clone/Fix"
-            )
-            
-            statusRow(
-              title: "Workspace Repository",
-              status: workspaceRepoStatus,
-              action: workspaceRepoStatus.needsAction ? { restartWizard() } : nil,
-              actionLabel: "Clone/Fix"
             )
             
             statusRow(
@@ -156,66 +135,17 @@ struct SetupStatusView: View {
     }
   }
   
-  private var workspaceStatus: StatusInfo {
+  private var serverStatus: StatusInfo {
     guard let config = vm.config else {
       return StatusInfo(isConfigured: false, message: "Not configured", needsAction: true)
     }
     
-    let workspacePath = AppViewModel.detectWorkspacePath(controlRepoPath: config.controlRepoPath)
-    let exists = AppViewModel.directoryExists(atPath: workspacePath)
-    
-    if exists {
-      return StatusInfo(isConfigured: true, message: workspacePath, needsAction: false)
-    } else {
-      return StatusInfo(isConfigured: false, message: "Directory not found", needsAction: true)
-    }
-  }
-  
-  private var controlRepoStatus: StatusInfo {
-    guard let config = vm.config else {
-      return StatusInfo(isConfigured: false, message: "Not configured", needsAction: true)
+    let serverURL = config.serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    if serverURL.isEmpty || serverURL == "http://localhost:8000" {
+      return StatusInfo(isConfigured: false, message: "Default (localhost:8000)", needsAction: true)
     }
     
-    let path = config.controlRepoPath.trimmingCharacters(in: .whitespacesAndNewlines)
-    if path.isEmpty {
-      return StatusInfo(isConfigured: false, message: "Not set", needsAction: true)
-    }
-    
-    if AppViewModel.isGitRepo(atPath: path) {
-      return StatusInfo(isConfigured: true, message: path, needsAction: false)
-    } else {
-      return StatusInfo(isConfigured: false, message: "Not a valid git repository", needsAction: true)
-    }
-  }
-  
-  private var orchestratorRepoStatus: StatusInfo {
-    guard let config = vm.config else {
-      return StatusInfo(isConfigured: false, message: "Workspace not configured", needsAction: true)
-    }
-    
-    let workspacePath = AppViewModel.detectWorkspacePath(controlRepoPath: config.controlRepoPath)
-    let orchestratorPath = (workspacePath as NSString).appendingPathComponent("lobs-orchestrator")
-    
-    if AppViewModel.isGitRepo(atPath: orchestratorPath) {
-      return StatusInfo(isConfigured: true, message: "Cloned", needsAction: false)
-    } else {
-      return StatusInfo(isConfigured: false, message: "Not cloned", needsAction: true)
-    }
-  }
-  
-  private var workspaceRepoStatus: StatusInfo {
-    guard let config = vm.config else {
-      return StatusInfo(isConfigured: false, message: "Workspace not configured", needsAction: true)
-    }
-    
-    let workspacePath = AppViewModel.detectWorkspacePath(controlRepoPath: config.controlRepoPath)
-    let lobsWorkspacePath = (workspacePath as NSString).appendingPathComponent("lobs-workspace")
-    
-    if AppViewModel.isGitRepo(atPath: lobsWorkspacePath) {
-      return StatusInfo(isConfigured: true, message: "Cloned", needsAction: false)
-    } else {
-      return StatusInfo(isConfigured: false, message: "Not cloned", needsAction: true)
-    }
+    return StatusInfo(isConfigured: true, message: serverURL, needsAction: false)
   }
   
   private var openClawStatus: StatusInfo {
