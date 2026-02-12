@@ -2064,6 +2064,38 @@ final class AppViewModel: ObservableObject {
     }
   }
 
+  // MARK: - Agent Documents (Reports & Research)
+
+  func loadAgentDocuments(store: LobsControlStore? = nil) {
+    guard let repoURL else { return }
+    let s = store ?? LobsControlStore(repoRoot: repoURL)
+
+    do {
+      var docs = try s.loadAgentDocuments()
+      // Apply read state
+      for i in docs.indices {
+        docs[i].isRead = readDocumentIds.contains(docs[i].id)
+      }
+      agentDocuments = docs
+    } catch {
+      flashError("Failed to load agent documents: \(error.localizedDescription)")
+    }
+  }
+
+  func markDocumentRead(_ doc: AgentDocument) {
+    readDocumentIds.insert(doc.id)
+    if let idx = agentDocuments.firstIndex(where: { $0.id == doc.id }) {
+      agentDocuments[idx].isRead = true
+    }
+  }
+
+  func markDocumentUnread(_ doc: AgentDocument) {
+    readDocumentIds.remove(doc.id)
+    if let idx = agentDocuments.firstIndex(where: { $0.id == doc.id }) {
+      agentDocuments[idx].isRead = false
+    }
+  }
+
   // MARK: - Research Document Actions
 
   func saveResearchDocContent(_ content: String) {

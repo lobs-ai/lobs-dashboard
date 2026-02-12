@@ -52,6 +52,7 @@ struct ContentView: View {
   @State private var showSettings = false
   @State private var showInbox = false
   @State private var inboxInitialItemId: String? = nil
+  @State private var showDocuments = false
   @State private var showAllDone = false
   @State private var showAllRejected = false
   @State private var quickAddText = ""
@@ -294,15 +295,16 @@ struct ContentView: View {
           }
           .buttonStyle(.plain)
           .help("Keyboard Shortcuts (⌘/)")
-          .opacity(showInbox || showHelp ? 0 : 0.7)
+          .opacity(showInbox || showDocuments || showHelp ? 0 : 0.7)
           .animation(.easeInOut(duration: 0.15), value: showInbox)
+          .animation(.easeInOut(duration: 0.15), value: showDocuments)
           .animation(.easeInOut(duration: 0.15), value: showHelp)
         }
         .padding(.trailing, 16)
         .padding(.bottom, 12)
       }
       .zIndex(50)
-      .allowsHitTesting(!showInbox && !showHelp && !showAIUsage)
+      .allowsHitTesting(!showInbox && !showDocuments && !showHelp && !showAIUsage)
 
       // Inbox overlay — clicking outside dismisses (Task #479271CB)
       if showInbox {
@@ -321,6 +323,24 @@ struct ContentView: View {
           .onDisappear { inboxInitialItemId = nil }
           .transition(.opacity.combined(with: .scale(scale: 0.95)))
           .zIndex(201)
+      }
+
+      // Documents overlay — clicking outside dismisses
+      if showDocuments {
+        Color.black.opacity(0.3)
+          .ignoresSafeArea()
+          .onTapGesture { withAnimation(.easeInOut(duration: 0.25)) { showDocuments = false } }
+          .transition(.opacity)
+          .zIndex(202)
+
+        DocumentsView(vm: vm, isPresented: $showDocuments)
+          .frame(minWidth: 1000, idealWidth: 1200, minHeight: 700, idealHeight: 800)
+          .clipShape(RoundedRectangle(cornerRadius: 16))
+          .shadow(color: .black.opacity(0.3), radius: 30, y: 10)
+          .padding(40)
+          .onExitCommand { withAnimation(.easeInOut(duration: 0.25)) { showDocuments = false } }
+          .transition(.opacity.combined(with: .scale(scale: 0.95)))
+          .zIndex(203)
       }
 
       // AI Usage overlay — clicking outside dismisses (Task #2EB50767)
@@ -488,6 +508,7 @@ struct ContentView: View {
         },
         onHelp: { withAnimation(.easeInOut(duration: 0.25)) { showHelp = true } },
         onInbox: { withAnimation(.easeInOut(duration: 0.25)) { showInbox = true } },
+        onDocuments: { withAnimation(.easeInOut(duration: 0.25)) { showDocuments = true } },
         onOverview: {
           // ⌘⇧O → Overview
           vm.showOverview = true
@@ -580,6 +601,7 @@ private struct KeyboardShortcutReceiver: View {
   let onSearch: () -> Void
   var onHelp: (() -> Void)? = nil
   var onInbox: (() -> Void)? = nil
+  var onDocuments: (() -> Void)? = nil
   var onOverview: (() -> Void)? = nil
   var onProjectSwitch: ((Int) -> Void)? = nil
   var onEscape: (() -> Bool)? = nil
@@ -611,6 +633,10 @@ private struct KeyboardShortcutReceiver: View {
 
       Button("") { onInbox?() }
         .keyboardShortcut("i", modifiers: .command)
+        .opacity(0)
+
+      Button("") { onDocuments?() }
+        .keyboardShortcut("d", modifiers: .command)
         .opacity(0)
 
       Button("") { onSearch() }
@@ -1330,6 +1356,11 @@ private struct ToolbarArea: View {
         withAnimation(.easeInOut(duration: 0.25)) { showInbox = true }
       }
 
+      // Documents button
+      DocumentsToolbarButton(vm: vm) {
+        withAnimation(.easeInOut(duration: 0.25)) { showDocuments = true }
+      }
+
       // Templates button
       if !vm.templates.isEmpty {
         Menu {
@@ -1656,6 +1687,45 @@ private struct InboxToolbarButton: View {
     .buttonStyle(.plain)
     .onHover { h in isHovering = h }
     .help("Inbox — Design Docs & Artifacts (⌘I)")
+  }
+}
+
+private struct DocumentsToolbarButton: View {
+  @ObservedObject var vm: AppViewModel
+  let action: () -> Void
+
+  @State private var isHovering = false
+
+  var body: some View {
+    Button(action: action) {
+      Image(systemName: "doc.text.fill")
+        .font(.body)
+        .padding(6)
+        .background(isHovering ? Color.primary.opacity(0.08) : Theme.subtle)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+          RoundedRectangle(cornerRadius: 8)
+            .stroke(Color.primary.opacity(isHovering ? 0.12 : 0), lineWidth: 1)
+        )
+        .overlay(alignment: .topTrailing) {
+          let unreadCount = vm.agentDocuments.filter { !$0.isRead }.count
+          if unreadCount > 0 {
+            Text("\(unreadCount)")
+              .font(.system(size: 11, weight: .bold))
+              .foregroundStyle(.white)
+              .padding(.horizontal, 4)
+              .padding(.vertical, 1)
+              .background(Color.purple)
+              .clipShape(Capsule())
+              .offset(x: 4, y: -4)
+          }
+        }
+        .scaleEffect(isHovering ? 1.06 : 1.0)
+        .animation(.easeOut(duration: 0.15), value: isHovering)
+    }
+    .buttonStyle(.plain)
+    .onHover { h in isHovering = h }
+    .help("Documents — Agent Reports & Research (⌘D)")
   }
 }
 
