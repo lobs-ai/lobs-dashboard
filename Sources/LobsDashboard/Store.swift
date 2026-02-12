@@ -1370,8 +1370,9 @@ final class LobsControlStore {
       ("rejected", .rejected)
     ]
 
+    let reportsBaseDir = repoRoot.appendingPathComponent("state/reports")
     for (subdir, status) in reportStatuses {
-      let reportsDir = stateRootURL.appendingPathComponent("reports").appendingPathComponent(subdir)
+      let reportsDir = reportsBaseDir.appendingPathComponent(subdir)
       guard fm.fileExists(atPath: reportsDir.path) else { continue }
 
       let files = try fm.contentsOfDirectory(
@@ -1381,8 +1382,9 @@ final class LobsControlStore {
       )
 
       for fileURL in files where fileURL.pathExtension.lowercased() == "md" {
-        let attrs = try fm.attributesOfItem(atPath: fileURL.path)
-        let modDate = (attrs[.modificationDate] as? Date) ?? Date()
+        let resources = try fileURL.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        let modDate = resources.contentModificationDate ?? Date()
+        let fileSize = resources.fileSize ?? 0
         let filename = fileURL.lastPathComponent
         let relativePath = "reports/\(subdir)/\(filename)"
 
@@ -1397,7 +1399,6 @@ final class LobsControlStore {
         }()
 
         let content = String(data: previewData, encoding: .utf8) ?? ""
-        let fileSize = (attrs[.size] as? NSNumber)?.intValue ?? 0
         let isTruncated = fileSize > previewData.count
 
         let title = extractTitle(from: content, filename: filename)
@@ -1421,11 +1422,11 @@ final class LobsControlStore {
     }
 
     // Load research documents from state/research/{topic}/
-    let researchDir = stateRootURL.appendingPathComponent("research")
-    guard fm.fileExists(atPath: researchDir.path) else { return documents }
+    let researchBaseDir = repoRoot.appendingPathComponent("state/research")
+    guard fm.fileExists(atPath: researchBaseDir.path) else { return documents }
 
     let topicDirs = try fm.contentsOfDirectory(
-      at: researchDir,
+      at: researchBaseDir,
       includingPropertiesForKeys: [.isDirectoryKey],
       options: [.skipsHiddenFiles]
     ).filter { url in
@@ -1441,8 +1442,9 @@ final class LobsControlStore {
       )
 
       for fileURL in files where fileURL.pathExtension.lowercased() == "md" {
-        let attrs = try fm.attributesOfItem(atPath: fileURL.path)
-        let modDate = (attrs[.modificationDate] as? Date) ?? Date()
+        let resources = try fileURL.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        let modDate = resources.contentModificationDate ?? Date()
+        let fileSize = resources.fileSize ?? 0
         let filename = fileURL.lastPathComponent
         let relativePath = "research/\(topic)/\(filename)"
 
@@ -1457,7 +1459,6 @@ final class LobsControlStore {
         }()
 
         let content = String(data: previewData, encoding: .utf8) ?? ""
-        let fileSize = (attrs[.size] as? NSNumber)?.intValue ?? 0
         let isTruncated = fileSize > previewData.count
 
         let title = extractTitle(from: content, filename: filename)

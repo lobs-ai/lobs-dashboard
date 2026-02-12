@@ -166,7 +166,7 @@ struct DocumentsView: View {
           VStack(spacing: 12) {
             Image(systemName: "doc.text")
               .font(.system(size: 48))
-              .foregroundStyle(.tertiary)
+              .foregroundStyle(.secondary)
             Text(searchText.isEmpty ? "No documents" : "No matching documents")
               .font(.system(size: 15))
               .foregroundStyle(.secondary)
@@ -209,7 +209,7 @@ struct DocumentsView: View {
         VStack(spacing: 12) {
           Image(systemName: "doc.text.magnifyingglass")
             .font(.system(size: 48))
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(.secondary)
           Text("Select a document to view")
             .font(.system(size: 15))
             .foregroundStyle(.secondary)
@@ -270,7 +270,7 @@ private struct DocumentRow: View {
             
             Text("•")
               .font(.system(size: 10))
-              .foregroundStyle(isSelected ? .white.opacity(0.6) : .tertiary)
+              .foregroundStyle(isSelected ? .white.opacity(0.6) : .secondary)
             
             // Date
             Text(document.date, style: .relative)
@@ -281,7 +281,7 @@ private struct DocumentRow: View {
             if let status = document.status {
               Text("•")
                 .font(.system(size: 10))
-                .foregroundStyle(isSelected ? .white.opacity(0.6) : .tertiary)
+                .foregroundStyle(isSelected ? .white.opacity(0.6) : .secondary)
               
               StatusBadge(status: status, isSelected: isSelected)
             }
@@ -290,7 +290,7 @@ private struct DocumentRow: View {
             if let topic = document.topic {
               Text("•")
                 .font(.system(size: 10))
-                .foregroundStyle(isSelected ? .white.opacity(0.6) : .tertiary)
+                .foregroundStyle(isSelected ? .white.opacity(0.6) : .secondary)
               
               Text(topic)
                 .font(.system(size: 10))
@@ -361,7 +361,7 @@ private struct DocumentDetailView: View {
                 .foregroundStyle(.secondary)
               
               Text("•")
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
               
               Text(document.date, style: .date)
                 .font(.system(size: 12))
@@ -369,13 +369,13 @@ private struct DocumentDetailView: View {
               
               if let status = document.status {
                 Text("•")
-                  .foregroundStyle(.tertiary)
+                  .foregroundStyle(.secondary)
                 StatusBadge(status: status, isSelected: false)
               }
               
               if let topic = document.topic {
                 Text("•")
-                  .foregroundStyle(.tertiary)
+                  .foregroundStyle(.secondary)
                 Text(topic)
                   .font(.system(size: 12))
                   .foregroundStyle(.secondary)

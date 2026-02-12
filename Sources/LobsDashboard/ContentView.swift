@@ -81,6 +81,7 @@ struct ContentView: View {
           editingProject: $editingProject,
           showSettings: $showSettings,
           showInbox: $showInbox,
+          showDocuments: $showDocuments,
           showTemplates: $showTemplates,
           showHelp: $showHelp,
           showTextDump: $showTextDump,
@@ -908,6 +909,7 @@ private struct ToolbarArea: View {
   @Binding var editingProject: Project?
   @Binding var showSettings: Bool
   @Binding var showInbox: Bool
+  @Binding var showDocuments: Bool
   @Binding var showTemplates: Bool
   @Binding var showHelp: Bool
   @Binding var showTextDump: Bool
@@ -2934,6 +2936,7 @@ private struct TaskDetailPopover: View {
   @State private var lastAutosavedTitle: String = ""
   @State private var lastAutosavedNotes: String = ""
   @State private var showMarkdownPreview: Bool = false
+  @State private var notesHeight: CGFloat = 160 // Resizable notes height
 
   private enum FocusField { case title }
   @FocusState private var focusField: FocusField?
