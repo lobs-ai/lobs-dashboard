@@ -701,9 +701,7 @@ private struct DocumentDetailView: View {
   }
   
   private func convertToTask() {
-    // Create task JSON in ~/lobs-control/state/tasks/
-    guard let repoURL = vm.repoURL else { return }
-    
+    // Create task via API
     let taskId = UUID().uuidString
     let title = "Follow up: \(doc.title)"
     let notes = """
