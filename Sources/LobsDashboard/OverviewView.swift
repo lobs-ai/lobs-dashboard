@@ -390,11 +390,14 @@ struct OverviewView: View {
     return Double(complete) / Double(steps.count)
   }
 
+  @ViewBuilder
   private var onboardingStatusSection: some View {
-    let steps = onboardingSteps
-    let incomplete = steps.contains(where: { !$0.isComplete })
+    // Only show onboarding section if the user hasn't completed it yet
+    if vm.needsOnboarding || onboardingProgress < 1.0 {
+      let steps = onboardingSteps
+      let incomplete = steps.contains(where: { !$0.isComplete })
 
-    return VStack(alignment: .leading, spacing: 12) {
+      VStack(alignment: .leading, spacing: 12) {
       HStack {
         Image(systemName: incomplete ? "sparkles" : "checkmark.seal.fill")
           .foregroundStyle(incomplete ? .purple : .green)
@@ -472,16 +475,17 @@ struct OverviewView: View {
           Spacer()
         }
       }
+      }
+      .padding(16)
+      .background(
+        RoundedRectangle(cornerRadius: OTheme.cardRadius)
+          .fill(OTheme.cardBg)
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: OTheme.cardRadius)
+          .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
+      )
     }
-    .padding(16)
-    .background(
-      RoundedRectangle(cornerRadius: OTheme.cardRadius)
-        .fill(OTheme.cardBg)
-    )
-    .overlay(
-      RoundedRectangle(cornerRadius: OTheme.cardRadius)
-        .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-    )
   }
 
   private var activitySection: some View {
