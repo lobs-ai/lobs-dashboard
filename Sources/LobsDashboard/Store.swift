@@ -38,6 +38,36 @@ final class LobsControlStore {
     self.repoRoot = repoRoot
   }
 
+  private func logStore(_ level: String, _ message: String) {
+    print("[LobsStore][\(level)] \(message)")
+  }
+
+  private func decodingPathString(_ codingPath: [CodingKey]) -> String {
+    if codingPath.isEmpty { return "<root>" }
+    return codingPath.map { key in
+      if let index = key.intValue { return "[\(index)]" }
+      return key.stringValue
+    }.joined(separator: ".")
+  }
+
+  private func describe(_ error: Error) -> String {
+    if let decodingError = error as? DecodingError {
+      switch decodingError {
+      case .typeMismatch(let type, let context):
+        return "typeMismatch(\(type)) at \(decodingPathString(context.codingPath)): \(context.debugDescription)"
+      case .valueNotFound(let type, let context):
+        return "valueNotFound(\(type)) at \(decodingPathString(context.codingPath)): \(context.debugDescription)"
+      case .keyNotFound(let key, let context):
+        return "keyNotFound(\(key.stringValue)) at \(decodingPathString(context.codingPath)): \(context.debugDescription)"
+      case .dataCorrupted(let context):
+        return "dataCorrupted at \(decodingPathString(context.codingPath)): \(context.debugDescription)"
+      @unknown default:
+        return "unknownDecodingError: \(decodingError.localizedDescription)"
+      }
+    }
+    return error.localizedDescription
+  }
+
   private var tasksURL: URL { repoRoot.appendingPathComponent("state/tasks.json") }
   private var tasksDirURL: URL { repoRoot.appendingPathComponent("state/tasks") }
   private var archiveDirURL: URL { repoRoot.appendingPathComponent("state/tasks-archive") }
@@ -106,6 +136,7 @@ final class LobsControlStore {
     // If missing, synthesize a default project (in-memory) but do not write until user creates/edits.
     guard fm.fileExists(atPath: projectsURL.path) else {
       let now = Date()
+      logStore("INFO", "projects.json missing at \(projectsURL.path); synthesizing default project in memory")
       return ProjectsFile(
         schemaVersion: 1,
         generatedAt: now,
@@ -114,7 +145,69 @@ final class LobsControlStore {
     }
 
     let data = try Data(contentsOf: projectsURL)
-    return try decoder().decode(ProjectsFile.self, from: data)
+    do {
+      return try decoder().decode(ProjectsFile.self, from: data)
+    } catch {
+      logStore("ERROR", "Failed decoding projects file \(projectsURL.path): \(describe(error))")
+      if let recovered = recoverProjectsFile(from: data) {
+        return recovered
+      }
+      throw error
+    }
+  }
+
+  private func recoverProjectsFile(from data: Data) -> ProjectsFile? {
+    guard
+      let raw = try? JSONSerialization.jsonObject(with: data),
+      let root = raw as? [String: Any]
+    else {
+      logStore("ERROR", "Unable to parse projects.json as a JSON object")
+      return nil
+    }
+
+    let schemaVersion = root["schemaVersion"] as? Int ?? 1
+    let generatedAt = Date()
+    let entries = root["projects"] as? [Any] ?? []
+    var recoveredProjects: [Project] = []
+    var skippedCount = 0
+    let dec = decoder()
+
+    for (index, entry) in entries.enumerated() {
+      do {
+        let itemData = try JSONSerialization.data(withJSONObject: entry)
+        let project = try dec.decode(Project.self, from: itemData)
+        recoveredProjects.append(project)
+      } catch {
+        skippedCount += 1
+        logStore(
+          "ERROR",
+          "Skipping corrupt project entry at index \(index) in \(projectsURL.lastPathComponent): \(describe(error))"
+        )
+      }
+    }
+
+    if recoveredProjects.isEmpty {
+      let now = Date()
+      logStore("ERROR", "Recovered zero valid projects from projects.json; returning in-memory default project")
+      return ProjectsFile(
+        schemaVersion: schemaVersion,
+        generatedAt: generatedAt,
+        projects: [Project(id: "default", title: "Default", createdAt: now, updatedAt: now, notes: nil, archived: false)]
+      )
+    }
+
+    if skippedCount > 0 {
+      logStore(
+        "WARN",
+        "Recovered projects.json with \(recoveredProjects.count) valid project(s), skipped \(skippedCount) corrupt entr\(skippedCount == 1 ? "y" : "ies")"
+      )
+    }
+
+    return ProjectsFile(
+      schemaVersion: schemaVersion,
+      generatedAt: generatedAt,
+      projects: recoveredProjects
+    )
   }
 
   func saveProjects(_ file: ProjectsFile) throws {
@@ -211,11 +304,25 @@ final class LobsControlStore {
 
       let dec = decoder()
       var tasks: [DashboardTask] = []
+      var skippedCount = 0
 
       for url in items where url.pathExtension.lowercased() == "json" {
-        let data = try Data(contentsOf: url)
-        let t = try dec.decode(DashboardTask.self, from: data)
-        tasks.append(t)
+        do {
+          let data = try Data(contentsOf: url)
+          let t = try dec.decode(DashboardTask.self, from: data)
+          tasks.append(t)
+        } catch {
+          skippedCount += 1
+          logStore("ERROR", "Skipping corrupt task file \(url.path): \(describe(error))")
+          continue
+        }
+      }
+
+      if skippedCount > 0 {
+        logStore(
+          "WARN",
+          "Loaded tasks from directory with \(tasks.count) valid task(s), skipped \(skippedCount) corrupt file(s)"
+        )
       }
 
       return tasks
@@ -223,8 +330,56 @@ final class LobsControlStore {
 
     // Fallback: legacy single file.
     let data = try Data(contentsOf: tasksURL)
-    let file = try decoder().decode(TasksFile.self, from: data)
-    return file.tasks
+    do {
+      let file = try decoder().decode(TasksFile.self, from: data)
+      return file.tasks
+    } catch {
+      logStore("ERROR", "Failed decoding legacy tasks file \(tasksURL.path): \(describe(error))")
+      if let recovered = recoverLegacyTasks(from: data) {
+        return recovered
+      }
+      throw error
+    }
+  }
+
+  private func recoverLegacyTasks(from data: Data) -> [DashboardTask]? {
+    guard
+      let raw = try? JSONSerialization.jsonObject(with: data),
+      let root = raw as? [String: Any]
+    else {
+      logStore("ERROR", "Unable to parse legacy tasks.json as a JSON object")
+      return nil
+    }
+
+    guard let entries = root["tasks"] as? [Any] else {
+      logStore("ERROR", "Legacy tasks.json missing top-level 'tasks' array")
+      return nil
+    }
+
+    var recoveredTasks: [DashboardTask] = []
+    var skippedCount = 0
+    let dec = decoder()
+
+    for (index, entry) in entries.enumerated() {
+      do {
+        let itemData = try JSONSerialization.data(withJSONObject: entry)
+        let task = try dec.decode(DashboardTask.self, from: itemData)
+        recoveredTasks.append(task)
+      } catch {
+        skippedCount += 1
+        logStore(
+          "ERROR",
+          "Skipping corrupt task entry at index \(index) in \(tasksURL.lastPathComponent): \(describe(error))"
+        )
+      }
+    }
+
+    logStore(
+      "WARN",
+      "Recovered legacy tasks file with \(recoveredTasks.count) valid task(s), skipped \(skippedCount) corrupt entr\(skippedCount == 1 ? "y" : "ies")"
+    )
+
+    return recoveredTasks
   }
 
   /// Load tasks with dual-mode support (local + GitHub).
@@ -233,10 +388,17 @@ final class LobsControlStore {
     var allTasks = try loadLocalTasks()
 
     // Load projects to check for GitHub sync mode
-    let projectsFile = try loadProjects()
+    let projectsFile: ProjectsFile?
+    do {
+      projectsFile = try loadProjects()
+    } catch {
+      // Continue with local tasks when projects cannot be loaded.
+      logStore("ERROR", "Failed to load projects during task load; continuing with local tasks only: \(describe(error))")
+      projectsFile = nil
+    }
 
     // For each project with GitHub mode, load and merge tasks from cache
-    for project in projectsFile.projects where project.tracking == .github {
+    for project in (projectsFile?.projects ?? []) where project.tracking == .github {
       do {
         let githubTasks = try loadTasksFromGitHubCache(project: project)
 
@@ -261,7 +423,7 @@ final class LobsControlStore {
         }
       } catch {
         // Log error but continue loading other projects
-        print("Warning: Failed to load GitHub tasks for project \(project.title): \(error)")
+        logStore("WARN", "Failed to load GitHub tasks for project \(project.title): \(describe(error))")
       }
     }
 
@@ -842,13 +1004,26 @@ final class LobsControlStore {
 
     let dec = decoder()
     let cutoff = Date().addingTimeInterval(TimeInterval(-days * 24 * 3600))
+    var skippedCount = 0
 
     for url in items where url.pathExtension.lowercased() == "json" {
-      let data = try Data(contentsOf: url)
-      let t = try dec.decode(DashboardTask.self, from: data)
-      if t.status.rawValue == "completed" && t.updatedAt < cutoff {
-        try archiveTask(taskId: t.id)
+      do {
+        let data = try Data(contentsOf: url)
+        let t = try dec.decode(DashboardTask.self, from: data)
+        if t.status.rawValue == "completed" && t.updatedAt < cutoff {
+          try archiveTask(taskId: t.id)
+        }
+      } catch {
+        skippedCount += 1
+        logStore("ERROR", "Skipping corrupt task during auto-archive \(url.path): \(describe(error))")
       }
+    }
+
+    if skippedCount > 0 {
+      logStore(
+        "WARN",
+        "Auto-archive skipped \(skippedCount) corrupt task file(s); see previous error logs for details"
+      )
     }
   }
 

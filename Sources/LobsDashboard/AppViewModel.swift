@@ -30,6 +30,32 @@ enum RebaseState {
 @MainActor
 final class AppViewModel: ObservableObject {
   @Published private(set) var repoPath: String = ""
+
+  nonisolated private static func decodingPathString(_ codingPath: [CodingKey]) -> String {
+    if codingPath.isEmpty { return "<root>" }
+    return codingPath.map { key in
+      if let index = key.intValue { return "[\(index)]" }
+      return key.stringValue
+    }.joined(separator: ".")
+  }
+
+  nonisolated private static func describeLoadError(_ error: Error) -> String {
+    if let decodingError = error as? DecodingError {
+      switch decodingError {
+      case .typeMismatch(let type, let context):
+        return "typeMismatch(\(type)) at \(decodingPathString(context.codingPath)): \(context.debugDescription)"
+      case .valueNotFound(let type, let context):
+        return "valueNotFound(\(type)) at \(decodingPathString(context.codingPath)): \(context.debugDescription)"
+      case .keyNotFound(let key, let context):
+        return "keyNotFound(\(key.stringValue)) at \(decodingPathString(context.codingPath)): \(context.debugDescription)"
+      case .dataCorrupted(let context):
+        return "dataCorrupted at \(decodingPathString(context.codingPath)): \(context.debugDescription)"
+      @unknown default:
+        return "unknownDecodingError: \(decodingError.localizedDescription)"
+      }
+    }
+    return error.localizedDescription
+  }
   
   /// Current application configuration (includes user settings)
   @Published var config: AppConfig?
@@ -717,6 +743,7 @@ final class AppViewModel: ObservableObject {
 
           return (loadedProjects, file.tasks, hasGitHubProject)
         } catch {
+          print("⚠️ [reload:silent] Failed loading projects/tasks from disk: \(AppViewModel.describeLoadError(error))")
           return nil
         }
       }.value
@@ -729,6 +756,7 @@ final class AppViewModel: ObservableObject {
             lastGitHubSyncError = "Failed to load data"
             isGitHubSyncing = false
           }
+          print("⚠️ [reload:silent] Keeping previous in-memory state due to disk load failure")
           isGitBusy = false
           return
         }
@@ -1242,7 +1270,7 @@ final class AppViewModel: ObservableObject {
 
           return (loadedProjects, file.tasks, hasGitHubProject, githubSyncTime)
         } catch {
-          print("⚠️ Failed to load data: \(error.localizedDescription)")
+          print("⚠️ [reload] Failed loading projects/tasks from disk: \(AppViewModel.describeLoadError(error))")
           return nil
         }
       }.value
@@ -1256,6 +1284,7 @@ final class AppViewModel: ObservableObject {
             isGitHubSyncing = false
           }
           lastError = "Failed to load data"
+          print("⚠️ [reload] Keeping previous in-memory state due to disk load failure")
           isGitBusy = false
           return
         }
