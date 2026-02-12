@@ -487,13 +487,3 @@ private struct DocumentDetailView: View {
     }
   }
 }
-
-// MARK: - Preview
-
-#Preview {
-  DocumentsView(
-    vm: AppViewModel(),
-    isPresented: .constant(true)
-  )
-  .frame(width: 1200, height: 800)
-}

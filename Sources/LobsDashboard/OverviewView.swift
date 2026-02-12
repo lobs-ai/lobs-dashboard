@@ -229,14 +229,14 @@ struct OverviewView: View {
         onboardingStatusSection
         statsSection
         detailedStatsSection
+        projectCardsSection
+        columnsSection
+        inboxColumnsSection
         activitySection
         velocitySection
         AgentGridView(vm: vm)
         workerStatusSection
         syncStatusSection
-        projectCardsSection
-        columnsSection
-        inboxColumnsSection
         tipsAndDocsSection
       }
       .padding(24)
@@ -392,8 +392,9 @@ struct OverviewView: View {
 
   @ViewBuilder
   private var onboardingStatusSection: some View {
-    // Only show onboarding section if the user hasn't completed it yet (strict inequality)
-    if vm.needsOnboarding || onboardingProgress < 1.0 && onboardingProgress > 0 {
+    // Only show onboarding section if progress is incomplete
+    // Remove the needsOnboarding check to avoid showing at 100%
+    if onboardingProgress < 1.0 {
       let steps = onboardingSteps
       let incomplete = steps.contains(where: { !$0.isComplete })
 
@@ -2537,9 +2538,9 @@ private struct MetricCard: View {
 
 private func overviewProjectTypeIcon(_ type: ProjectType) -> String {
   switch type {
-  case .kanban: return "rectangle.split.3x1"
-  case .research: return "doc.text.magnifyingglass"
-  case .tracker: return "checklist"
+  case .kanban: return "folder"
+  case .research: return "folder.badge.questionmark"
+  case .tracker: return "folder.badge.gearshape"
   }
 }
 
