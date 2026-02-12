@@ -4621,6 +4621,21 @@ final class AppViewModel: ObservableObject {
     }
   }
 
+  func setTaskAgent(taskId: String, agent: String?, autoPush: Bool) {
+    optimisticUpdate(taskId: taskId, localMutation: {
+      $0.agent = agent
+      $0.updatedAt = Date()
+    }) { repoURL in
+      let store = LobsControlStore(repoRoot: repoURL)
+      try store.setTaskField(taskId: taskId, field: "agent", value: agent)
+      try await self.asyncCommitAndMaybePush(
+        repoURL: repoURL,
+        message: "Lobs: set agent on \(taskId)",
+        autoPush: autoPush
+      )
+    }
+  }
+
   // MARK: - Task Dependencies
 
   func addBlocker(taskId: String, blockerTaskId: String, autoPush: Bool) {

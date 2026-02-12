@@ -1604,7 +1604,7 @@ private struct OverviewActivitySheet: View {
       Divider()
 
       ScrollView {
-        VStack(spacing: 0) {
+        LazyVStack(spacing: 0) {
           if events.isEmpty {
             Text("No activity")
               .font(.callout)
@@ -1734,7 +1734,7 @@ private struct OverviewSectionColumn<Content: View>: View {
       }
 
       ScrollView {
-        VStack(spacing: 0) {
+        LazyVStack(spacing: 0) {
           content()
         }
       }
@@ -3447,7 +3447,7 @@ private struct OverviewTaskListSheet: View {
       Divider()
 
       ScrollView {
-        VStack(spacing: 0) {
+        LazyVStack(spacing: 0) {
           ForEach(Array(tasks.enumerated()), id: \.element.id) { idx, task in
             OverviewTaskRow(
               task: task,
@@ -3504,7 +3504,7 @@ private struct OverviewResearchRequestListSheet: View {
       Divider()
 
       ScrollView {
-        VStack(spacing: 0) {
+        LazyVStack(spacing: 0) {
           ForEach(Array(requests.enumerated()), id: \.element.id) { idx, req in
             OverviewResearchRow(
               request: req,

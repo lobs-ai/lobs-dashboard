@@ -3057,6 +3057,45 @@ private struct TaskDetailPopover: View {
             .fixedSize()
           }
 
+          // Agent picker
+          HStack(spacing: 4) {
+            Text("Agent:")
+              .font(.system(size: 12))
+              .foregroundStyle(.secondary)
+            Menu {
+              Button {
+                vm.setTaskAgent(taskId: task.id, agent: nil, autoPush: autoPush)
+              } label: {
+                Label("None", systemImage: task.agent == nil ? "checkmark" : "")
+              }
+              Divider()
+              ForEach(availableAgentTypes(), id: \.0) { agent in
+                Button {
+                  vm.setTaskAgent(taskId: task.id, agent: agent.0, autoPush: autoPush)
+                } label: {
+                  Label("\(agent.1) \(agent.0.capitalized)", systemImage: task.agent == agent.0 ? "checkmark" : "")
+                }
+              }
+            } label: {
+              HStack(spacing: 3) {
+                if let agent = task.agent {
+                  Text("\(agentIcon(agent)) \(agent.capitalized)")
+                    .font(.system(size: 11, weight: .medium))
+                } else {
+                  Text("Set agent…")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                }
+              }
+              .padding(.horizontal, 8)
+              .padding(.vertical, 3)
+              .background(Theme.subtle)
+              .clipShape(Capsule())
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+          }
+
           VStack(alignment: .leading, spacing: 6) {
             HStack {
               Text("Notes")
