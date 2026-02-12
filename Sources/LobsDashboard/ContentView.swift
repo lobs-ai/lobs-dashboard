@@ -3102,7 +3102,7 @@ private struct TaskDetailPopover: View {
               } else {
                 VStack(spacing: 0) {
                   ScrollView {
-                    SelfSizingMarkdownView(markdown: editNotes, minHeight: 60)
+                    NativeMarkdownText(markdown: editNotes)
                       .padding(8)
                   }
                   .frame(minHeight: 80, maxHeight: notesHeight)
