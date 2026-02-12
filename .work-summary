@@ -1,0 +1,1 @@
+Fixed agent detail to dismiss when clicking outside by converting from .sheet() to overlay pattern. Wrapped OverviewView body in ZStack, removed agent .sheet() modifier, added dismissible overlay with semi-transparent background and onTapGesture. Created AgentDetailOverlayTests.swift with 6 tests. Build successful.

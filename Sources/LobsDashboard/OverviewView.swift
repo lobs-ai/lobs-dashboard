@@ -222,7 +222,8 @@ struct OverviewView: View {
   }
 
   var body: some View {
-    ScrollView {
+    ZStack {
+      ScrollView {
       VStack(alignment: .leading, spacing: 24) {
         headerSection
         onboardingStatusSection
@@ -248,14 +249,6 @@ struct OverviewView: View {
     .sheet(item: $detailTask) { task in
       OverviewTaskDetailSheet(task: task, vm: vm)
         .frame(minWidth: 480, minHeight: 500)
-    }
-    .sheet(isPresented: Binding(
-      get: { vm.selectedAgentType != nil },
-      set: { if !$0 { vm.selectedAgentType = nil } }
-    )) {
-      if let agentType = vm.selectedAgentType {
-        AgentDetailSheet(agentType: agentType, vm: vm)
-      }
     }
     .sheet(isPresented: $showTimeline) {
       TimelineSheetView(tasks: vm.tasks, projects: vm.projects)
@@ -313,6 +306,30 @@ struct OverviewView: View {
         }
       )
       .frame(minWidth: 640, minHeight: 620)
+    }
+      
+      // Agent detail overlay — clicking outside dismisses
+      if vm.selectedAgentType != nil {
+        Color.black.opacity(0.3)
+          .ignoresSafeArea()
+          .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.25)) {
+              vm.selectedAgentType = nil
+            }
+          }
+          .transition(.opacity)
+          .zIndex(200)
+        
+        if let agentType = vm.selectedAgentType {
+          AgentDetailSheet(agentType: agentType, vm: vm)
+            .frame(minWidth: 480, minHeight: 500)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .shadow(color: .black.opacity(0.3), radius: 30, y: 10)
+            .padding(40)
+            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+            .zIndex(201)
+        }
+      }
     }
   }
 
