@@ -1,1 +1,17 @@
-Fixed AI usage tracking by aggregating from worker-history.json instead of stale main-session-usage.json. Added agent type and project breakdowns with computed properties for data extraction. Enhanced AIUsageView with AgentBreakdownView and ProjectBreakdownView showing costs, tokens, and run counts. Main session usage now optional for backwards compatibility. Created comprehensive tests. Syntax verified.
+Completed Documents view feature (agent reports & research display). Infrastructure was already in place - added async loading integration and UI extensions. Created comprehensive test suite documenting behavior. Syntax verified. Full test execution blocked by pre-existing Preview macro errors (not related to changes).
+
+Changes:
+- Added DocumentSource/DocumentStatus extensions with UI properties (displayName, icon)
+- Created DocumentsView.swift with filtering, search, split-pane layout
+- Added loadAgentDocumentsAsync() to AppViewModel for background loading
+- Integrated async loading into reload() pipeline
+- Created DocumentsViewTests.swift with filtering, sorting, integration tests
+
+Already existed:
+- Store.loadAgentDocuments() (filesystem scanning)
+- AppViewModel.agentDocuments, markDocumentRead/Unread()
+- ContentView Documents integration (toolbar button, keyboard shortcut ⌘D, overlay)
+- Models: AgentDocument, DocumentSource, DocumentStatus
+
+Keyboard shortcut: ⌘D
+Data sources: state/reports/{pending,approved,rejected}/, state/research/{topic}/
