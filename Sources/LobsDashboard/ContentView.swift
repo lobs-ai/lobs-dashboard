@@ -3077,7 +3077,7 @@ private struct TaskDetailPopover: View {
                 Button {
                   vm.setTaskAgent(taskId: task.id, agent: agent.0, autoPush: autoPush)
                 } label: {
-                  Label("\(agent.1) \(agent.0.capitalized)", systemImage: task.agent == agent.0 ? "checkmark" : "")
+                  Label("\(agent.1) \(agent.0.capitalized) – \(agent.2)", systemImage: task.agent == agent.0 ? "checkmark" : "")
                 }
               }
             } label: {
