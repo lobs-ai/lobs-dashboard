@@ -138,23 +138,6 @@ struct DocumentsView: View {
         .background(Color(NSColor.textBackgroundColor))
         .cornerRadius(6)
 
-        // Group by topic toggle
-        Toggle(isOn: $groupByTopic) {
-          HStack(spacing: 4) {
-            Image(systemName: groupByTopic ? "folder.fill" : "list.bullet")
-            Text(groupByTopic ? "Grouped" : "Flat List")
-          }
-          .font(.system(size: 13))
-        }
-        .toggleStyle(.button)
-        .buttonStyle(.borderless)
-        .help("Toggle grouped by topic view")
-        .onChange(of: groupByTopic) { newValue in
-          if newValue && selectedTopicOrGroup == nil && !topicGroups.isEmpty {
-            selectedTopicOrGroup = topicGroups.first?.0
-          }
-        }
-
         // Read filter toggle
         Toggle(isOn: $showReadItems) {
           HStack(spacing: 4) {
@@ -179,136 +162,79 @@ struct DocumentsView: View {
 
       Divider()
 
-      // Content - Split view
+      // Content - Split view (single list + detail)
       HSplitView {
-        // Left: Topic sidebar (when grouped) or document list
-        if groupByTopic {
-          // Topic sidebar
-          VStack(spacing: 0) {
-            ScrollView {
-              LazyVStack(spacing: 1, pinnedViews: []) {
-                ForEach(topicGroups, id: \.0) { topicName, docs, unreadCount in
-                  TopicGroupRow(
-                    topicName: topicName,
-                    documentCount: docs.count,
-                    unreadCount: unreadCount,
-                    isSelected: selectedTopicOrGroup == topicName,
-                    isExpanded: expandedTopics.contains(topicName),
-                    onSelect: {
-                      selectedTopicOrGroup = topicName
-                      // Auto-select first doc in topic
-                      if let firstDoc = docs.first {
-                        selectedDocument = firstDoc
-                        if !firstDoc.isRead {
-                          vm.markDocumentRead(firstDoc)
-                        }
-                      }
-                    },
-                    onToggleExpand: {
-                      if expandedTopics.contains(topicName) {
-                        expandedTopics.remove(topicName)
-                      } else {
-                        expandedTopics.insert(topicName)
+        // Left: Document list grouped by topic
+        ScrollView {
+          LazyVStack(spacing: 0) {
+            if filteredDocuments.isEmpty {
+              VStack(spacing: 12) {
+                Image(systemName: "doc.text")
+                  .font(.system(size: 48))
+                  .foregroundStyle(.secondary)
+                Text("No documents")
+                  .font(.headline)
+                Text(searchText.isEmpty ? "Agent documents will appear here" : "No documents match your filters")
+                  .font(.subheadline)
+                  .foregroundStyle(.secondary)
+              }
+              .frame(maxWidth: .infinity)
+              .padding(.vertical, 60)
+            } else {
+              ForEach(topicGroups, id: \.0) { topicName, docs, unreadCount in
+                // Topic header
+                TopicGroupRow(
+                  topicName: topicName,
+                  documentCount: docs.count,
+                  unreadCount: unreadCount,
+                  isSelected: selectedTopicOrGroup == topicName,
+                  isExpanded: expandedTopics.contains(topicName),
+                  onSelect: {
+                    selectedTopicOrGroup = topicName
+                    if expandedTopics.contains(topicName) {
+                      expandedTopics.remove(topicName)
+                    } else {
+                      expandedTopics.insert(topicName)
+                    }
+                    if let firstDoc = docs.first {
+                      selectedDocument = firstDoc
+                      if !firstDoc.isRead {
+                        vm.markDocumentRead(firstDoc)
                       }
                     }
-                  )
-                  
-                  // Show documents under expanded topics
-                  if expandedTopics.contains(topicName) {
-                    ForEach(docs) { doc in
-                      DocumentListRow(
-                        doc: doc,
-                        isSelected: selectedDocument?.id == doc.id,
-                        showTopic: false,
-                        onSelect: {
-                          selectedDocument = doc
-                          selectedTopicOrGroup = topicName
-                          if !doc.isRead {
-                            vm.markDocumentRead(doc)
-                          }
-                        }
-                      )
-                      .padding(.leading, 16)
+                  },
+                  onToggleExpand: {
+                    if expandedTopics.contains(topicName) {
+                      expandedTopics.remove(topicName)
+                    } else {
+                      expandedTopics.insert(topicName)
                     }
+                  }
+                )
+
+                // Documents under expanded topics
+                if expandedTopics.contains(topicName) {
+                  ForEach(docs) { doc in
+                    DocumentListRow(
+                      doc: doc,
+                      isSelected: selectedDocument?.id == doc.id,
+                      showTopic: false,
+                      onSelect: {
+                        selectedDocument = doc
+                        selectedTopicOrGroup = topicName
+                        if !doc.isRead {
+                          vm.markDocumentRead(doc)
+                        }
+                      }
+                    )
+                    .padding(.leading, 16)
                   }
                 }
               }
             }
           }
-          .frame(minWidth: 260, idealWidth: 320, maxWidth: 400)
-        } else {
-          // Flat list view
-          ScrollView {
-            LazyVStack(spacing: 0) {
-              if filteredDocuments.isEmpty {
-                VStack(spacing: 12) {
-                  Image(systemName: "doc.text")
-                    .font(.system(size: 48))
-                    .foregroundStyle(.secondary)
-                  Text("No documents")
-                    .font(.headline)
-                  Text(searchText.isEmpty ? "Agent documents will appear here" : "No documents match your filters")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 60)
-              } else {
-                ForEach(filteredDocuments) { doc in
-                  DocumentListRow(
-                    doc: doc,
-                    isSelected: selectedDocument?.id == doc.id,
-                    showTopic: true,
-                    onSelect: {
-                      selectedDocument = doc
-                      if !doc.isRead {
-                        vm.markDocumentRead(doc)
-                      }
-                    }
-                  )
-                }
-              }
-            }
-          }
-          .frame(minWidth: 300, idealWidth: 400, maxWidth: 500)
         }
-
-        // Middle: Document list for selected topic (when grouped)
-        if groupByTopic {
-          ScrollView {
-            LazyVStack(spacing: 0) {
-              if documentsForCurrentView.isEmpty {
-                VStack(spacing: 12) {
-                  Image(systemName: "doc.text")
-                    .font(.system(size: 48))
-                    .foregroundStyle(.secondary)
-                  Text("No documents")
-                    .font(.headline)
-                  Text("Select a topic to view documents")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 60)
-              } else {
-                ForEach(documentsForCurrentView) { doc in
-                  DocumentListRow(
-                    doc: doc,
-                    isSelected: selectedDocument?.id == doc.id,
-                    showTopic: false,
-                    onSelect: {
-                      selectedDocument = doc
-                      if !doc.isRead {
-                        vm.markDocumentRead(doc)
-                      }
-                    }
-                  )
-                }
-              }
-            }
-          }
-          .frame(minWidth: 300, idealWidth: 400, maxWidth: 500)
-        }
+        .frame(minWidth: 300, idealWidth: 400, maxWidth: 500)
 
         // Right: Document detail
         if let doc = selectedDocument {
@@ -348,27 +274,18 @@ struct DocumentsView: View {
       .frame(width: 0, height: 0)
     }
     .onAppear {
-      // Initialize expanded topics
+      // Initialize expanded topics — expand all by default
       if expandedTopics.isEmpty {
-        expandedTopics = Set(topicGroups.prefix(3).map { $0.0 })
+        expandedTopics = Set(topicGroups.map { $0.0 })
       }
       
       // Auto-select first topic and document
-      if groupByTopic {
-        if selectedTopicOrGroup == nil, let firstTopic = topicGroups.first {
-          selectedTopicOrGroup = firstTopic.0
-          if let firstDoc = firstTopic.1.first {
-            selectedDocument = firstDoc
-            if !firstDoc.isRead {
-              vm.markDocumentRead(firstDoc)
-            }
-          }
-        }
-      } else {
-        if selectedDocument == nil, let first = filteredDocuments.first {
-          selectedDocument = first
-          if !first.isRead {
-            vm.markDocumentRead(first)
+      if selectedTopicOrGroup == nil, let firstTopic = topicGroups.first {
+        selectedTopicOrGroup = firstTopic.0
+        if let firstDoc = firstTopic.1.first {
+          selectedDocument = firstDoc
+          if !firstDoc.isRead {
+            vm.markDocumentRead(firstDoc)
           }
         }
       }

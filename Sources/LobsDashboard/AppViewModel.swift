@@ -608,6 +608,11 @@ final class AppViewModel: ObservableObject {
     applyAppearance()
     startAutoRefreshIfNeeded()
 
+    // Load documents immediately on launch (don't wait for first refresh)
+    if let repoURL {
+      loadAgentDocuments()
+    }
+
     // Check for dashboard source updates on launch
     checkForDashboardUpdate()
 
