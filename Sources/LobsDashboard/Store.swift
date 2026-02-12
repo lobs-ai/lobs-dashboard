@@ -1577,6 +1577,7 @@ final class LobsControlStore {
         let isTruncated = fileSize > previewData.count
 
         let title = extractTitle(from: content, filename: filename)
+        let summary = extractSummary(from: content)
 
         documents.append(AgentDocument(
           id: relativePath,
@@ -1591,7 +1592,8 @@ final class LobsControlStore {
           projectId: nil,
           taskId: nil,
           date: modDate,
-          isRead: false
+          isRead: false,
+          summary: summary
         ))
       }
     }
@@ -1637,6 +1639,7 @@ final class LobsControlStore {
         let isTruncated = fileSize > previewData.count
 
         let title = extractTitle(from: content, filename: filename)
+        let summary = extractSummary(from: content)
 
         documents.append(AgentDocument(
           id: relativePath,
@@ -1651,7 +1654,8 @@ final class LobsControlStore {
           projectId: nil,
           taskId: nil,
           date: modDate,
-          isRead: false
+          isRead: false,
+          summary: summary
         ))
       }
     }
