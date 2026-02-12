@@ -353,6 +353,7 @@ struct QuickCaptureView: View {
     vm.submitTaskToLobs(
       title: trimmed,
       notes: notes.isEmpty ? nil : notes,
+      agent: "programmer",
       autoPush: true
     )
 

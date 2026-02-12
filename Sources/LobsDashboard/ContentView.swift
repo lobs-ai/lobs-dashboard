@@ -4000,6 +4000,7 @@ private struct AddTaskSheet: View {
   @State private var title: String = ""
   @State private var notes: String = ""
   @State private var selectedProjectId: String = ""
+  @State private var selectedAgent: String = "programmer"
   @State private var shakeTitle: Bool = false
   @State private var shakeProject: Bool = false
 
@@ -4008,6 +4009,16 @@ private struct AddTaskSheet: View {
   }
 
   private var shouldShowProjectPicker: Bool { projectId == nil }
+
+  private var availableAgents: [(String, String, String)] {
+    [
+      ("programmer", "🛠️", "Code implementation, bug fixes"),
+      ("researcher", "🔬", "Research and investigation"),
+      ("reviewer", "🔍", "Code review and feedback"),
+      ("writer", "✍️", "Documentation and writing"),
+      ("architect", "🏗️", "System design and architecture")
+    ]
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
@@ -4049,6 +4060,30 @@ private struct AddTaskSheet: View {
           )
           .modifier(ShakeEffect(shaking: shakeProject))
         }
+      }
+
+      // Agent picker
+      VStack(alignment: .leading, spacing: 8) {
+        Text("Agent")
+          .font(.callout)
+          .fontWeight(.medium)
+        Picker("Agent", selection: $selectedAgent) {
+          ForEach(availableAgents, id: \.0) { agent in
+            HStack(spacing: 6) {
+              Text(agent.1)  // emoji
+              VStack(alignment: .leading, spacing: 2) {
+                Text(agent.0.capitalized)
+                  .font(.body)
+                Text(agent.2)
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+              }
+            }
+            .tag(agent.0)
+          }
+        }
+        .labelsHidden()
+        .padding(4)
       }
 
       VStack(alignment: .leading, spacing: 8) {
@@ -4094,7 +4129,7 @@ private struct AddTaskSheet: View {
 
             let prevProject = vm.selectedProjectId
             vm.selectedProjectId = selectedProjectId
-            vm.submitTaskToLobs(title: title, notes: notes.isEmpty ? nil : notes, autoPush: autoPush)
+            vm.submitTaskToLobs(title: title, notes: notes.isEmpty ? nil : notes, agent: selectedAgent, autoPush: autoPush)
             if vm.showOverview { vm.selectedProjectId = prevProject }
             dismiss()
           }
@@ -4134,7 +4169,7 @@ private struct AddTaskSheet: View {
 
           let prevProject = vm.selectedProjectId
           vm.selectedProjectId = selectedProjectId
-          vm.submitTaskToLobs(title: title, notes: notes.isEmpty ? nil : notes, autoPush: autoPush)
+          vm.submitTaskToLobs(title: title, notes: notes.isEmpty ? nil : notes, agent: selectedAgent, autoPush: autoPush)
           if vm.showOverview { vm.selectedProjectId = prevProject }
           dismiss()
         } label: {

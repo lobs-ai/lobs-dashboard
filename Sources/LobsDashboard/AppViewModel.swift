@@ -3532,7 +3532,7 @@ final class AppViewModel: ObservableObject {
     }
   }
 
-  func submitTaskToLobs(title: String, notes: String?, autoPush: Bool) {
+  func submitTaskToLobs(title: String, notes: String?, agent: String?, autoPush: Bool) {
     let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
     let trimmedNotes = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmedTitle.isEmpty, let repoURL else { return }
@@ -3557,7 +3557,8 @@ final class AppViewModel: ObservableObject {
       artifactPath: nil,
       notes: trimmedNotes,
       startedAt: now,
-      finishedAt: nil
+      finishedAt: nil,
+      agent: agent
     )
 
     // For GitHub projects, create the issue first and get the issue number
@@ -5644,8 +5645,10 @@ final class AppViewModel: ObservableObject {
       return
     }
     
-    let result: (String, String, Int)? = await Task.detached {
-      // Fetch latest from origin (timeout after 10 seconds)
+    let built = builtFromCommit
+    
+    let result: (String, String, Int, Bool, [String])? = await Task.detached {
+      // Fetch latest from origin
       let fetch = Git.runWithErrorHandling(["fetch", "origin", "main"], cwd: dashURL)
       guard fetch.success else { return nil }
 
@@ -5658,20 +5661,56 @@ final class AppViewModel: ObservableObject {
 
       let local = localCommit.output.trimmingCharacters(in: .whitespacesAndNewlines)
       let remote = remoteCommit.output.trimmingCharacters(in: .whitespacesAndNewlines)
-      let behind = Int(behindRes.output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+      let behindRemote = Int(behindRes.output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
 
-      return (local, remote, behind)
+      // Check if local HEAD is ahead of the build commit (pulled but not compiled)
+      var needsRebuild = false
+      var aheadOfBuild = 0
+      if !built.isEmpty {
+        let aheadResult = Git.runWithErrorHandling(
+          ["rev-list", "--count", "\(built)..HEAD"], cwd: dashURL
+        )
+        aheadOfBuild = Int(aheadResult.output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        needsRebuild = aheadOfBuild > 0
+      }
+
+      let totalBehind = behindRemote + aheadOfBuild
+
+      // Fetch commit summaries for pending updates
+      var commits: [String] = []
+      if needsRebuild, !built.isEmpty {
+        let logResult = Git.runWithErrorHandling(
+          ["log", "--oneline", "\(built)..HEAD"], cwd: dashURL
+        )
+        if logResult.success {
+          commits += logResult.output.trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(separator: "\n").map(String.init)
+        }
+      }
+      if behindRemote > 0 {
+        let logResult = Git.runWithErrorHandling(
+          ["log", "--oneline", "HEAD..origin/main"], cwd: dashURL
+        )
+        if logResult.success {
+          commits += logResult.output.trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(separator: "\n").map(String.init)
+        }
+      }
+
+      return (local, remote, totalBehind, needsRebuild && behindRemote == 0, commits)
     }.value
     
     await MainActor.run {
       self.lastDashboardUpdateCheckAt = Date()
       
-      guard let (local, remote, behind) = result else { return }
+      guard let (local, remote, totalBehind, needsRebuild, commits) = result else { return }
       
       self.dashboardLocalCommit = local
       self.dashboardRemoteCommit = remote
-      self.dashboardCommitsBehind = behind
-      self.dashboardUpdateAvailable = behind > 0
+      self.dashboardCommitsBehind = totalBehind
+      self.dashboardUpdateAvailable = totalBehind > 0
+      self.dashboardNeedsRebuild = needsRebuild
+      self.dashboardUpdateCommits = commits
     }
   }
 

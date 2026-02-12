@@ -185,12 +185,13 @@ struct DashboardTask: Codable, Identifiable, Hashable {
     pinned = try? container.decode(Bool.self, forKey: .pinned)
     shape = try? container.decode(TaskShape.self, forKey: .shape)
     githubIssueNumber = try? container.decode(Int.self, forKey: .githubIssueNumber)
+    agent = try? container.decode(String.self, forKey: .agent)
   }
 
   private enum CodingKeys: String, CodingKey {
     case id, title, status, owner, createdAt, updatedAt
     case workState, reviewState, projectId, artifactPath, notes
-    case startedAt, finishedAt, sortOrder, blockedBy, pinned, shape, githubIssueNumber
+    case startedAt, finishedAt, sortOrder, blockedBy, pinned, shape, githubIssueNumber, agent
   }
 
   // Memberwise initializer for creating tasks programmatically
@@ -212,7 +213,8 @@ struct DashboardTask: Codable, Identifiable, Hashable {
     blockedBy: [String]? = nil,
     pinned: Bool? = nil,
     shape: TaskShape? = nil,
-    githubIssueNumber: Int? = nil
+    githubIssueNumber: Int? = nil,
+    agent: String? = nil
   ) {
     self.id = id
     self.title = title
@@ -232,6 +234,7 @@ struct DashboardTask: Codable, Identifiable, Hashable {
     self.pinned = pinned
     self.shape = shape
     self.githubIssueNumber = githubIssueNumber
+    self.agent = agent
   }
 
   // Optional fields (schema evolves)
@@ -267,6 +270,9 @@ struct DashboardTask: Codable, Identifiable, Hashable {
 
   /// GitHub issue number (when project syncMode is .github).
   var githubIssueNumber: Int?
+
+  /// Agent type assignment (programmer, researcher, reviewer, writer, architect).
+  var agent: String?
 }
 
 enum ProjectType: String, Codable, CaseIterable, Hashable {
