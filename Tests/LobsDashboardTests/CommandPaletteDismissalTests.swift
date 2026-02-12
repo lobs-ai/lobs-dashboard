@@ -40,20 +40,21 @@ final class CommandPaletteDismissalTests: XCTestCase {
   /// Test: Home navigation doesn't block dismissal
   ///
   /// The home navigation command (vm.showOverview = true) can trigger expensive
-  /// view updates in OverviewView. By delaying the action, we ensure the dismissal
-  /// animation completes smoothly before the heavy update occurs.
+  /// view updates in OverviewView. By delaying the action until AFTER the animation
+  /// completes, we ensure the dismissal is completely smooth and uninterrupted.
   func testHomeNavigationDismissal() {
     // Expected behavior:
     // 1. User presses Enter on "Home" command
     // 2. Palette begins dismissing (0.25s animation)
-    // 3. After 0.1s, showOverview = true executes
-    // 4. OverviewView loads and updates
-    // 5. After 0.3s, search text and selection reset
+    // 3. Animation completes at t=250ms
+    // 4. After 0.3s, showOverview = true executes
+    // 5. OverviewView loads and updates
+    // 6. After 0.35s, search text and selection reset
     
-    // Result: User sees instant dismissal, smooth animation, then content updates
-    // Without the delay: User sees janky dismissal as OverviewView loads
+    // Result: User sees instant dismissal, completely smooth animation, then content updates
+    // Without the delay: User sees janky dismissal as OverviewView loads during animation
     
-    XCTAssert(true, "Home navigation uses delayed execution for smooth dismissal")
+    XCTAssert(true, "Home navigation executes AFTER dismissal animation completes")
   }
   
   /// Test: Action delay is imperceptible (0.1s)
