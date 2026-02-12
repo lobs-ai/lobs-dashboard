@@ -1,1 +1,0 @@
-Task notes resize feature already fully implemented and tested. Verified implementation: @State notesHeight with 80-600pt bounds, ResizeHandle component with hover feedback and drag gesture in both edit and preview modes. 23 comprehensive tests in TaskNotesResizeTests.swift. Build fails due to pre-existing Preview macro errors (documented, not related to changes).

@@ -3,7 +3,6 @@ import SwiftUI
 struct AgentDetailSheet: View {
   let agentType: String
   @ObservedObject var vm: AppViewModel
-  @Environment(\.dismiss) private var dismiss
 
   @State private var memory: String = ""
   @State private var evolvedTraits: String = ""
@@ -71,7 +70,11 @@ struct AgentDetailSheet: View {
         }
       }
 
-      Button { dismiss() } label: {
+      Button { 
+        withAnimation(.easeInOut(duration: 0.25)) {
+          vm.selectedAgentType = nil
+        }
+      } label: {
         Image(systemName: "xmark.circle.fill")
           .font(.title2)
           .foregroundStyle(.secondary)
