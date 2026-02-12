@@ -378,13 +378,22 @@ struct OnboardingView: View {
     // Persist onboarding completion.
     let path = vm.config?.controlRepoPath ?? ""
     let url = vm.config?.controlRepoUrl
-    let ok = vm.setControlRepo(path: path, repoUrl: url, onboardingComplete: true)
-    if !ok {
-      print("⚠️ Failed to persist onboarding completion")
-    }
-
+    
+    // Mark the done step as complete in onboarding state first
     onboardingState.markCompleted(.done)
     OnboardingStateManager.save(onboardingState)
+    
+    // Try to save the config with onboarding complete flag
+    let ok = vm.setControlRepo(path: path, repoUrl: url, onboardingComplete: true)
+    if !ok {
+      print("⚠️ Failed to persist onboarding completion to config file")
+      // Onboarding state is already saved with done=true, so the auto-fix logic
+      // in needsOnboarding will catch this and fix the config on next check.
+    }
+    
+    // Explicitly notify that the view model has changed to force view refresh.
+    // This ensures the app immediately switches from OnboardingView to ContentView.
+    vm.objectWillChange.send()
   }
 }
 
