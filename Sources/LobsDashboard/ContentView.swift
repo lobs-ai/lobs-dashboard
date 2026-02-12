@@ -4112,23 +4112,45 @@ private struct AddTaskSheet: View {
         Text("Agent")
           .font(.callout)
           .fontWeight(.medium)
-        Picker("Agent", selection: $selectedAgent) {
+        
+        Menu {
           ForEach(availableAgents, id: \.0) { agent in
-            HStack(spacing: 6) {
-              Text(agent.1)  // emoji
-              VStack(alignment: .leading, spacing: 2) {
-                Text(agent.0.capitalized)
-                  .font(.body)
-                Text(agent.2)
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
+            Button {
+              selectedAgent = agent.0
+            } label: {
+              HStack(spacing: 6) {
+                Text(agent.1)  // emoji
+                VStack(alignment: .leading, spacing: 2) {
+                  Text(agent.0.capitalized)
+                    .font(.body)
+                  Text(agent.2)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
               }
             }
-            .tag(agent.0)
           }
+        } label: {
+          HStack(spacing: 8) {
+            if let selected = availableAgents.first(where: { $0.0 == selectedAgent }) {
+              Text(selected.1)  // emoji
+              Text(selected.0.capitalized)
+                .font(.body)
+            } else {
+              Text("Select agent")
+                .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Image(systemName: "chevron.down")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
+          .padding(.horizontal, 12)
+          .padding(.vertical, 8)
+          .background(Color(NSColor.controlBackgroundColor))
+          .clipShape(RoundedRectangle(cornerRadius: 6))
         }
-        .labelsHidden()
-        .padding(4)
+        .buttonStyle(.plain)
       }
 
       VStack(alignment: .leading, spacing: 8) {
