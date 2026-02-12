@@ -366,9 +366,9 @@ struct OverviewView: View {
 
     return [
       OnboardingStep(
-        title: "Connect lobs-control repo",
+        title: "Connect to server",
         isComplete: repoSet,
-        detail: repoSet ? nil : "Choose your lobs-control checkout so tasks/projects can load."
+        detail: repoSet ? nil : "Configure your Lobs API server so tasks/projects can load."
       ),
       OnboardingStep(
         title: "Finish onboarding",

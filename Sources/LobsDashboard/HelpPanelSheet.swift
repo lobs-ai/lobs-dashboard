@@ -153,11 +153,11 @@ struct HelpPanelSheet: View {
               .font(.headline)
 
             VStack(alignment: .leading, spacing: 6) {
-              Text("Lobs Dashboard syncs state through a shared git repository (**lobs-control**). All tasks, projects, and research are stored as JSON files.")
+              Text("Lobs Dashboard connects to a REST API server. All tasks, projects, and research are managed through the API.")
               Text("")
               Text("• **You** create tasks and requests through the dashboard")
-              Text("• **Lobs** (the AI worker) picks up tasks, does the work, and updates status")
-              Text("• Everything stays in sync via git — pull to see updates, push to share changes")
+              Text("• **Lobs** (the AI worker) picks up tasks from the server, does the work, and updates status")
+              Text("• Everything stays in sync via the API — the dashboard auto-refreshes to show updates")
             }
             .font(.system(size: 13))
             .foregroundStyle(.secondary)

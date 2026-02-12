@@ -86,7 +86,7 @@ struct FirstTaskWalkthroughSheet: View {
       startedAt = Date()
       baselineTaskIds = Set(vm.tasks.map { $0.id })
 
-      // If the user already has tasks, don't force a specific task — we still want
+      // If the user already has tasks, don't force a specific task - we still want
       // a first-run walkthrough, but focus it on the next task they create.
       if trackedTaskId == nil {
         trackedTaskId = nil
@@ -111,7 +111,7 @@ struct FirstTaskWalkthroughSheet: View {
             .font(.title2)
             .fontWeight(.bold)
 
-          Text("We’ll create one task, watch Lobs pick it up, then review the result.")
+          Text("We'll create one task, watch Lobs pick it up, then review the result.")
             .font(.subheadline)
             .foregroundStyle(.secondary)
         }
@@ -145,7 +145,7 @@ struct FirstTaskWalkthroughSheet: View {
         }
         .font(.callout)
       } else {
-        Text("No task selected yet — we’ll start tracking once you create one.")
+        Text("No task selected yet - we'll start tracking once you create one.")
           .font(.callout)
           .foregroundStyle(.secondary)
       }
@@ -177,25 +177,25 @@ struct FirstTaskWalkthroughSheet: View {
       Text("How the system works")
         .font(.headline)
 
-      Text("Lobs Dashboard is a UI on top of your git-backed control repo. When you create a task, the dashboard writes JSON into your `lobs-control` repo and (optionally) pushes it to GitHub. The orchestrator polls that repo, then spawns a worker to execute tasks.")
+      Text("Lobs Dashboard connects to your Lobs API server. When you create a task, the dashboard sends it to the server via the REST API. The orchestrator picks it up and spawns a worker to execute tasks.")
         .font(.body)
 
       VStack(alignment: .leading, spacing: 8) {
-        Text("In this walkthrough you’ll:")
+        Text("In this walkthrough you'll:")
           .fontWeight(.medium)
         Text("1) Create a task (⌘N)")
-        Text("2) Push it to the server (auto-push recommended)")
+        Text("2) Submit it to the server")
         Text("3) Watch it switch to in-progress")
         Text("4) Review the artifact / notes")
       }
       .font(.callout)
       .foregroundStyle(.secondary)
 
-      Toggle("Auto-push new tasks", isOn: $autoPush)
+      Toggle("Auto-sync tasks", isOn: $autoPush)
         .toggleStyle(.switch)
-        .help("When enabled, the dashboard will commit + push automatically after you create the task")
+        .help("When enabled, the dashboard will automatically sync with the server after you create the task")
 
-      Text("Tip: If you don’t see progress, open Settings and confirm auto-refresh is enabled (default: every 30s).")
+      Text("Tip: If you don't see progress, open Settings and confirm auto-refresh is enabled (default: every 30s).")
         .font(.callout)
         .foregroundStyle(.secondary)
     }
@@ -203,10 +203,10 @@ struct FirstTaskWalkthroughSheet: View {
 
   private var createStep: some View {
     VStack(alignment: .leading, spacing: 12) {
-      Text("Step 1 — Create your first task")
+      Text("Step 1 - Create your first task")
         .font(.headline)
 
-      Text("Click \"New Task\" (or press ⌘N). Give it a clear title and add a sentence of context in Notes. When you hit Create, we’ll start tracking that task here.")
+      Text("Click \"New Task\" (or press ⌘N). Give it a clear title and add a sentence of context in Notes. When you hit Create, we'll start tracking that task here.")
         .font(.body)
 
       Button("Open New Task (⌘N)") {
@@ -217,7 +217,7 @@ struct FirstTaskWalkthroughSheet: View {
         VStack(alignment: .leading, spacing: 8) {
           Text("Suggested example")
             .fontWeight(.semibold)
-          Text("Title: \"Hello Lobs — create a tiny demo artifact\"")
+          Text("Title: \"Hello Lobs - create a tiny demo artifact\"")
           Text("Notes: \"Please write a short summary of what you changed and where the artifact is saved.\"")
         }
         .font(.callout)
@@ -231,16 +231,16 @@ struct FirstTaskWalkthroughSheet: View {
 
   private var pickupStep: some View {
     VStack(alignment: .leading, spacing: 12) {
-      Text("Step 2 — Watch it get picked up")
+      Text("Step 2 - Watch it get picked up")
         .font(.headline)
 
       Text("Behind the scenes:")
         .fontWeight(.medium)
 
       VStack(alignment: .leading, spacing: 6) {
-        Text("• The dashboard writes `state/tasks/<id>.json` and commits it")
-        Text("• If auto-push is on, it pushes to the remote")
-        Text("• The orchestrator polls the repo, sees the new task, and assigns a worker")
+        Text("• The dashboard sends the task to the API server")
+        Text("• If auto-sync is on, it immediately syncs with the server")
+        Text("• The orchestrator sees the new task and assigns a worker")
         Text("• The worker updates `workState` to `in_progress` and starts executing")
       }
       .font(.callout)
@@ -263,10 +263,10 @@ struct FirstTaskWalkthroughSheet: View {
 
   private var resultsStep: some View {
     VStack(alignment: .leading, spacing: 12) {
-      Text("Step 3 — Review results")
+      Text("Step 3 - Review results")
         .font(.headline)
 
-      Text("When the worker finishes, you’ll typically see one or more of:")
+      Text("When the worker finishes, you'll typically see one or more of:")
         .font(.body)
 
       VStack(alignment: .leading, spacing: 6) {
@@ -279,7 +279,7 @@ struct FirstTaskWalkthroughSheet: View {
       .foregroundStyle(.secondary)
 
       if isFinished {
-        Text("✅ Done — looks like the task finished. Open it to read notes and view any artifact links.")
+        Text("✅ Done - looks like the task finished. Open it to read notes and view any artifact links.")
           .font(.callout)
 
         Button("Open Inbox") {
@@ -295,12 +295,12 @@ struct FirstTaskWalkthroughSheet: View {
 
   private var doneStep: some View {
     VStack(alignment: .leading, spacing: 12) {
-      Text("You’re set")
+      Text("You're set")
         .font(.headline)
 
-      Text("You now have the full loop: create a task → push → orchestrator picks it up → worker runs → results show up back here.")
+      Text("You now have the full loop: create a task → send to API → orchestrator picks it up → worker runs → results show up back here.")
         .font(.body)
-      Text("Tip: If things look stuck, check that auto-refresh is enabled (Settings) and that your control repo is syncing.")
+      Text("Tip: If things look stuck, check that auto-refresh is enabled (Settings) and that the server is running.")
         .font(.callout)
         .foregroundStyle(.secondary)
     }
@@ -314,7 +314,7 @@ struct FirstTaskWalkthroughSheet: View {
       case .intro:
         step = .create
       case .create:
-        // Don’t advance until we have a task.
+        // Don't advance until we have a task.
         if trackedTaskId != nil { step = .pickup }
       case .pickup:
         if isPickedUpByWorker { step = .results }
@@ -328,7 +328,7 @@ struct FirstTaskWalkthroughSheet: View {
   }
 
   private func advanceIfPossibleFromTaskUpdates() {
-    // Step: create — detect first new task created after the walkthrough started.
+    // Step: create - detect first new task created after the walkthrough started.
     if step == .create {
       let currentIds = Set(vm.tasks.map { $0.id })
       let newIds = currentIds.subtracting(baselineTaskIds)

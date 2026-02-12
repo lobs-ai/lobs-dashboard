@@ -1769,7 +1769,7 @@ private struct SettingsPopover: View {
           Button {
             showPicker = true
           } label: {
-            Label("Choose lobs-control…", systemImage: "folder")
+            Label("Configure Server…", systemImage: "server.rack")
           }
           .controlSize(.small)
         }

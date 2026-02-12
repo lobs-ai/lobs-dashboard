@@ -138,11 +138,11 @@ struct OnboardingServerSetupView: View {
                 // Step 4
                 StepBlock(
                     number: 4,
-                    title: "Configure orchestrator to use your control repo:",
-                    command: "cd ~/lobs-orchestrator\necho 'LOBS_CONTROL_REPO_PATH=~/lobs-control' > .env",
+                    title: "The server now includes the orchestrator (no separate setup needed):",
+                    command: "# Orchestrator is built into lobs-server\n# No additional configuration required",
                     isCopied: copiedIndex == 4,
                     onCopy: {
-                        copyToClipboard("cd ~/lobs-orchestrator\necho 'LOBS_CONTROL_REPO_PATH=~/lobs-control' > .env")
+                        copyToClipboard("# Orchestrator is built into lobs-server\n# No additional configuration required")
                         copiedIndex = 4
                         resetCopyState(for: 4)
                     }
@@ -446,8 +446,6 @@ struct OnboardingServerSetupView: View {
         openclaw onboard --install-daemon
         git clone https://github.com/RafeSymonds/lobs-orchestrator.git ~/lobs-orchestrator
         cd ~/lobs-orchestrator && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
-        cd ~/lobs-orchestrator
-        echo 'LOBS_CONTROL_REPO_PATH=~/lobs-control' > .env
         cd ~/lobs-orchestrator && source .venv/bin/activate && python3 main.py
         """
         

@@ -14,6 +14,15 @@ struct SettingsView: View {
 
   @State private var showingForcePullConfirm: Bool = false
   @State private var showingForcePushConfirm: Bool = false
+  @State private var serverURL: String = ""
+  @State private var connectionTestStatus: ConnectionTestStatus = .idle
+  
+  enum ConnectionTestStatus {
+    case idle
+    case testing
+    case success(String)
+    case failure(String)
+  }
   
   var body: some View {
     VStack(alignment: .leading, spacing: 20) {
@@ -29,26 +38,69 @@ struct SettingsView: View {
           .font(.headline)
         
         if let config = vm.config {
-          // Control Repo URL
-          HStack {
-            Text("Control Repository:")
-              .foregroundColor(.secondary)
-            Spacer()
-            Text(config.controlRepoUrl.isEmpty ? "(not set)" : config.controlRepoUrl)
-              .foregroundColor(.primary)
-              .lineLimit(1)
-              .truncationMode(.middle)
-          }
-          
-          // Local Path
-          HStack {
-            Text("Local Path:")
-              .foregroundColor(.secondary)
-            Spacer()
-            Text(config.controlRepoPath.isEmpty ? "(not set)" : config.controlRepoPath)
-              .foregroundColor(.primary)
-              .lineLimit(1)
-              .truncationMode(.middle)
+          // Server URL
+          VStack(alignment: .leading, spacing: 8) {
+            HStack {
+              Text("Server URL:")
+                .foregroundColor(.secondary)
+              Spacer()
+            }
+            
+            HStack(spacing: 8) {
+              TextField("http://localhost:8000", text: $serverURL)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13, design: .monospaced))
+                .padding(8)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(6)
+                .overlay(
+                  RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                )
+                .onSubmit {
+                  saveServerURL()
+                }
+              
+              Button(action: testConnection) {
+                HStack(spacing: 4) {
+                  if case .testing = connectionTestStatus {
+                    ProgressView()
+                      .scaleEffect(0.6)
+                      .frame(width: 12, height: 12)
+                  } else {
+                    Image(systemName: connectionIcon)
+                      .font(.system(size: 11))
+                  }
+                  Text(connectionButtonText)
+                    .font(.system(size: 12))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+              }
+              .buttonStyle(.bordered)
+              .disabled(connectionTestStatus == .testing)
+            }
+            
+            // Connection status message
+            if case .success(let message) = connectionTestStatus {
+              HStack(spacing: 4) {
+                Image(systemName: "checkmark.circle.fill")
+                  .foregroundColor(.green)
+                  .font(.system(size: 11))
+                Text(message)
+                  .font(.system(size: 11))
+                  .foregroundColor(.secondary)
+              }
+            } else if case .failure(let error) = connectionTestStatus {
+              HStack(spacing: 4) {
+                Image(systemName: "xmark.circle.fill")
+                  .foregroundColor(.red)
+                  .font(.system(size: 11))
+                Text(error)
+                  .font(.system(size: 11))
+                  .foregroundColor(.red)
+              }
+            }
           }
           
           Divider()
@@ -84,73 +136,6 @@ struct SettingsView: View {
             }
             .buttonStyle(.bordered)
             .disabled(config.controlRepoPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-          }
-
-          Divider()
-            .padding(.vertical, 8)
-
-          // Git Sync
-          VStack(alignment: .leading, spacing: 12) {
-            Text("Git Sync")
-              .font(.headline)
-
-            Text("Manual overrides for when automatic sync fails.")
-              .font(.caption)
-              .foregroundColor(.secondary)
-
-            HStack(spacing: 12) {
-              Button(role: .destructive) {
-                showingForcePullConfirm = true
-              } label: {
-                Text("Force Pull (Discard Local)")
-              }
-              .buttonStyle(.bordered)
-              .disabled(vm.repoURL == nil || vm.isGitBusy)
-              .confirmationDialog(
-                "Force Pull (Discard Local)",
-                isPresented: $showingForcePullConfirm,
-                titleVisibility: .visible
-              ) {
-                Button("Force Pull", role: .destructive) {
-                  vm.forcePullDiscardLocal()
-                }
-                Button("Cancel", role: .cancel) {}
-              } message: {
-                Text("This will stash local changes as a safety backup, then reset your repo to origin/main and delete untracked files.")
-              }
-
-              Button(role: .destructive) {
-                showingForcePushConfirm = true
-              } label: {
-                Text("Force Push (Overwrite Remote)")
-              }
-              .buttonStyle(.bordered)
-              .disabled(vm.repoURL == nil || vm.isGitBusy)
-              .confirmationDialog(
-                "Force Push (Overwrite Remote)",
-                isPresented: $showingForcePushConfirm,
-                titleVisibility: .visible
-              ) {
-                Button("Force Push", role: .destructive) {
-                  vm.forcePushOverwriteRemote()
-                }
-                Button("Cancel", role: .cancel) {}
-              } message: {
-                Text("This will overwrite remote changes if needed. Are you sure?")
-              }
-              .confirmationDialog(
-                "Force Push Failed — Escalate to --force?",
-                isPresented: $vm.forcePushEscalationPresented,
-                titleVisibility: .visible
-              ) {
-                Button("Push --force", role: .destructive) {
-                  vm.forcePushOverwriteRemoteForce()
-                }
-                Button("Cancel", role: .cancel) {}
-              } message: {
-                Text((vm.forcePushEscalationError ?? "Force push (with lease) failed") + "\n\nThis will overwrite remote history. Proceed only if you are sure.")
-              }
-            }
           }
 
           Divider()
@@ -240,6 +225,11 @@ struct SettingsView: View {
     }
     .padding(24)
     .frame(width: 600, height: 460)
+    .onAppear {
+      if let config = vm.config {
+        serverURL = config.serverURL
+      }
+    }
     .sheet(isPresented: $showingPersonalityEditor) {
       AgentPersonalitySheet()
         .environmentObject(vm)
@@ -323,6 +313,94 @@ struct SettingsView: View {
 
     // Close settings; the main window will swap into onboarding when `needsOnboarding` becomes true.
     dismiss()
+  }
+  
+  private var connectionIcon: String {
+    switch connectionTestStatus {
+    case .idle:
+      return "network"
+    case .testing:
+      return "network"
+    case .success:
+      return "checkmark.circle.fill"
+    case .failure:
+      return "xmark.circle.fill"
+    }
+  }
+  
+  private var connectionButtonText: String {
+    switch connectionTestStatus {
+    case .idle:
+      return "Test Connection"
+    case .testing:
+      return "Testing..."
+    case .success:
+      return "Connected"
+    case .failure:
+      return "Failed"
+    }
+  }
+  
+  private func saveServerURL() {
+    guard var config = vm.config else { return }
+    config.serverURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    vm.config = config
+    do {
+      try ConfigManager.save(config)
+    } catch {
+      print("⚠️ Failed to save server URL: \(error)")
+    }
+  }
+  
+  private func testConnection() {
+    connectionTestStatus = .testing
+    
+    Task {
+      do {
+        let urlString = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: urlString) else {
+          await MainActor.run {
+            connectionTestStatus = .failure("Invalid URL")
+          }
+          return
+        }
+        
+        let healthURL = url.appendingPathComponent("/api/health")
+        let (data, response) = try await URLSession.shared.data(from: healthURL)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+          await MainActor.run {
+            connectionTestStatus = .failure("Invalid response")
+          }
+          return
+        }
+        
+        if httpResponse.statusCode == 200 {
+          // Try to parse JSON for a status message
+          if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+             let status = json["status"] as? String {
+            await MainActor.run {
+              connectionTestStatus = .success("Server healthy: \(status)")
+            }
+          } else {
+            await MainActor.run {
+              connectionTestStatus = .success("Server is online")
+            }
+          }
+          
+          // Auto-save on successful connection
+          saveServerURL()
+        } else {
+          await MainActor.run {
+            connectionTestStatus = .failure("Server returned \(httpResponse.statusCode)")
+          }
+        }
+      } catch {
+        await MainActor.run {
+          connectionTestStatus = .failure(error.localizedDescription)
+        }
+      }
+    }
   }
 }
 

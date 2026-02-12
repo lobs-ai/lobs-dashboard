@@ -535,24 +535,265 @@ final class APIService {
     )
   }
   
-  // MARK: - Research (Not yet implemented in server)
+  // MARK: - Research
   
-  func loadRequests(projectId: String) throws -> [ResearchRequest] {
-    // Server doesn't have research endpoints yet
-    // Return empty array for now
-    return []
+  func loadResearchDoc(projectId: String) async throws -> String? {
+    struct ResearchDocResponse: Codable {
+      let projectId: String
+      let content: String?
+      
+      enum CodingKeys: String, CodingKey {
+        case projectId = "project_id"
+        case content
+      }
+    }
+    
+    do {
+      let doc: ResearchDocResponse = try await request(
+        method: "GET",
+        path: "/api/research/\(projectId)/doc"
+      )
+      return doc.content
+    } catch APIError.httpError(statusCode: 404, _) {
+      return nil
+    }
   }
   
-  func loadResearchTiles(projectId: String) throws -> [ResearchTile] {
-    // Server doesn't have research tile endpoints yet
-    return []
+  func saveResearchDoc(projectId: String, content: String) async throws {
+    struct ResearchDocUpdate: Codable {
+      let content: String
+    }
+    
+    struct ResearchDocResponse: Codable {
+      let projectId: String
+      let content: String?
+      
+      enum CodingKeys: String, CodingKey {
+        case projectId = "project_id"
+        case content
+      }
+    }
+    
+    let _: ResearchDocResponse = try await request(
+      method: "PUT",
+      path: "/api/research/\(projectId)/doc",
+      body: ResearchDocUpdate(content: content)
+    )
   }
   
-  // MARK: - Tracker (Not yet implemented in server)
+  func loadResearchSources(projectId: String) async throws -> [ResearchSource] {
+    return try await request(
+      method: "GET",
+      path: "/api/research/\(projectId)/sources",
+      queryItems: [URLQueryItem(name: "limit", value: "1000")]
+    )
+  }
   
-  func loadTrackerItems(projectId: String) throws -> [TrackerItem] {
-    // Server doesn't have tracker endpoints yet
-    return []
+  func addResearchSource(projectId: String, source: ResearchSource) async throws {
+    struct SourceCreate: Codable {
+      let id: String
+      let projectId: String
+      let url: String?
+      let title: String
+      let notes: String?
+      let sourceType: String
+      
+      enum CodingKeys: String, CodingKey {
+        case id
+        case projectId = "project_id"
+        case url
+        case title
+        case notes
+        case sourceType = "source_type"
+      }
+    }
+    
+    let create = SourceCreate(
+      id: source.id,
+      projectId: projectId,
+      url: source.url,
+      title: source.title,
+      notes: source.notes,
+      sourceType: source.sourceType.rawValue
+    )
+    
+    let _: ResearchSource = try await request(
+      method: "POST",
+      path: "/api/research/\(projectId)/sources",
+      body: create
+    )
+  }
+  
+  func loadResearchRequests(projectId: String) async throws -> [ResearchRequest] {
+    return try await request(
+      method: "GET",
+      path: "/api/research/\(projectId)/requests",
+      queryItems: [URLQueryItem(name: "limit", value: "1000")]
+    )
+  }
+  
+  func addResearchRequest(projectId: String, request: ResearchRequest) async throws {
+    struct RequestCreate: Codable {
+      let id: String
+      let projectId: String
+      let question: String
+      let status: String
+      let priority: String?
+      
+      enum CodingKeys: String, CodingKey {
+        case id
+        case projectId = "project_id"
+        case question
+        case status
+        case priority
+      }
+    }
+    
+    let create = RequestCreate(
+      id: request.id,
+      projectId: projectId,
+      question: request.question,
+      status: request.status.rawValue,
+      priority: request.priority?.rawValue
+    )
+    
+    let _: ResearchRequest = try await request(
+      method: "POST",
+      path: "/api/research/\(projectId)/requests",
+      body: create
+    )
+  }
+  
+  func updateResearchRequest(projectId: String, requestId: String, status: ResearchRequestStatus) async throws {
+    struct RequestUpdate: Codable {
+      let status: String
+    }
+    
+    let _: ResearchRequest = try await request(
+      method: "PUT",
+      path: "/api/research/\(projectId)/requests/\(requestId)",
+      body: RequestUpdate(status: status.rawValue)
+    )
+  }
+  
+  func deleteResearchRequest(projectId: String, requestId: String) async throws {
+    try await requestVoid(
+      method: "DELETE",
+      path: "/api/research/\(projectId)/requests/\(requestId)"
+    )
+  }
+  
+  // MARK: - Tracker
+  
+  func loadTrackerItems(projectId: String) async throws -> [TrackerItem] {
+    return try await request(
+      method: "GET",
+      path: "/api/tracker/\(projectId)/items",
+      queryItems: [URLQueryItem(name: "limit", value: "1000")]
+    )
+  }
+  
+  func addTrackerItem(projectId: String, item: TrackerItem) async throws {
+    struct ItemCreate: Codable {
+      let id: String
+      let projectId: String
+      let title: String
+      let status: String
+      let category: String?
+      let priority: String?
+      let notes: String?
+      
+      enum CodingKeys: String, CodingKey {
+        case id
+        case projectId = "project_id"
+        case title
+        case status
+        case category
+        case priority
+        case notes
+      }
+    }
+    
+    let create = ItemCreate(
+      id: item.id,
+      projectId: projectId,
+      title: item.title,
+      status: item.status.rawValue,
+      category: item.category,
+      priority: item.priority?.rawValue,
+      notes: item.notes
+    )
+    
+    let _: TrackerItem = try await request(
+      method: "POST",
+      path: "/api/tracker/\(projectId)/items",
+      body: create
+    )
+  }
+  
+  func updateTrackerItem(projectId: String, itemId: String, item: TrackerItem) async throws {
+    struct ItemUpdate: Codable {
+      let title: String?
+      let status: String?
+      let category: String?
+      let priority: String?
+      let notes: String?
+    }
+    
+    let update = ItemUpdate(
+      title: item.title,
+      status: item.status.rawValue,
+      category: item.category,
+      priority: item.priority?.rawValue,
+      notes: item.notes
+    )
+    
+    let _: TrackerItem = try await request(
+      method: "PUT",
+      path: "/api/tracker/\(projectId)/items/\(itemId)",
+      body: update
+    )
+  }
+  
+  func deleteTrackerItem(projectId: String, itemId: String) async throws {
+    try await requestVoid(
+      method: "DELETE",
+      path: "/api/tracker/\(projectId)/items/\(itemId)"
+    )
+  }
+  
+  // MARK: - Text Dumps
+  
+  func loadTextDumps() async throws -> [TextDump] {
+    return try await request(
+      method: "GET",
+      path: "/api/text-dumps",
+      queryItems: [URLQueryItem(name: "limit", value: "100")]
+    )
+  }
+  
+  func createTextDump(content: String, source: String?, context: String?) async throws -> TextDump {
+    struct DumpCreate: Codable {
+      let id: String
+      let content: String
+      let source: String?
+      let context: String?
+      let status: String
+    }
+    
+    let create = DumpCreate(
+      id: UUID().uuidString,
+      content: content,
+      source: source,
+      context: context,
+      status: "pending"
+    )
+    
+    return try await request(
+      method: "POST",
+      path: "/api/text-dumps",
+      body: create
+    )
   }
   
   // MARK: - Read State (Local-only for now)

@@ -860,13 +860,25 @@ final class AppViewModel: ObservableObject {
       for p in projectsSnapshot where p.resolvedType == .research {
         if Task.isCancelled { return }
 
-        // TODO: API endpoint needed for research requests
-        // For now, use empty stats
-        stats[p.id] = ResearchOverviewStats(
-          openRequests: 0,
-          totalRequests: 0,
-          deliverables: 0
-        )
+        do {
+          let requests = try await api.loadResearchRequests(projectId: p.id)
+          let openCount = requests.filter { $0.status == .open }.count
+          
+          stats[p.id] = ResearchOverviewStats(
+            openRequests: openCount,
+            totalRequests: requests.count,
+            deliverables: 0
+          )
+          
+          openRequests += requests.filter { $0.status == .open }
+        } catch {
+          print("⚠️ Failed to load research requests for \(p.id): \(error)")
+          stats[p.id] = ResearchOverviewStats(
+            openRequests: 0,
+            totalRequests: 0,
+            deliverables: 0
+          )
+        }
       }
 
       await MainActor.run {
@@ -3589,8 +3601,19 @@ final class AppViewModel: ObservableObject {
   // MARK: - Text Dumps
 
   func loadTextDumps() {
-    // TODO: API endpoint needed for text dumps
-    textDumps = []
+    Task {
+      do {
+        let dumps = try await api.loadTextDumps()
+        await MainActor.run {
+          self.textDumps = dumps
+        }
+      } catch {
+        print("⚠️ Failed to load text dumps: \(error)")
+        await MainActor.run {
+          self.textDumps = []
+        }
+      }
+    }
   }
 
   /// Mark a completed text dump as reviewed by the user.
@@ -4948,25 +4971,52 @@ final class AppViewModel: ObservableObject {
   /// Load research data asynchronously (off main thread)
   private func loadResearchDataAsync() async {
     guard await MainActor.run(body: { isResearchProject }) else { return }
+    guard let projectId = await MainActor.run(body: { selectedProjectId }) else { return }
     
-    // TODO: API endpoints needed for research data
-    await MainActor.run {
-      self.researchDocContent = ""
-      self.researchSources = []
-      self.researchDeliverables = []
-      self.researchTiles = []
-      self.researchRequests = []
+    do {
+      let doc = try await api.loadResearchDoc(projectId: projectId)
+      let sources = try await api.loadResearchSources(projectId: projectId)
+      let requests = try await api.loadResearchRequests(projectId: projectId)
+      
+      await MainActor.run {
+        self.researchDocContent = doc ?? ""
+        self.researchSources = sources
+        self.researchRequests = requests
+        // Tiles and deliverables are computed from the doc content
+        self.researchTiles = []
+        self.researchDeliverables = []
+      }
+    } catch {
+      print("⚠️ Failed to load research data: \(error)")
+      await MainActor.run {
+        self.researchDocContent = ""
+        self.researchSources = []
+        self.researchRequests = []
+        self.researchTiles = []
+        self.researchDeliverables = []
+      }
     }
   }
 
   /// Load tracker data asynchronously (off main thread)
   private func loadTrackerDataAsync() async {
     guard await MainActor.run(body: { isTrackerProject }) else { return }
+    guard let projectId = await MainActor.run(body: { selectedProjectId }) else { return }
     
-    // TODO: API endpoints needed for tracker data
-    await MainActor.run {
-      self.trackerItems = []
-      self.trackerRequests = []
+    do {
+      let items = try await api.loadTrackerItems(projectId: projectId)
+      
+      await MainActor.run {
+        self.trackerItems = items
+        // Requests are tracked separately if needed
+        self.trackerRequests = []
+      }
+    } catch {
+      print("⚠️ Failed to load tracker data: \(error)")
+      await MainActor.run {
+        self.trackerItems = []
+        self.trackerRequests = []
+      }
     }
   }
 

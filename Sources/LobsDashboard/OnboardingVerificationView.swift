@@ -1,17 +1,17 @@
 import SwiftUI
 import AppKit
 
-/// Server connection verification screen of the onboarding wizard
+/// API connection verification screen of the onboarding wizard
 struct OnboardingVerificationView: View {
     @EnvironmentObject var vm: AppViewModel
-    let repoUrl: String
+    let repoUrl: String  // Now server URL
     let onBack: () -> Void
     let onComplete: () -> Void
     
     @State private var verificationState: VerificationState = .checking
-    @State private var gitPullStatus: CheckStatus = .pending
-    @State private var workerStatusCheckStatus: CheckStatus = .pending
-    @State private var lastHeartbeat: Date?
+    @State private var apiHealthStatus: CheckStatus = .pending
+    @State private var orchestratorStatus: CheckStatus = .pending
+    @State private var orchestratorInfo: String?
     @State private var errorMessage: String?
     
     enum VerificationState {
@@ -73,13 +73,13 @@ struct OnboardingVerificationView: View {
             // Status checks
             VStack(alignment: .leading, spacing: 16) {
                 StatusCheckRow(
-                    status: gitPullStatus,
-                    text: "Pulling latest changes..."
+                    status: apiHealthStatus,
+                    text: "Checking API health..."
                 )
                 
                 StatusCheckRow(
-                    status: workerStatusCheckStatus,
-                    text: "Checking worker status..."
+                    status: orchestratorStatus,
+                    text: "Checking orchestrator status..."
                 )
             }
             .frame(width: 420)
@@ -167,18 +167,18 @@ struct OnboardingVerificationView: View {
                 .foregroundColor(.green)
             
             // Success message
-            Text("Connected! Your AI assistant is running.")
+            Text("Connected! Your AI assistant is ready.")
                 .font(.system(size: 16, weight: .medium))
                 .foregroundColor(.primary)
             
-            // Last heartbeat info
-            if let heartbeat = lastHeartbeat {
+            // Orchestrator info
+            if let info = orchestratorInfo {
                 VStack(spacing: 4) {
-                    Text("Last heartbeat:")
+                    Text("Orchestrator status:")
                         .font(.system(size: 13))
                         .foregroundColor(.secondary)
                     
-                    Text(formatHeartbeatTime(heartbeat))
+                    Text(info)
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(.primary)
                 }
@@ -217,17 +217,17 @@ struct OnboardingVerificationView: View {
                 
                 TroubleshootingTip(
                     icon: "1.circle.fill",
-                    text: "Make sure the orchestrator is running on your server"
+                    text: "Make sure the Lobs server is running"
                 )
                 
                 TroubleshootingTip(
                     icon: "2.circle.fill",
-                    text: "Check that your server can push to the control repo"
+                    text: "Check that the server URL is correct"
                 )
                 
                 TroubleshootingTip(
                     icon: "3.circle.fill",
-                    text: "Verify that the worker has sent at least one heartbeat"
+                    text: "Verify that the orchestrator service is enabled"
                 )
             }
             .padding(16)
@@ -246,114 +246,107 @@ struct OnboardingVerificationView: View {
             // Reset state
             await MainActor.run {
                 verificationState = .checking
-                gitPullStatus = .pending
-                workerStatusCheckStatus = .pending
+                apiHealthStatus = .pending
+                orchestratorStatus = .pending
                 errorMessage = nil
             }
             
-            // Check 1: Git pull
+            // Check 1: API health
             await MainActor.run {
-                gitPullStatus = .running
+                apiHealthStatus = .running
             }
             
-            let gitPullSuccess = await performGitPull()
+            let healthSuccess = await checkAPIHealth()
             
             await MainActor.run {
-                gitPullStatus = gitPullSuccess ? .success : .failure
+                apiHealthStatus = healthSuccess ? .success : .failure
             }
             
-            if !gitPullSuccess {
+            if !healthSuccess {
                 await MainActor.run {
                     verificationState = .failure
-                    errorMessage = "Failed to pull latest changes from the control repository."
+                    errorMessage = "Failed to connect to the API server. Make sure it's running."
                 }
                 return
             }
             
-            // Check 2: Worker status
+            // Check 2: Orchestrator status
             await MainActor.run {
-                workerStatusCheckStatus = .running
+                orchestratorStatus = .running
             }
             
-            let workerStatusResult = await checkWorkerStatus()
+            let orchestratorResult = await checkOrchestratorStatus()
             
             await MainActor.run {
-                workerStatusCheckStatus = workerStatusResult.success ? .success : .failure
+                orchestratorStatus = orchestratorResult.success ? .success : .failure
             }
             
-            if !workerStatusResult.success {
+            if !orchestratorResult.success {
                 await MainActor.run {
                     verificationState = .failure
-                    errorMessage = workerStatusResult.error ?? "Worker status check failed."
+                    errorMessage = orchestratorResult.error ?? "Orchestrator is not running."
                 }
                 return
             }
             
             // All checks passed
             await MainActor.run {
-                lastHeartbeat = workerStatusResult.heartbeat
+                orchestratorInfo = orchestratorResult.info
                 verificationState = .success
             }
         }
     }
     
-    /// Perform git pull in the control repo
-    private func performGitPull() async -> Bool {
-        guard let config = vm.config else { return false }
-        let repoPath = URL(fileURLWithPath: config.controlRepoPath)
+    /// Check API health endpoint
+    private func checkAPIHealth() async -> Bool {
+        guard let url = URL(string: repoUrl)?.appendingPathComponent("/api/health") else {
+            return false
+        }
         
-        let result = await Git.runWithRetry(["pull", "--rebase"], cwd: repoPath, maxRetries: 3)
-        return result.success
+        do {
+            let (_, response) = try await URLSession.shared.data(from: url)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                return false
+            }
+            return httpResponse.statusCode == 200
+        } catch {
+            return false
+        }
     }
     
-    /// Check worker status from state/worker-status.json
-    private func checkWorkerStatus() async -> (success: Bool, error: String?, heartbeat: Date?) {
-        guard let config = vm.config else {
-            return (false, "No configuration found.", nil)
+    /// Check orchestrator status from API
+    private func checkOrchestratorStatus() async -> (success: Bool, error: String?, info: String?) {
+        guard let url = URL(string: repoUrl)?.appendingPathComponent("/api/orchestrator/status") else {
+            return (false, "Invalid server URL", nil)
         }
         
-        let statusPath = (config.controlRepoPath as NSString)
-            .appendingPathComponent("state/worker-status.json")
-        
-        // Check if file exists
-        guard FileManager.default.fileExists(atPath: statusPath) else {
-            return (false, "Worker status file not found. Make sure the orchestrator has run at least once.", nil)
-        }
-        
-        // Read and parse JSON
         do {
-            let data = try Data(contentsOf: URL(fileURLWithPath: statusPath))
-            let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+            let (data, response) = try await URLSession.shared.data(from: url)
             
-            guard let json = json else {
-                return (false, "Invalid worker status file format.", nil)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                return (false, "Invalid response from server", nil)
             }
             
-            // Check for lastHeartbeat
-            guard let heartbeatString = json["lastHeartbeat"] as? String else {
-                return (false, "No heartbeat found. The worker hasn't sent any status updates yet.", nil)
+            if httpResponse.statusCode == 200 {
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    let running = json["running"] as? Bool ?? false
+                    let paused = json["paused"] as? Bool ?? false
+                    
+                    if running && !paused {
+                        return (true, nil, "Running")
+                    } else if paused {
+                        return (true, nil, "Paused (click resume to start)")
+                    } else {
+                        return (false, "Orchestrator is not running", nil)
+                    }
+                } else {
+                    return (false, "Invalid response format", nil)
+                }
+            } else {
+                return (false, "Server returned status \(httpResponse.statusCode)", nil)
             }
-            
-            // Parse ISO8601 date
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            
-            guard let heartbeatDate = formatter.date(from: heartbeatString) else {
-                return (false, "Invalid heartbeat timestamp format.", nil)
-            }
-            
-            // Check if heartbeat is within last 5 minutes
-            let fiveMinutesAgo = Date().addingTimeInterval(-5 * 60)
-            
-            if heartbeatDate < fiveMinutesAgo {
-                let minutesAgo = Int(-heartbeatDate.timeIntervalSinceNow / 60)
-                return (false, "Last heartbeat was \(minutesAgo) minutes ago. The worker may not be running.", heartbeatDate)
-            }
-            
-            return (true, nil, heartbeatDate)
-            
         } catch {
-            return (false, "Failed to read worker status: \(error.localizedDescription)", nil)
+            return (false, "Connection failed: \(error.localizedDescription)", nil)
         }
     }
     
@@ -365,13 +358,6 @@ struct OnboardingVerificationView: View {
     /// Handle completion - set onboardingComplete and save config
     private func handleComplete() {
         onComplete()
-    }
-    
-    /// Format heartbeat time for display
-    private func formatHeartbeatTime(_ date: Date) -> String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .full
-        return formatter.localizedString(for: date, relativeTo: Date())
     }
 }
 
@@ -424,7 +410,7 @@ struct TroubleshootingTip: View {
 
 #Preview {
     OnboardingVerificationView(
-        repoUrl: "git@github.com:user/lobs-control.git",
+        repoUrl: "http://localhost:8000",
         onBack: {},
         onComplete: {}
     )
