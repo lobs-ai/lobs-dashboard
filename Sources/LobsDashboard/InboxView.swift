@@ -586,7 +586,7 @@ private struct DocumentViewer: View {
       }
       .padding(.horizontal, 20)
       .padding(.vertical, 14)
-      .background(ITheme.bg.opacity(0.6))
+      .background(ITheme.bg)
 
       Divider()
 
@@ -624,6 +624,7 @@ private struct DocumentViewer: View {
               .id("thread-bottom")
           }
         }
+        .background(ITheme.bg)
         .onChange(of: thread?.messages.count) { _ in
           withAnimation {
             proxy.scrollTo("thread-bottom", anchor: .bottom)
@@ -692,7 +693,7 @@ private struct DocumentViewer: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 8)
-        .background(Color.orange.opacity(0.08))
+        .background(Color.orange.opacity(0.15))
       }
 
       Divider()
@@ -729,7 +730,7 @@ private struct DocumentViewer: View {
       }
       .padding(.horizontal, 20)
       .padding(.vertical, 12)
-      .background(ITheme.bg.opacity(0.5))
+      .background(ITheme.bg)
     }
     .background(ITheme.bg)
     .onChange(of: item.id) { _ in
