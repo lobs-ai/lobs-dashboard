@@ -60,6 +60,9 @@ final class AppViewModel: ObservableObject {
   /// Current application configuration (includes user settings)
   @Published var config: AppConfig?
   
+  /// API service for communicating with lobs-server
+  private var api: APIService
+  
   /// Helper to access settings from config
   private var settings: UserSettings {
     get { config?.settings ?? UserSettings() }
@@ -386,8 +389,8 @@ final class AppViewModel: ObservableObject {
   /// Commit hash of last successful push.
   @Published var lastPushedCommitHash: String? = nil
 
-  /// Debounced auto-push queue: batches many small saves into a single commit+push.
-  private lazy var gitAutoPushQueue = GitAutoPushQueue(owner: self, debounceSeconds: 10.0)
+  /// Debounced auto-push queue: not needed in API mode (server handles persistence)
+  // private lazy var gitAutoPushQueue = GitAutoPushQueue(owner: self, debounceSeconds: 10.0)
 
   // Control repo sync status
   /// How many commits local HEAD is ahead of origin/main (unpublished changes).
@@ -560,6 +563,10 @@ final class AppViewModel: ObservableObject {
   init() {
     // Load config from ConfigManager (includes automatic migration from UserDefaults)
     config = ConfigManager.load()
+    
+    // Initialize API service
+    let baseURL = config?.serverURL ?? "http://localhost:8000"
+    api = (try? APIService(baseURLString: baseURL)) ?? APIService(baseURL: URL(string: "http://localhost:8000")!)
     
     // Load repo path from config
     if let loadedConfig = config {
@@ -749,34 +756,23 @@ final class AppViewModel: ObservableObject {
       let currentReadItemIds = await readItemIds
 
       // Load data off the main thread to avoid blocking UI
-      let loadedData: (projects: [Project], tasks: [DashboardTask], hasGitHubProject: Bool)? = await Task.detached {
+      let loadedData: (projects: [Project], tasks: [DashboardTask], hasGitHubProject: Bool)? = await Task.detached { [weak self] in
+        guard let self = self else { return nil }
         do {
-          let store = LobsControlStore(repoRoot: repoURL)
-
           // Projects
-          let pfile = try store.loadProjects()
+          let pfile = try await self.api.loadProjects()
           var loadedProjects = pfile.projects
-          if !loadedProjects.contains(where: { $0.id == "default" }) {
-            let now = Date()
-            loadedProjects.insert(Project(id: "default", title: "Default", createdAt: now, updatedAt: now, notes: nil, archived: false), at: 0)
-          }
 
-          if shouldAutoArchiveCompleted {
-            try store.archiveCompleted(olderThanDays: archiveAfterDays)
-          }
-
-          if shouldAutoArchiveReadInbox {
-            try await store.archiveReadInboxItems(olderThanDays: archiveReadAfterDays, readItemIds: currentReadItemIds)
-          }
+          // Auto-archive is handled server-side, no need to do it client-side
 
           // Track GitHub sync status if selected project uses GitHub mode
-          let hasGitHubProject = loadedProjects.contains { $0.syncMode == .github && $0.githubConfig != nil }
+          let hasGitHubProject = loadedProjects.contains { $0.tracking == .github && $0.github != nil }
 
-          let file = try await store.loadTasks()
+          let file = try await self.api.loadTasks()
 
           return (loadedProjects, file.tasks, hasGitHubProject)
         } catch {
-          print("⚠️ [reload:silent] Failed loading projects/tasks from disk: \(AppViewModel.describeLoadError(error))")
+          print("⚠️ [reload:silent] Failed loading projects/tasks from API: \(AppViewModel.describeLoadError(error))")
           return nil
         }
       }.value
@@ -814,9 +810,8 @@ final class AppViewModel: ObservableObject {
           || data.tasks.map({ $0.updatedAt }) != tasks.map({ $0.updatedAt })
           || data.tasks.map({ $0.status.rawValue }) != tasks.map({ $0.status.rawValue }) {
           tasks = data.tasks
-          if let store = try? LobsControlStore(repoRoot: repoURL) {
-            try? loadArtifactForSelected(store: store)
-          }
+          // TODO: API endpoint needed for artifact loading
+          // try? loadArtifactForSelected()
         }
 
         // Refresh cached Overview stats (runs in background)
@@ -826,16 +821,16 @@ final class AppViewModel: ObservableObject {
       }
 
       // Load secondary data in background (non-blocking)
-      Task.detached(priority: .utility) {
-        guard let store = try? LobsControlStore(repoRoot: repoURL) else { return }
+      Task.detached(priority: .utility) { [weak self] in
+        guard let self = self else { return }
         
         // These can happen async without blocking the main UI
-        await self.loadResearchDataAsync(store: store)
-        await self.loadTrackerDataAsync(store: store)
-        await self.loadInboxItemsAsync(store: store)
-        await self.loadWorkerStatusAsync(store: store)
-        await self.loadAgentStatusesAsync(store: store)
-        await self.loadAgentDocumentsAsync(store: store)
+        await self.loadResearchDataAsync()
+        await self.loadTrackerDataAsync()
+        await self.loadInboxItemsAsync()
+        await self.loadWorkerStatusAsync()
+        await self.loadAgentStatusesAsync()
+        await self.loadAgentDocumentsAsync()
       }
 
       // Check for updates in background (low priority)
@@ -852,15 +847,12 @@ final class AppViewModel: ObservableObject {
   /// Refresh cached research stats for the Overview screen.
   /// Runs off the main thread and publishes results back on the MainActor.
   func refreshOverviewResearchStats() {
-    guard let repoURL else { return }
-
     let projectsSnapshot = projects.filter { ($0.archived ?? false) == false }
 
     // Cancel any in-flight refresh to avoid piling up work during rapid refreshes.
     overviewResearchRefreshTask?.cancel()
-    overviewResearchRefreshTask = Task.detached(priority: .utility) { [repoURL, projectsSnapshot] in
-      let store = LobsControlStore(repoRoot: repoURL)
-      let fm = FileManager.default
+    overviewResearchRefreshTask = Task.detached(priority: .utility) { [weak self, projectsSnapshot] in
+      guard let self = self else { return }
 
       var stats: [String: ResearchOverviewStats] = [:]
       var openRequests: [ResearchRequest] = []
@@ -868,30 +860,14 @@ final class AppViewModel: ObservableObject {
       for p in projectsSnapshot where p.resolvedType == .research {
         if Task.isCancelled { return }
 
-        // Requests
-        let reqs: [ResearchRequest] = (try? store.loadRequests(projectId: p.id)) ?? []
-        let open = reqs.filter { $0.status == .open || $0.status == .inProgress }
-        openRequests.append(contentsOf: open)
-
-        // Deliverables — count files without reading contents (much faster).
-        let docsDir = repoURL
-          .appendingPathComponent("state/research")
-          .appendingPathComponent(p.id)
-          .appendingPathComponent("docs")
-        let deliverableCount: Int = {
-          guard fm.fileExists(atPath: docsDir.path) else { return 0 }
-          let files = (try? fm.contentsOfDirectory(at: docsDir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? []
-          return files.filter { $0.pathExtension.lowercased() == "md" }.count
-        }()
-
+        // TODO: API endpoint needed for research requests
+        // For now, use empty stats
         stats[p.id] = ResearchOverviewStats(
-          openRequests: open.count,
-          totalRequests: reqs.count,
-          deliverables: deliverableCount
+          openRequests: 0,
+          totalRequests: 0,
+          deliverables: 0
         )
       }
-
-      openRequests.sort { $0.createdAt > $1.createdAt }
 
       await MainActor.run {
         // If a new refresh started while we were working, don't publish stale results.
@@ -1269,42 +1245,27 @@ final class AppViewModel: ObservableObject {
       let currentProjectId = selectedProjectId
 
       // Load data off the main thread to avoid blocking UI
-      let loadedData: (projects: [Project], tasks: [DashboardTask], hasGitHubProject: Bool, githubSyncTime: Date?)? = await Task.detached {
+      let loadedData: (projects: [Project], tasks: [DashboardTask], hasGitHubProject: Bool, githubSyncTime: Date?)? = await Task.detached { [weak self] in
+        guard let self = self else { return nil }
         do {
-          let store = LobsControlStore(repoRoot: repoURL)
-
           // Projects
-          let pfile = try store.loadProjects()
+          let pfile = try await self.api.loadProjects()
           var loadedProjects = pfile.projects
-          if !loadedProjects.contains(where: { $0.id == "default" }) {
-            let now = Date()
-            loadedProjects.insert(Project(id: "default", title: "Default", createdAt: now, updatedAt: now, notes: nil, archived: false), at: 0)
-          }
 
-          if shouldAutoArchiveCompleted {
-            try store.archiveCompleted(olderThanDays: archiveAfterDays)
-          }
-
-          if shouldAutoArchiveReadInbox {
-            try await store.archiveReadInboxItems(olderThanDays: archiveReadAfterDays, readItemIds: currentReadItemIds)
-          }
+          // Auto-archive is handled server-side
 
           // Track GitHub sync status if any project uses GitHub mode
           let hasGitHubProject = loadedProjects.contains { $0.tracking == .github && $0.github != nil }
 
-          let file = try await store.loadTasks()
+          let file = try await self.api.loadTasks()
 
           // Get GitHub sync timestamp
-          let githubSyncTime: Date? = {
-            if hasGitHubProject, let currentProject = loadedProjects.first(where: { $0.id == currentProjectId && $0.tracking == .github }) {
-              return store.getGitHubCacheTimestamp(project: currentProject)
-            }
-            return nil
-          }()
+          // TODO: API endpoint needed for GitHub cache timestamp
+          let githubSyncTime: Date? = nil
 
           return (loadedProjects, file.tasks, hasGitHubProject, githubSyncTime)
         } catch {
-          print("⚠️ [reload] Failed loading projects/tasks from disk: \(AppViewModel.describeLoadError(error))")
+          print("⚠️ [reload] Failed loading projects/tasks from API: \(AppViewModel.describeLoadError(error))")
           return nil
         }
       }.value
@@ -1340,9 +1301,8 @@ final class AppViewModel: ObservableObject {
         tasks = data.tasks
         lastError = nil
         
-        if let store = try? LobsControlStore(repoRoot: repoURL) {
-          try? loadArtifactForSelected(store: store)
-        }
+        // TODO: API endpoint needed for artifact loading
+        // try? loadArtifactForSelected()
 
         // Refresh cached Overview stats (runs in background)
         self.refreshOverviewResearchStats()
@@ -1351,19 +1311,20 @@ final class AppViewModel: ObservableObject {
       }
 
       // Load secondary data in background (non-blocking)
-      Task.detached(priority: .utility) {
-        guard let store = try? LobsControlStore(repoRoot: repoURL) else { return }
+      Task.detached(priority: .utility) { [weak self] in
+        guard let self = self else { return }
         
-        await self.loadResearchDataAsync(store: store)
-        await self.loadTrackerDataAsync(store: store)
-        await self.loadInboxItemsAsync(store: store)
-        await self.loadWorkerStatusAsync(store: store)
+        await self.loadResearchDataAsync()
+        await self.loadTrackerDataAsync()
+        await self.loadInboxItemsAsync()
+        await self.loadWorkerStatusAsync()
         
         await MainActor.run {
-          self.loadProjectReadme(store: store)
+          self.loadProjectReadme()
           self.loadTemplates()
-          self.loadTextDumps(store: store)
-          self.refreshProjectLastCommitAt()
+          self.loadTextDumps()
+          // TODO: API endpoint needed for project last commit tracking
+          // self.refreshProjectLastCommitAt()
         }
       }
 
@@ -2099,9 +2060,7 @@ final class AppViewModel: ObservableObject {
     }
   }
 
-  func loadResearchData(store: LobsControlStore? = nil) {
-    guard let repoURL else { return }
-    let s = store ?? LobsControlStore(repoRoot: repoURL)
+  func loadResearchData() {
     guard isResearchProject else {
       researchTiles = []
       researchRequests = []
@@ -2110,38 +2069,33 @@ final class AppViewModel: ObservableObject {
       researchDeliverables = []
       return
     }
-    do {
-      // Try migrating tiles to doc if needed
-      try s.migrateResearchTilesToDoc(projectId: selectedProjectId)
-
-      // Load doc-based content
-      researchDocContent = try s.loadResearchDoc(projectId: selectedProjectId)
-      researchSources = try s.loadResearchSources(projectId: selectedProjectId)
-      researchDeliverables = try s.loadResearchDeliverables(projectId: selectedProjectId)
-
-      // Still load legacy tiles (for backwards compat during transition)
-      researchTiles = try s.loadTiles(projectId: selectedProjectId)
-      researchRequests = try s.loadRequests(projectId: selectedProjectId)
-    } catch {
-      flashError("Failed to load research data: \(error.localizedDescription)")
-    }
+    // TODO: API endpoints needed for research data
+    // For now, clear research data
+    researchTiles = []
+    researchRequests = []
+    researchDocContent = ""
+    researchSources = []
+    researchDeliverables = []
   }
 
   // MARK: - Agent Documents (Reports & Research)
 
-  func loadAgentDocuments(store: LobsControlStore? = nil) {
-    guard let repoURL else { return }
-    let s = store ?? LobsControlStore(repoRoot: repoURL)
-
-    do {
-      var docs = try s.loadAgentDocuments()
-      // Apply read state
-      for i in docs.indices {
-        docs[i].isRead = readDocumentIds.contains(docs[i].id)
+  func loadAgentDocuments() {
+    Task {
+      do {
+        var docs = try await api.loadAgentDocuments()
+        // Apply read state
+        for i in docs.indices {
+          docs[i].isRead = readDocumentIds.contains(docs[i].id)
+        }
+        await MainActor.run {
+          self.agentDocuments = docs
+        }
+      } catch {
+        await MainActor.run {
+          self.flashError("Failed to load agent documents: \(error.localizedDescription)")
+        }
       }
-      agentDocuments = docs
-    } catch {
-      flashError("Failed to load agent documents: \(error.localizedDescription)")
     }
   }
 
@@ -2693,42 +2647,9 @@ final class AppViewModel: ObservableObject {
 
   // MARK: - Project README
 
-  func loadProjectReadme(store: LobsControlStore? = nil) {
-    guard let repoURL else { projectReadme = ""; return }
-    let s = store ?? LobsControlStore(repoRoot: repoURL)
-    do {
-      let readmeContent = try s.loadProjectReadme(projectId: selectedProjectId) ?? ""
-      let projectNotes = projects.first(where: { $0.id == selectedProjectId })?.notes ?? ""
-
-      // Reconcile: README and project notes should always be the same.
-      // If one is populated and the other isn't, sync the populated one to both.
-      if readmeContent.isEmpty && !projectNotes.isEmpty {
-        // Notes exist but README doesn't — create README from notes
-        projectReadme = projectNotes
-        try s.saveProjectReadme(projectId: selectedProjectId, content: projectNotes)
-      } else if !readmeContent.isEmpty && projectNotes.isEmpty {
-        // README exists but notes are empty — update notes from README
-        projectReadme = readmeContent
-        if let idx = projects.firstIndex(where: { $0.id == selectedProjectId }) {
-          projects[idx].notes = readmeContent
-          projects[idx].updatedAt = Date()
-        }
-        try s.updateProjectNotes(id: selectedProjectId, notes: readmeContent)
-      } else {
-        // Both populated (or both empty) — README is the source of truth since
-        // it supports richer content (multi-line markdown).
-        projectReadme = readmeContent
-        if !readmeContent.isEmpty && readmeContent != projectNotes {
-          if let idx = projects.firstIndex(where: { $0.id == selectedProjectId }) {
-            projects[idx].notes = readmeContent
-            projects[idx].updatedAt = Date()
-          }
-          try s.updateProjectNotes(id: selectedProjectId, notes: readmeContent)
-        }
-      }
-    } catch {
-      projectReadme = ""
-    }
+  func loadProjectReadme() {
+    // For API mode, project notes are the only source (no separate README file)
+    projectReadme = projects.first(where: { $0.id == selectedProjectId })?.notes ?? ""
   }
 
   func saveProjectReadme(content: String) {
@@ -2770,49 +2691,51 @@ final class AppViewModel: ObservableObject {
 
   // MARK: - Worker Status
 
-  func loadWorkerStatus(store: LobsControlStore? = nil) {
-    guard let repoURL else { workerStatus = nil; workerHistory = nil; return }
-    let s = store ?? LobsControlStore(repoRoot: repoURL)
-    let oldStatus = workerStatus
-    do {
-      workerStatus = try s.loadWorkerStatus()
-    } catch {
-      workerStatus = nil
-    }
-    do {
-      workerHistory = try s.loadWorkerHistory()
-    } catch {
-      // Keep last known history on transient decode/read errors.
-    }
-    // Main session usage is no longer tracked - all usage comes from worker history
-    mainSessionUsage = nil
+  func loadWorkerStatus() {
+    Task {
+      do {
+        let oldStatus = await MainActor.run { workerStatus }
+        let newStatus = try await api.loadWorkerStatus()
+        let history = try await api.loadWorkerHistory()
+        
+        await MainActor.run {
+          self.workerStatus = newStatus
+          self.workerHistory = history
+          self.mainSessionUsage = nil
+        }
 
-    // Detect worker state changes and send macOS notifications
-    if let old = oldStatus, let new = workerStatus {
-      // Worker finished (was active, now inactive)
-      if old.active && !new.active {
-        let count = new.tasksCompleted ?? 0
-        sendSystemNotification(
-          title: "Worker Finished",
-          body: "Completed \(count) task\(count == 1 ? "" : "s")."
-        )
-      }
-      // Worker completed a new task (task count increased)
-      else if old.active && new.active,
-              let oldCount = old.tasksCompleted, let newCount = new.tasksCompleted,
-              newCount > oldCount {
-        let taskName = new.currentTask ?? "a task"
-        sendSystemNotification(
-          title: "Task Completed",
-          body: "Finished: \(taskName). (\(newCount) total)"
-        )
-      }
-      // Worker started (was inactive, now active)
-      else if !old.active && new.active {
-        sendSystemNotification(
-          title: "Worker Started",
-          body: new.currentTask.map { "Working on: \($0)" } ?? "Worker is now active."
-        )
+        // Detect worker state changes and send macOS notifications
+        if let old = oldStatus, let new = newStatus {
+          // Worker finished (was active, now inactive)
+          if old.active && !new.active {
+            let count = new.tasksCompleted ?? 0
+            sendSystemNotification(
+              title: "Worker Finished",
+              body: "Completed \(count) task\(count == 1 ? "" : "s")."
+            )
+          }
+          // Worker completed a new task (task count increased)
+          else if old.active && new.active,
+                  let oldCount = old.tasksCompleted, let newCount = new.tasksCompleted,
+                  newCount > oldCount {
+            let taskName = new.currentTask ?? "a task"
+            sendSystemNotification(
+              title: "Task Completed",
+              body: "Finished: \(taskName). (\(newCount) total)"
+            )
+          }
+          // Worker started (was inactive, now active)
+          else if !old.active && new.active {
+            sendSystemNotification(
+              title: "Worker Started",
+              body: new.currentTask.map { "Working on: \($0)" } ?? "Worker is now active."
+            )
+          }
+        }
+      } catch {
+        await MainActor.run {
+          self.workerStatus = nil
+        }
       }
     }
   }
@@ -2841,12 +2764,17 @@ final class AppViewModel: ObservableObject {
   @Published var templates: [TaskTemplate] = []
 
   func loadTemplates() {
-    guard let repoURL else { templates = []; return }
-    let store = LobsControlStore(repoRoot: repoURL)
-    do {
-      templates = try store.loadTemplates()
-    } catch {
-      templates = []
+    Task {
+      do {
+        let templates = try await api.loadTemplates()
+        await MainActor.run {
+          self.templates = templates
+        }
+      } catch {
+        await MainActor.run {
+          self.templates = []
+        }
+      }
     }
   }
 
@@ -3326,60 +3254,37 @@ final class AppViewModel: ObservableObject {
     }
   }
 
-  /// Optimistically update a task locally, then do git work in background.
-  /// On failure, reload from disk and show banner.
+  /// Optimistically update a task locally, then persist via API in background.
+  /// On failure, reload from server and show banner.
   private func optimisticUpdate(
     taskId: String,
     localMutation: (inout DashboardTask) -> Void,
-    gitWork: @escaping (URL) async throws -> Void
+    gitWork: @escaping (URL) async throws -> Void  // Keep signature for compatibility, URL is ignored
   ) {
-    guard let repoURL else { return }
-
     // 1. Apply local mutation immediately.
     if let idx = tasks.firstIndex(where: { $0.id == taskId }) {
       withAnimation(.easeInOut(duration: 0.25)) {
         localMutation(&tasks[idx])
+        tasks[idx].updatedAt = Date()
       }
     }
 
-    // 2. Persist to disk synchronously (fast, local only).
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      if let idx = tasks.firstIndex(where: { $0.id == taskId }) {
-        var t = tasks[idx]
-        t.updatedAt = Date()
-        tasks[idx] = t
-        try store.saveExistingTask(t)
-      }
-    } catch {
-      flashError("Failed to save: \(error.localizedDescription)")
-      return
-    }
-
-    // 3. Git add/commit/push in background.
+    // 2. Persist via API in background
     isGitBusy = true
     Task {
       do {
-        try await gitWork(repoURL)
+        if let task = tasks.first(where: { $0.id == taskId }) {
+          try await api.saveExistingTask(task)
+        }
       } catch {
-        // Hold updated task in memory, pull --rebase, re-apply, retry.
-        do {
-          let taskSnapshot: DashboardTask? = tasks.first(where: { $0.id == taskId })
-          _ = try await Git.runAsync(["pull", "--rebase"], cwd: repoURL)
-
-          // Re-persist from memory after pull
-          if let snapshot = taskSnapshot {
-            let store = LobsControlStore(repoRoot: repoURL)
-            try store.saveExistingTask(snapshot)
-          }
-
-          try await gitWork(repoURL)
-        } catch {
-          flashError("Git sync failed after retry: \(error.localizedDescription)")
-          reload()
+        await MainActor.run {
+          self.flashError("Failed to save: \(error.localizedDescription)")
+          self.reload()
         }
       }
-      isGitBusy = false
+      await MainActor.run {
+        self.isGitBusy = false
+      }
     }
   }
 
@@ -3388,24 +3293,28 @@ final class AppViewModel: ObservableObject {
   /// When a task is completed, remove it from the `blockedBy` list of all dependent tasks.
   /// If a dependent task has no remaining blockers, auto-unblock it (set workState back from blocked).
   private func autoUnblockDependents(of completedTaskId: String, autoPush: Bool) {
-    guard let repoURL else { return }
-    let store = LobsControlStore(repoRoot: repoURL)
+    Task {
+      for i in await tasks.indices {
+        guard var blockers = await tasks[i].blockedBy, blockers.contains(completedTaskId) else { continue }
+        blockers.removeAll { $0 == completedTaskId }
+        
+        await MainActor.run {
+          self.tasks[i].blockedBy = blockers.isEmpty ? nil : blockers
+          self.tasks[i].updatedAt = Date()
 
-    for i in tasks.indices {
-      guard var blockers = tasks[i].blockedBy, blockers.contains(completedTaskId) else { continue }
-      blockers.removeAll { $0 == completedTaskId }
-      tasks[i].blockedBy = blockers.isEmpty ? nil : blockers
-      tasks[i].updatedAt = Date()
+          // If no remaining blockers and task was blocked, unblock it
+          if blockers.isEmpty && self.tasks[i].workState == .blocked {
+            self.tasks[i].workState = .notStarted
+          }
+        }
 
-      // If no remaining blockers and task was blocked, unblock it
-      if blockers.isEmpty && tasks[i].workState == .blocked {
-        tasks[i].workState = .notStarted
-      }
-
-      do {
-        try store.saveExistingTask(tasks[i])
-      } catch {
-        flashError("Failed to save unblocked task: \(error.localizedDescription)")
+        do {
+          try await api.saveExistingTask(await tasks[i])
+        } catch {
+          await MainActor.run {
+            self.flashError("Failed to save unblocked task: \(error.localizedDescription)")
+          }
+        }
       }
     }
   }
@@ -3425,28 +3334,14 @@ final class AppViewModel: ObservableObject {
       $0.status = .active
       $0.workState = .notStarted
       if $0.startedAt == nil { $0.startedAt = Date() }
-    }) { repoURL in
-      // Also persist the status change to disk.
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.setStatus(taskId: id, status: .active)
-      try store.setWorkState(taskId: id, workState: .notStarted)
-      try await self.asyncCommitAndMaybePush(
-        repoURL: repoURL,
-        message: "Lobs: approve \(id) → active",
-        autoPush: autoPush
-      )
+    }) { _ in
+      // Status change is persisted via optimisticUpdate → api.saveExistingTask
     }
   }
 
   func requestChangesSelected(autoPush: Bool) {
     guard let id = selectedTaskId else { return }
-    optimisticUpdate(taskId: id, localMutation: { $0.reviewState = .changesRequested }) { repoURL in
-      try await self.asyncCommitAndMaybePush(
-        repoURL: repoURL,
-        message: "Lobs: set \(id) reviewState=changes_requested",
-        autoPush: autoPush
-      )
-    }
+    optimisticUpdate(taskId: id, localMutation: { $0.reviewState = .changesRequested }) { _ in }
   }
 
   func rejectSelected(autoPush: Bool) {
@@ -3454,15 +3349,7 @@ final class AppViewModel: ObservableObject {
     optimisticUpdate(taskId: id, localMutation: {
       $0.reviewState = .rejected
       $0.status = .rejected
-    }) { repoURL in
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.setStatus(taskId: id, status: .rejected)
-      try await self.asyncCommitAndMaybePush(
-        repoURL: repoURL,
-        message: "Lobs: reject \(id)",
-        autoPush: autoPush
-      )
-    }
+    }) { _ in }
   }
 
   /// Mark an active task as completed (work is done).
@@ -3472,13 +3359,7 @@ final class AppViewModel: ObservableObject {
       $0.status = .completed
       $0.workState = nil
       if $0.finishedAt == nil { $0.finishedAt = Date() }
-    }) { repoURL in
-      try await self.asyncCommitAndMaybePush(
-        repoURL: repoURL,
-        message: "Lobs: complete \(id)",
-        autoPush: autoPush
-      )
-    }
+    }) { _ in }
     autoUnblockDependents(of: id, autoPush: autoPush)
   }
 
@@ -3490,16 +3371,7 @@ final class AppViewModel: ObservableObject {
       $0.status = .completed
       $0.reviewState = .approved
       $0.workState = nil
-    }) { repoURL in
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.setStatus(taskId: id, status: .completed)
-      try store.setReviewState(taskId: id, reviewState: .approved)
-      try await self.asyncCommitAndMaybePush(
-        repoURL: repoURL,
-        message: "Lobs: mark \(id) done",
-        autoPush: autoPush
-      )
-    }
+    }) { _ in }
   }
 
   /// Reopen a completed/rejected task back to Active.
@@ -3509,17 +3381,7 @@ final class AppViewModel: ObservableObject {
       $0.status = .active
       $0.workState = .notStarted
       $0.reviewState = .approved
-    }) { repoURL in
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.setStatus(taskId: id, status: .active)
-      try store.setWorkState(taskId: id, workState: .notStarted)
-      try store.setReviewState(taskId: id, reviewState: .approved)
-      try await self.asyncCommitAndMaybePush(
-        repoURL: repoURL,
-        message: "Lobs: reopen \(id) → active",
-        autoPush: autoPush
-      )
-    }
+    }) { _ in }
   }
 
   /// Toggle blocked state on an active task.
@@ -3527,21 +3389,13 @@ final class AppViewModel: ObservableObject {
     guard let id = selectedTaskId else { return }
     let currentlyBlocked = tasks.first(where: { $0.id == id })?.workState == .blocked
     let newState: WorkState = currentlyBlocked ? .inProgress : .blocked
-    optimisticUpdate(taskId: id, localMutation: { $0.workState = newState }) { repoURL in
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.setWorkState(taskId: id, workState: newState)
-      try await self.asyncCommitAndMaybePush(
-        repoURL: repoURL,
-        message: "Lobs: set \(id) workState=\(newState.rawValue)",
-        autoPush: autoPush
-      )
-    }
+    optimisticUpdate(taskId: id, localMutation: { $0.workState = newState }) { _ in }
   }
 
   func submitTaskToLobs(title: String, notes: String?, agent: String?, autoPush: Bool) {
     let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
     let trimmedNotes = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmedTitle.isEmpty, let repoURL else { return }
+    guard !trimmedTitle.isEmpty else { return }
 
     // Check if the selected project uses GitHub tracking
     let project = projects.first(where: { $0.id == selectedProjectId })
@@ -3597,20 +3451,11 @@ final class AppViewModel: ObservableObject {
             self.flashSuccess("Created GitHub issue #\(issueNumber)")
           }
           
-          // Save to local cache with GitHub issue number
-          let store = LobsControlStore(repoRoot: repoURL)
-          try store.saveExistingTask(newTask)
-          
-          // Commit and push the cache update
-          try await self.asyncCommitAndMaybePush(
-            repoURL: repoURL,
-            message: "Lobs: add task \(newTask.id) (GitHub issue #\(issueNumber))",
-            autoPush: autoPush
-          )
+          // Save via API with GitHub issue number
+          try await self.api.saveExistingTask(newTask)
           
           await MainActor.run {
             self.isGitBusy = false
-            // Refresh cache to ensure consistency
             self.silentReload()
           }
         } catch {
@@ -3635,65 +3480,33 @@ final class AppViewModel: ObservableObject {
     selectedTaskId = newTask.id
     popoverTaskId = newTask.id
 
-    // Write to disk + async git.
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      _ = try store.addTask(
-        id: newTask.id,
-        title: trimmedTitle,
-        owner: .lobs,
-        status: .active,
-        projectId: selectedProjectId,
-        workState: .notStarted,
-        reviewState: .approved,
-        notes: trimmedNotes
-      )
-    } catch {
-      flashError("Failed to save task: \(error.localizedDescription)")
-      return
-    }
-
+    // Save via API
     isGitBusy = true
     Task {
       do {
-        try await asyncCommitAndMaybePush(
-          repoURL: repoURL,
-          message: "Lobs: submit task \(newTask.id)",
-          autoPush: autoPush
+        let savedTask = try await api.addTask(
+          id: newTask.id,
+          title: trimmedTitle,
+          owner: .lobs,
+          status: .active,
+          projectId: selectedProjectId,
+          workState: .notStarted,
+          reviewState: .approved,
+          notes: trimmedNotes
         )
+        await MainActor.run {
+          // Update with server response
+          if let idx = self.tasks.firstIndex(where: { $0.id == newTask.id }) {
+            self.tasks[idx] = savedTask
+          }
+          self.isGitBusy = false
+        }
       } catch {
-        // Hold task data in memory, pull to resolve conflicts, then re-write and retry.
-        do {
-          let store = LobsControlStore(repoRoot: repoURL)
-          let _ = try JSONEncoder().encode(newTask)
-
-          // Pull --rebase (this may remove our new file, but we have it in memory)
-          _ = try await Git.runAsync(["pull", "--rebase"], cwd: repoURL)
-
-          // Re-write the task file from memory
-          _ = try store.addTask(
-            id: newTask.id,
-            title: newTask.title,
-            owner: newTask.owner,
-            status: newTask.status,
-            projectId: newTask.projectId,
-            workState: newTask.workState,
-            reviewState: newTask.reviewState,
-            notes: newTask.notes
-          )
-
-          // Re-attempt commit + push
-          try await asyncCommitAndMaybePush(
-            repoURL: repoURL,
-            message: "Lobs: submit task \(newTask.id)",
-            autoPush: autoPush
-          )
-        } catch {
-          flashError("Git sync failed after retry: \(error.localizedDescription)")
-          reload()
+        await MainActor.run {
+          self.flashError("Failed to save task: \(error.localizedDescription)")
+          self.isGitBusy = false
         }
       }
-      isGitBusy = false
     }
   }
   
@@ -3775,14 +3588,9 @@ final class AppViewModel: ObservableObject {
 
   // MARK: - Text Dumps
 
-  func loadTextDumps(store: LobsControlStore? = nil) {
-    guard let repoURL else { return }
-    let s = store ?? LobsControlStore(repoRoot: repoURL)
-    do {
-      textDumps = try s.loadTextDumps()
-    } catch {
-      textDumps = []
-    }
+  func loadTextDumps() {
+    // TODO: API endpoint needed for text dumps
+    textDumps = []
   }
 
   /// Mark a completed text dump as reviewed by the user.
@@ -4541,13 +4349,7 @@ final class AppViewModel: ObservableObject {
     let currentlyPinned = tasks.first(where: { $0.id == taskId })?.pinned ?? false
     optimisticUpdate(taskId: taskId, localMutation: {
       $0.pinned = !currentlyPinned ? true : nil
-    }) { repoURL in
-      try await self.asyncCommitAndMaybePush(
-        repoURL: repoURL,
-        message: "Lobs: \(!currentlyPinned ? "pin" : "unpin") \(taskId)",
-        autoPush: autoPush
-      )
-    }
+    }) { _ in }
   }
 
   func startTimer(taskId: String, autoPush: Bool) {
@@ -4555,32 +4357,14 @@ final class AppViewModel: ObservableObject {
       $0.startedAt = Date()
       $0.finishedAt = nil
       $0.updatedAt = Date()
-    }) { repoURL in
-      let store = LobsControlStore(repoRoot: repoURL)
-      guard let task = self.tasks.first(where: { $0.id == taskId }) else { return }
-      try store.saveExistingTask(task)
-      try await self.asyncCommitAndMaybePush(
-        repoURL: repoURL,
-        message: "Lobs: start timer \(taskId)",
-        autoPush: autoPush
-      )
-    }
+    }) { _ in }
   }
 
   func stopTimer(taskId: String, autoPush: Bool) {
     optimisticUpdate(taskId: taskId, localMutation: {
       $0.finishedAt = Date()
       $0.updatedAt = Date()
-    }) { repoURL in
-      let store = LobsControlStore(repoRoot: repoURL)
-      guard let task = self.tasks.first(where: { $0.id == taskId }) else { return }
-      try store.saveExistingTask(task)
-      try await self.asyncCommitAndMaybePush(
-        repoURL: repoURL,
-        message: "Lobs: stop timer \(taskId)",
-        autoPush: autoPush
-      )
-    }
+    }) { _ in }
   }
 
   func resetTimer(taskId: String, autoPush: Bool) {
@@ -4588,16 +4372,7 @@ final class AppViewModel: ObservableObject {
       $0.startedAt = nil
       $0.finishedAt = nil
       $0.updatedAt = Date()
-    }) { repoURL in
-      let store = LobsControlStore(repoRoot: repoURL)
-      guard let task = self.tasks.first(where: { $0.id == taskId }) else { return }
-      try store.saveExistingTask(task)
-      try await self.asyncCommitAndMaybePush(
-        repoURL: repoURL,
-        message: "Lobs: reset timer \(taskId)",
-        autoPush: autoPush
-      )
-    }
+    }) { _ in }
   }
 
   func editTask(taskId: String, title: String, notes: String?, autoPush: Bool) {
@@ -4607,45 +4382,21 @@ final class AppViewModel: ObservableObject {
       let n = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
       $0.notes = (n?.isEmpty == true) ? nil : n
       $0.updatedAt = Date()
-    }) { repoURL in
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.setTitleAndNotes(taskId: taskId, title: title, notes: notes)
-      try await self.asyncCommitAndMaybePush(
-        repoURL: repoURL,
-        message: "Lobs: edit \(taskId)",
-        autoPush: autoPush
-      )
-    }
+    }) { _ in }
   }
 
   func setTaskShape(taskId: String, shape: TaskShape?, autoPush: Bool) {
     optimisticUpdate(taskId: taskId, localMutation: {
       $0.shape = shape
       $0.updatedAt = Date()
-    }) { repoURL in
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.setTaskField(taskId: taskId, field: "shape", value: shape?.rawValue)
-      try await self.asyncCommitAndMaybePush(
-        repoURL: repoURL,
-        message: "Lobs: set shape on \(taskId)",
-        autoPush: autoPush
-      )
-    }
+    }) { _ in }
   }
 
   func setTaskAgent(taskId: String, agent: String?, autoPush: Bool) {
     optimisticUpdate(taskId: taskId, localMutation: {
       $0.agent = agent
       $0.updatedAt = Date()
-    }) { repoURL in
-      let store = LobsControlStore(repoRoot: repoURL)
-      try store.setTaskField(taskId: taskId, field: "agent", value: agent)
-      try await self.asyncCommitAndMaybePush(
-        repoURL: repoURL,
-        message: "Lobs: set agent on \(taskId)",
-        autoPush: autoPush
-      )
-    }
+    }) { _ in }
   }
 
   // MARK: - Task Dependencies
@@ -4658,13 +4409,7 @@ final class AppViewModel: ObservableObject {
       }
       $0.blockedBy = blockers
       $0.workState = .blocked
-    }) { repoURL in
-      try await self.asyncCommitAndMaybePush(
-        repoURL: repoURL,
-        message: "Lobs: add blocker \(blockerTaskId) to \(taskId)",
-        autoPush: autoPush
-      )
-    }
+    }) { _ in }
   }
 
   func removeBlocker(taskId: String, blockerTaskId: String, autoPush: Bool) {
@@ -4675,13 +4420,7 @@ final class AppViewModel: ObservableObject {
       if blockers.isEmpty && $0.workState == .blocked {
         $0.workState = .notStarted
       }
-    }) { repoURL in
-      try await self.asyncCommitAndMaybePush(
-        repoURL: repoURL,
-        message: "Lobs: remove blocker \(blockerTaskId) from \(taskId)",
-        autoPush: autoPush
-      )
-    }
+    }) { _ in }
   }
 
   // MARK: - Research Tiles
@@ -4973,40 +4712,10 @@ final class AppViewModel: ObservableObject {
     updateRequest(updated)
   }
 
-  // MARK: - Async Git Helpers
-
+  // MARK: - Async Git Helpers (Not needed in API mode)
+  
   private func asyncCommitAndMaybePush(repoURL: URL, message: String, autoPush: Bool) async throws {
-    // Auto-push is debounced/batched to avoid pushing on every small UI edit.
-    // We enqueue and return immediately; any errors are reflected via `lastPushError`.
-    if autoPush {
-      await gitAutoPushQueue.enqueue(repoURL: repoURL, message: message)
-      return
-    }
-
-    // Commit-only path (no push): stage and commit immediately.
-    let addResult = await Git.runAsyncWithErrorHandling(["add", "-A"], cwd: repoURL)
-    if !addResult.success {
-      throw NSError(domain: "Git", code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: addResult.error?.errorDescription ?? "Failed to stage changes"])
-    }
-
-    let stagedClean = await Git.runAsyncWithErrorHandling(["diff", "--cached", "--quiet"], cwd: repoURL)
-    if stagedClean.success { return }
-
-    let author = "Lobs <thelobsbot@gmail.com>"
-    let committerEnv: [String: String] = [
-      "GIT_COMMITTER_NAME": "Lobs",
-      "GIT_COMMITTER_EMAIL": "thelobsbot@gmail.com",
-    ]
-
-    let commit = await Git.runAsyncWithErrorHandling([
-      "commit", "--author", author, "-m", message
-    ], cwd: repoURL, env: committerEnv)
-
-    if !commit.success {
-      throw NSError(domain: "Git", code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: commit.error?.errorDescription ?? "Commit failed"])
-    }
+    // No-op in API mode - the server handles all persistence
   }
 
   func updatePendingChangesCount() {
@@ -5026,291 +4735,30 @@ final class AppViewModel: ObservableObject {
     }
   }
 
+  // MARK: - Git State Sync (Not needed in API mode)
+  // The API server handles all state persistence, so we don't need git operations for state management
+  
   private func syncRepo(repoURL: URL) throws {
-    // Detect and recover from a stuck rebase state before doing any other git work.
-    let state = checkRebaseState(repoURL: repoURL)
-    if case .none = state {
-      // ok
-    } else {
-      // Present recovery UI and stop this sync attempt.
-      switch state {
-      case .inProgress(let files):
-        rebaseRecoveryConflictFiles = files
-      case .needsResolution:
-        rebaseRecoveryConflictFiles = []
-      case .none:
-        break
-      }
-      rebaseRecoveryLastError = nil
-      rebaseRecoveryPresented = true
-      syncBlockedByUncommitted = true
-      return
-    }
-
-    let remotes = Git.runWithErrorHandling(["remote"], cwd: repoURL)
-    if !remotes.success { return }
-    let hasOrigin = remotes.output.split(separator: "\n").map(String.init).contains("origin")
-    if !hasOrigin { return }
-
-    // If the working tree is dirty, stash changes (including untracked) so we can safely rebase/reset.
-    // This avoids creating "auto-save" commits and prevents pull/rebase from failing on a dirty tree.
-    let status = Git.runWithErrorHandling(["status", "--porcelain"], cwd: repoURL)
-    let hasLocalChanges = status.success
-      && !status.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-
-    let stashMessage = "dashboard-sync-backup \(ISO8601DateFormatter().string(from: Date()))"
-    var didCreateStash = false
-    if hasLocalChanges {
-      let stash = Git.runWithErrorHandling(["stash", "push", "-u", "-m", stashMessage], cwd: repoURL)
-      if !stash.success {
-        syncBlockedByUncommitted = true
-        print("[sync] git stash failed: \(stash.error?.errorDescription ?? "Unknown error")")
-        return
-      }
-      didCreateStash = true
-    }
-    syncBlockedByUncommitted = false
-
-    let fetchResult = Git.runWithErrorHandling(["fetch", "origin"], cwd: repoURL)
-    if !fetchResult.success {
-      print("[sync] git fetch failed: \(fetchResult.error?.errorDescription ?? "Unknown error")")
-      return
-    }
-
-    // Decide whether to rebase vs hard-reset.
-    // If local HEAD is ahead of origin/main (even with a clean working tree), we must rebase,
-    // not reset, or we'd discard local commits.
-    let aheadRes = Git.runWithErrorHandling(["rev-list", "--count", "origin/main..HEAD"], cwd: repoURL)
-    let behindRes = Git.runWithErrorHandling(["rev-list", "--count", "HEAD..origin/main"], cwd: repoURL)
-    let aheadCount = Int(aheadRes.output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
-    let behindCount = Int(behindRes.output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
-
-    if hasLocalChanges || aheadCount > 0 {
-      // Rebase local commits on top of remote to preserve them.
-      let rebase = Git.runWithErrorHandling(["rebase", "origin/main"], cwd: repoURL)
-      if !rebase.success {
-        _ = Git.runWithErrorHandling(["rebase", "--abort"], cwd: repoURL)
-        if didCreateStash {
-          _ = Git.runWithErrorHandling(["stash", "pop"], cwd: repoURL)
-        }
-        syncBlockedByUncommitted = true
-        print("[sync] rebase conflict: \(rebase.error?.errorDescription ?? "Unknown error")")
-        return
-      }
-    } else if behindCount > 0 {
-      let resetResult = Git.runWithErrorHandling(["reset", "--hard", "origin/main"], cwd: repoURL)
-      if !resetResult.success {
-        if didCreateStash {
-          _ = Git.runWithErrorHandling(["stash", "pop"], cwd: repoURL)
-        }
-        print("[sync] git reset failed: \(resetResult.error?.errorDescription ?? "Unknown error")")
-        return
-      }
-      _ = Git.runWithErrorHandling(["clean", "-fd"], cwd: repoURL)
-    }
-
-    if didCreateStash {
-      let pop = Git.runWithErrorHandling(["stash", "pop"], cwd: repoURL)
-      if !pop.success {
-        syncBlockedByUncommitted = true
-        print("[sync] git stash pop had conflicts: \(pop.error?.errorDescription ?? "Unknown error")")
-        return
-      }
-    }
+    // No-op in API mode - state is managed by the server
   }
 
-  /// Async version of syncRepo — runs git commands off the main thread to avoid UI lag.
+  /// Async version of syncRepo — no-op in API mode
   private func syncRepoAsync(repoURL: URL) async throws {
-    // Detect and recover from a stuck rebase state before doing any other git work.
-    let state = await MainActor.run { self.checkRebaseState(repoURL: repoURL) }
-    if case .none = state {
-      // ok
-    } else {
-      await MainActor.run {
-        switch state {
-        case .inProgress(let files):
-          self.rebaseRecoveryConflictFiles = files
-        case .needsResolution:
-          self.rebaseRecoveryConflictFiles = []
-        case .none:
-          break
-        }
-        self.rebaseRecoveryLastError = nil
-        self.rebaseRecoveryPresented = true
-        self.syncBlockedByUncommitted = true
-      }
-      return
-    }
-
-    let remotes = await Git.runAsyncWithErrorHandling(["remote"], cwd: repoURL)
-    if !remotes.success { return }
-    let hasOrigin = remotes.output.split(separator: "\n").map(String.init).contains("origin")
-    if !hasOrigin { return }
-
-    // If the working tree is dirty, stash changes (including untracked) so we can safely rebase/reset.
-    // This avoids creating "auto-save" commits and prevents pull/rebase from failing on a dirty tree.
-    let status = await Git.runAsyncWithErrorHandling(["status", "--porcelain"], cwd: repoURL)
-    let hasLocalChanges = status.success
-      && !status.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-
-    let stashMessage = "dashboard-sync-backup \(ISO8601DateFormatter().string(from: Date()))"
-    var didCreateStash = false
-    if hasLocalChanges {
-      let stash = await Git.runAsyncWithErrorHandling(["stash", "push", "-u", "-m", stashMessage], cwd: repoURL)
-      if !stash.success {
-        await MainActor.run {
-          self.syncBlockedByUncommitted = true
-        }
-        print("[sync] git stash failed: \(stash.error?.errorDescription ?? "Unknown error")")
-        return
-      }
-      didCreateStash = true
-    }
-    syncBlockedByUncommitted = false
-
-    // Fetch with retry (network operation)
-    let fetch = await Git.runWithRetry(["fetch", "origin"], cwd: repoURL, maxRetries: 3)
-    if !fetch.success {
-      print("[sync] git fetch failed: \(fetch.error?.errorDescription ?? "Unknown error")")
-      return
-    }
-
-    // Decide whether to rebase vs hard-reset.
-    // If local HEAD is ahead of origin/main (even with a clean working tree), we must rebase,
-    // not reset, or we'd discard local commits.
-    let aheadRes = await Git.runAsyncWithErrorHandling(["rev-list", "--count", "origin/main..HEAD"], cwd: repoURL)
-    let behindRes = await Git.runAsyncWithErrorHandling(["rev-list", "--count", "HEAD..origin/main"], cwd: repoURL)
-    let aheadCount = Int(aheadRes.output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
-    let behindCount = Int(behindRes.output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
-
-    if hasLocalChanges || aheadCount > 0 {
-      let rebase = await Git.runAsyncWithErrorHandling(["rebase", "origin/main"], cwd: repoURL)
-      if !rebase.success {
-        _ = await Git.runAsyncWithErrorHandling(["rebase", "--abort"], cwd: repoURL)
-        if didCreateStash {
-          _ = await Git.runAsyncWithErrorHandling(["stash", "pop"], cwd: repoURL)
-        }
-        syncBlockedByUncommitted = true
-        print("[sync] rebase conflict — sync blocked: \(rebase.error?.errorDescription ?? "Unknown error")")
-        return
-      }
-    } else if behindCount > 0 {
-      let reset = await Git.runAsyncWithErrorHandling(["reset", "--hard", "origin/main"], cwd: repoURL)
-      if !reset.success {
-        if didCreateStash {
-          _ = await Git.runAsyncWithErrorHandling(["stash", "pop"], cwd: repoURL)
-        }
-        print("[sync] git reset failed: \(reset.error?.errorDescription ?? "Unknown error")")
-        return
-      }
-      _ = await Git.runAsyncWithErrorHandling(["clean", "-fd"], cwd: repoURL)
-    }
-
-    if didCreateStash {
-      let pop = await Git.runAsyncWithErrorHandling(["stash", "pop"], cwd: repoURL)
-      if !pop.success {
-        syncBlockedByUncommitted = true
-        print("[sync] git stash pop had conflicts: \(pop.error?.errorDescription ?? "Unknown error")")
-        return
-      }
-    }
+    // No-op in API mode - state is managed by the server
   }
 
-  /// Auto-commit any uncommitted changes with a standard message before sync.
+  /// Auto-commit methods - no-op in API mode
   private func autoCommitLocalChanges(repoURL: URL) throws {
-    let author = "Lobs <thelobsbot@gmail.com>"
-    let committerEnv: [String: String] = [
-      "GIT_COMMITTER_NAME": "Lobs",
-      "GIT_COMMITTER_EMAIL": "thelobsbot@gmail.com",
-    ]
-    let addResult = Git.runWithErrorHandling(["add", "-A"], cwd: repoURL)
-    if !addResult.success {
-      throw NSError(domain: "Git", code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: addResult.error?.errorDescription ?? "Failed to stage changes"])
-    }
-    let commitResult = Git.runWithErrorHandling([
-      "commit", "--author", author, "-m", "Auto-commit local changes before sync"
-    ], cwd: repoURL, env: committerEnv)
-    if !commitResult.success {
-      throw NSError(domain: "Git", code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: commitResult.error?.errorDescription ?? "Failed to commit changes"])
-    }
+    // No-op in API mode
   }
 
-  /// Async version of autoCommitLocalChanges.
+  /// Async version of autoCommitLocalChanges - no-op in API mode
   private func autoCommitLocalChangesAsync(repoURL: URL) async throws {
-    let author = "Lobs <thelobsbot@gmail.com>"
-    let committerEnv: [String: String] = [
-      "GIT_COMMITTER_NAME": "Lobs",
-      "GIT_COMMITTER_EMAIL": "thelobsbot@gmail.com",
-    ]
-    let addResult = await Git.runAsyncWithErrorHandling(["add", "-A"], cwd: repoURL)
-    if !addResult.success {
-      throw NSError(domain: "Git", code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: addResult.error?.errorDescription ?? "Failed to stage changes"])
-    }
-    let commitResult = await Git.runAsyncWithErrorHandling([
-      "commit", "--author", author, "-m", "Auto-commit local changes before sync"
-    ], cwd: repoURL, env: committerEnv)
-    if !commitResult.success {
-      throw NSError(domain: "Git", code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: commitResult.error?.errorDescription ?? "Failed to commit changes"])
-    }
+    // No-op in API mode
   }
 
   private func commitAndMaybePush(repoURL: URL, message: String, autoPush: Bool) throws {
-    let addResult = Git.runWithErrorHandling(["add", "-A"], cwd: repoURL)
-    if !addResult.success {
-      throw NSError(domain: "Git", code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: addResult.error?.errorDescription ?? "Failed to stage changes"])
-    }
-
-    let stagedClean = Git.runWithErrorHandling(["diff", "--cached", "--quiet"], cwd: repoURL)
-    if stagedClean.success { return }
-
-    let author = "Lobs <thelobsbot@gmail.com>"
-    let committerEnv: [String: String] = [
-      "GIT_COMMITTER_NAME": "Lobs",
-      "GIT_COMMITTER_EMAIL": "thelobsbot@gmail.com",
-    ]
-
-    let commit = Git.runWithErrorHandling([
-      "commit", "--author", author, "-m", message
-    ], cwd: repoURL, env: committerEnv)
-
-    if !commit.success {
-      throw NSError(domain: "Git", code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: commit.error?.errorDescription ?? "Commit failed"])
-    }
-
-    if autoPush {
-      let pushAttempt = Git.runWithErrorHandling(["push"], cwd: repoURL)
-      if !pushAttempt.success {
-        // Push failed — pull --rebase and retry if suggested.
-        if pushAttempt.suggestsPull {
-          let pull = Git.runWithRetrySync(["pull", "--rebase"], cwd: repoURL, maxRetries: 2)
-          if !pull.success {
-            throw NSError(domain: "Git", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: pull.error?.errorDescription ?? "Pull failed"])
-          }
-
-          let retryPush = Git.runWithRetrySync(["push"], cwd: repoURL, maxRetries: 3, initialDelay: 2.0)
-          if !retryPush.success {
-            throw NSError(domain: "Git", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: retryPush.error?.errorDescription ?? "Push failed"])
-          }
-        } else if pushAttempt.canRetry {
-          let retryPush = Git.runWithRetrySync(["push"], cwd: repoURL, maxRetries: 3, initialDelay: 2.0)
-          if !retryPush.success {
-            throw NSError(domain: "Git", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: retryPush.error?.errorDescription ?? "Push failed"])
-          }
-        } else {
-          throw NSError(domain: "Git", code: 1,
-                        userInfo: [NSLocalizedDescriptionKey: pushAttempt.error?.errorDescription ?? "Push failed"])
-        }
-      }
-    }
+    // No-op in API mode
   }
 
   // Drag-and-drop support
@@ -5406,21 +4854,13 @@ final class AppViewModel: ObservableObject {
   }
 
   func loadArtifactForSelected() {
-    guard let repoURL else { return }
-    do {
-      let store = LobsControlStore(repoRoot: repoURL)
-      try loadArtifactForSelected(store: store)
-    } catch {
-      lastError = String(describing: error)
-    }
+    // TODO: API endpoint needed for artifact loading
+    artifactText = "(select a task)"
   }
 
-  private func loadArtifactForSelected(store: LobsControlStore) throws {
-    if let id = selectedTaskId, let t = tasks.first(where: { $0.id == id }), let ap = t.artifactPath {
-      artifactText = try store.readArtifact(relativePath: ap)
-    } else {
-      artifactText = "(select a task)"
-    }
+  private func loadArtifactForSelected() {
+    // TODO: API endpoint needed for artifact loading
+    artifactText = "(select a task)"
   }
 
   // MARK: - Keyboard Navigation
@@ -5506,153 +4946,94 @@ final class AppViewModel: ObservableObject {
   // MARK: - Async Data Loading Helpers
 
   /// Load research data asynchronously (off main thread)
-  private func loadResearchDataAsync(store: LobsControlStore) async {
-    guard isResearchProject else { return }
-
-    let projectId = await MainActor.run { self.selectedProjectId }
-
-    let data: (String, [ResearchSource], [ResearchDeliverable], [ResearchTile], [ResearchRequest])? = await Task.detached {
-      do {
-        try store.migrateResearchTilesToDoc(projectId: projectId)
-
-        let docContent = try store.loadResearchDoc(projectId: projectId)
-        let sources = try store.loadResearchSources(projectId: projectId)
-        let deliverables = try store.loadResearchDeliverables(projectId: projectId)
-        let tiles = try store.loadTiles(projectId: projectId)
-        let requests = try store.loadRequests(projectId: projectId)
-
-        return (docContent, sources, deliverables, tiles, requests)
-      } catch {
-        return nil
-      }
-    }.value
+  private func loadResearchDataAsync() async {
+    guard await MainActor.run(body: { isResearchProject }) else { return }
     
-    guard let (docContent, sources, deliverables, tiles, requests) = data else { return }
-    
+    // TODO: API endpoints needed for research data
     await MainActor.run {
-      self.researchDocContent = docContent
-      self.researchSources = sources
-      self.researchDeliverables = deliverables
-      self.researchTiles = tiles
-      self.researchRequests = requests
+      self.researchDocContent = ""
+      self.researchSources = []
+      self.researchDeliverables = []
+      self.researchTiles = []
+      self.researchRequests = []
     }
   }
 
   /// Load tracker data asynchronously (off main thread)
-  private func loadTrackerDataAsync(store: LobsControlStore) async {
-    guard isTrackerProject else { return }
-
-    let projectId = await MainActor.run { self.selectedProjectId }
-
-    let data: ([TrackerItem], [ResearchRequest])? = await Task.detached {
-      do {
-        let items = try store.loadTrackerItems(projectId: projectId)
-        let requests = try store.loadTrackerRequests(projectId: projectId)
-        return (items, requests)
-      } catch {
-        return nil
-      }
-    }.value
+  private func loadTrackerDataAsync() async {
+    guard await MainActor.run(body: { isTrackerProject }) else { return }
     
-    guard let (items, requests) = data else { return }
-    
+    // TODO: API endpoints needed for tracker data
     await MainActor.run {
-      self.trackerItems = items
-      self.trackerRequests = requests
+      self.trackerItems = []
+      self.trackerRequests = []
     }
   }
 
   /// Load inbox items asynchronously (off main thread)
-  private func loadInboxItemsAsync(store: LobsControlStore) async {
-    let data: (items: [InboxItem], threads: [String: InboxThread], readState: InboxReadStateFile?)? = await Task.detached { () -> (items: [InboxItem], threads: [String: InboxThread], readState: InboxReadStateFile?)? in
-      do {
-        let items = try store.loadInboxItems()
-        let threads = try store.loadAllInboxThreads()
-        let readState = try store.loadInboxReadState()
-        return (items: items, threads: threads, readState: readState)
-      } catch {
-        return nil
+  private func loadInboxItemsAsync() async {
+    do {
+      let items = try await api.loadInboxItems()
+      
+      await MainActor.run {
+        // Apply read state to items
+        var itemsWithReadState = items
+        for i in itemsWithReadState.indices {
+          itemsWithReadState[i].isRead = self.readItemIds.contains(itemsWithReadState[i].id)
+        }
+        self.inboxItems = itemsWithReadState
       }
-    }.value
-
-    guard let data else { return }
-
-    await MainActor.run {
-      // Apply repo-backed read state if present; otherwise keep local state.
-      if let file = data.readState {
-        self.isApplyingInboxReadState = true
-        self.readItemIds = Set(file.readItemIds)
-        self.lastSeenThreadCounts = file.lastSeenThreadCounts
-        self.isApplyingInboxReadState = false
-      }
-
-      // Apply read state to items.
-      var items = data.items
-      for i in items.indices {
-        items[i].isRead = self.readItemIds.contains(items[i].id)
-      }
-
-      // Merge with pendingThreadWrites to preserve local edits
-      var mergedThreads = data.threads
-      for (docId, pendingThread) in self.pendingThreadWrites {
-        mergedThreads[docId] = pendingThread
-      }
-
-      self.inboxItems = items
-      self.inboxThreadsByDocId = mergedThreads
+    } catch {
+      print("⚠️ Failed to load inbox items: \(error)")
     }
   }
 
   /// Load worker status asynchronously (off main thread)
-  private func loadWorkerStatusAsync(store: LobsControlStore) async {
-    let data: (WorkerStatus?, WorkerHistory?)? = await Task.detached { () -> (WorkerStatus?, WorkerHistory?)? in
-      do {
-        let status = try store.loadWorkerStatus()
-        let history = try store.loadWorkerHistory()
-        return (status, history)
-      } catch {
-        return nil
+  private func loadWorkerStatusAsync() async {
+    do {
+      let status = try await api.loadWorkerStatus()
+      let history = try await api.loadWorkerHistory()
+      
+      await MainActor.run {
+        self.workerStatus = status
+        self.workerHistory = history
+        self.mainSessionUsage = nil
       }
-    }.value
-    
-    guard let (status, history) = data else { return }
-    
-    await MainActor.run {
-      self.workerStatus = status
-      self.workerHistory = history
-      // Main session usage is no longer tracked - all usage comes from worker history
-      self.mainSessionUsage = nil
+    } catch {
+      print("⚠️ Failed to load worker status: \(error)")
     }
   }
 
-  /// Load per-agent statuses from control repo filesystem.
-  private func loadAgentStatusesAsync(store: LobsControlStore) async {
-    let statuses: [String: AgentStatus]? = await Task.detached {
-      try? store.loadAgentStatuses()
-    }.value
-    guard let statuses else { return }
-    await MainActor.run {
-      self.agentStatuses = statuses
+  /// Load per-agent statuses via API
+  private func loadAgentStatusesAsync() async {
+    do {
+      let statuses = try await api.loadAgentStatuses()
+      await MainActor.run {
+        self.agentStatuses = statuses
+      }
+    } catch {
+      print("⚠️ Failed to load agent statuses: \(error)")
     }
   }
 
   /// Load agent documents (reports & research) asynchronously
-  private func loadAgentDocumentsAsync(store: LobsControlStore) async {
-    let docs: [AgentDocument]? = await Task.detached {
-      try? store.loadAgentDocuments()
-    }.value
-    guard var documents = docs else { return }
-    
-    // Capture read state before main actor
-    let readIds = await readDocumentIds
-    
-    // Apply read state
-    for i in documents.indices {
-      documents[i].isRead = readIds.contains(documents[i].id)
-    }
-    
-    await MainActor.run {
-      self.agentDocuments = documents
+  private func loadAgentDocumentsAsync() async {
+    do {
+      var docs = try await api.loadAgentDocuments()
+      
+      // Capture read state
+      let readIds = await readDocumentIds
+      
+      // Apply read state
+      for i in docs.indices {
+        docs[i].isRead = readIds.contains(docs[i].id)
+      }
+      
+      await MainActor.run {
+        self.agentDocuments = docs
+      }
+    } catch {
+      print("⚠️ Failed to load agent documents: \(error)")
     }
   }
 
