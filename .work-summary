@@ -1,0 +1,1 @@
+Fixed command palette slow dismissal when navigating home. Reversed execution order: dismiss palette first (animated), then execute action after 0.1s delay. This prevents heavy view updates from blocking the dismissal animation. Created CommandPaletteDismissalTests.swift (10 tests) documenting timing patterns and performance benefits.

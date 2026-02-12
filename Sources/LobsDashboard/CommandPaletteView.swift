@@ -251,12 +251,15 @@ struct CommandPaletteView: View {
     // Save to recents
     saveRecent(result)
     
-    // Execute action
-    result.action()
-    
-    // Close palette
+    // Close palette first for snappy dismissal
     withAnimation(.easeInOut(duration: 0.25)) {
       isPresented = false
+    }
+    
+    // Execute action after dismissal animation starts
+    // This prevents heavy view updates from blocking the close animation
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+      result.action()
     }
     
     // Reset state for next time
