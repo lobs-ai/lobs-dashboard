@@ -1,1 +1,0 @@
-Fixed DocumentsView transparency issue by adding .background(Theme.boardBg) modifier. Documents modal now has opaque background instead of being transparent, making text readable. Change follows same pattern as AgentDetailSheet. Build succeeds, test file created (test suite has pre-existing build errors unrelated to this change).

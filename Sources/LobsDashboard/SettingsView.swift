@@ -311,6 +311,15 @@ struct SettingsView: View {
 
     c.onboardingComplete = false
     vm.config = c
+    
+    // Persist the config change so it survives app restart.
+    // Without this, if the user quits before completing onboarding,
+    // the next app launch will still have onboardingComplete=true.
+    do {
+      try ConfigManager.save(c)
+    } catch {
+      print("⚠️ Failed to save config during rerunOnboarding: \(error)")
+    }
 
     // Close settings; the main window will swap into onboarding when `needsOnboarding` becomes true.
     dismiss()
