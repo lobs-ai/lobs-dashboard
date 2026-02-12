@@ -2909,7 +2909,7 @@ private struct TaskTile: View {
         vm.toggleMultiSelect(taskId: task.id)
       }
     )
-    .popover(isPresented: showDetailBinding, arrowEdge: .trailing) {
+    .popover(isPresented: showDetailBinding, arrowEdge: .leading) {
       TaskDetailPopover(task: task, vm: vm, autoPush: $autoPush, artifactText: vm.artifactText) {
         vm.popoverTaskId = nil
         TaskDetailWindowController.open(task: task, vm: vm, artifactText: vm.artifactText)
