@@ -982,6 +982,22 @@ struct MainSessionDailySummary: Codable {
 struct MainSessionUsage: Codable {
   var snapshots: [MainSessionSnapshot]
   var dailySummaries: [String: MainSessionDailySummary]
+  
+  /// Returns true if the main session usage data is recent (within last 7 days).
+  /// Stale data should not be included in totals to avoid incorrect aggregation.
+  var isFresh: Bool {
+    guard let lastSnapshot = snapshots.max(by: { ($0.timestamp ?? .distantPast) < ($1.timestamp ?? .distantPast) }),
+          let lastTimestamp = lastSnapshot.timestamp else {
+      return false
+    }
+    let daysSinceUpdate = Date().timeIntervalSince(lastTimestamp) / 86400
+    return daysSinceUpdate < 7
+  }
+  
+  /// Returns the date of the most recent snapshot, if any.
+  var lastUpdateDate: Date? {
+    snapshots.compactMap(\.timestamp).max()
+  }
 }
 
 struct ProjectsFile: Codable {

@@ -386,14 +386,40 @@ struct OnboardingView: View {
     // Try to save the config with onboarding complete flag
     let ok = vm.setControlRepo(path: path, repoUrl: url, onboardingComplete: true)
     if !ok {
-      print("⚠️ Failed to persist onboarding completion to config file")
-      // Onboarding state is already saved with done=true, so the auto-fix logic
-      // in needsOnboarding will catch this and fix the config on next check.
+      print("⚠️ Failed to persist onboarding completion via setControlRepo, trying direct config update")
+      // Fallback: directly update the config if setControlRepo failed
+      if var config = vm.config {
+        config.onboardingComplete = true
+        vm.config = config
+        // Try to save directly
+        do {
+          try ConfigManager.save(config)
+        } catch {
+          print("⚠️ Direct config save also failed: \(error)")
+        }
+      } else {
+        // No config exists - create a minimal one
+        let newConfig = AppConfig(
+          controlRepoUrl: url ?? "",
+          controlRepoPath: path,
+          onboardingComplete: true
+        )
+        vm.config = newConfig
+        try? ConfigManager.save(newConfig)
+      }
+    }
+    
+    // Force an immediate published property update by touching the config again
+    // This ensures SwiftUI definitely sees the change
+    if let config = vm.config {
+      vm.config = config
     }
     
     // Explicitly notify that the view model has changed to force view refresh.
     // This ensures the app immediately switches from OnboardingView to ContentView.
-    vm.objectWillChange.send()
+    DispatchQueue.main.async {
+      vm.objectWillChange.send()
+    }
   }
 }
 

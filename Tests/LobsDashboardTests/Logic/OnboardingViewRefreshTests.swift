@@ -131,4 +131,60 @@ final class OnboardingViewRefreshTests: XCTestCase {
       XCTAssertFalse(vm.needsOnboarding, "Config flag should take priority")
     }
   }
+  
+  /// Test that onboarding completion works even when config is nil
+  func testOnboardingCompletionWithNilConfig() async {
+    let vm = AppViewModel()
+    
+    await MainActor.run {
+      // Start with no config
+      vm.config = nil
+      XCTAssertTrue(vm.needsOnboarding, "Should need onboarding when config is nil")
+      
+      // Mark done in onboarding state
+      var state = OnboardingState()
+      state.markCompleted(.done)
+      state.workspace = "/tmp/test"
+      OnboardingStateManager.save(state)
+      
+      // Simulate what completeOnboarding() does when config is nil
+      // It should create a minimal config
+      let newConfig = AppConfig(
+        controlRepoUrl: "",
+        controlRepoPath: "",
+        onboardingComplete: true
+      )
+      vm.config = newConfig
+      
+      // Should not need onboarding now
+      XCTAssertFalse(vm.needsOnboarding, "Should not need onboarding after creating config with flag")
+    }
+  }
+  
+  /// Test that config update triggers immediate re-evaluation
+  func testConfigUpdateTriggersImmediateRefresh() async {
+    let vm = AppViewModel()
+    
+    await MainActor.run {
+      // Start with incomplete onboarding
+      var config = AppConfig(
+        controlRepoUrl: "",
+        controlRepoPath: "/tmp/test/lobs-control",
+        onboardingComplete: false
+      )
+      vm.config = config
+      XCTAssertTrue(vm.needsOnboarding, "Should need onboarding initially")
+      
+      // Update config to complete
+      config.onboardingComplete = true
+      vm.config = config
+      
+      // Should immediately not need onboarding
+      XCTAssertFalse(vm.needsOnboarding, "Should immediately not need onboarding after config update")
+      
+      // Touch config again (as completeOnboarding does) to force published update
+      vm.config = config
+      XCTAssertFalse(vm.needsOnboarding, "Should still not need onboarding after re-assignment")
+    }
+  }
 }

@@ -68,24 +68,31 @@ struct AIUsageView: View {
   }
 
   /// Main session cost for the selected period, derived from daily summaries.
+  /// Returns 0 if main session data is stale (older than 7 days).
   private var mainSessionCost: Double {
-    guard let usage = mainUsage else { return 0 }
+    guard let usage = mainUsage, usage.isFresh else { return 0 }
     return filteredDailySummaries(from: usage.dailySummaries).values.reduce(0.0) { $0 + $1.costUSD }
   }
 
   private var mainSessionTokens: Int {
-    guard let usage = mainUsage else { return 0 }
+    guard let usage = mainUsage, usage.isFresh else { return 0 }
     return filteredDailySummaries(from: usage.dailySummaries).values.reduce(0) { $0 + $1.inputTokens + $1.outputTokens }
   }
 
   private var mainSessionInputTokens: Int {
-    guard let usage = mainUsage else { return 0 }
+    guard let usage = mainUsage, usage.isFresh else { return 0 }
     return filteredDailySummaries(from: usage.dailySummaries).values.reduce(0) { $0 + $1.inputTokens }
   }
 
   private var mainSessionOutputTokens: Int {
-    guard let usage = mainUsage else { return 0 }
+    guard let usage = mainUsage, usage.isFresh else { return 0 }
     return filteredDailySummaries(from: usage.dailySummaries).values.reduce(0) { $0 + $1.outputTokens }
+  }
+  
+  /// True if main session data exists but is stale.
+  private var isMainSessionStale: Bool {
+    guard let usage = mainUsage else { return false }
+    return !usage.isFresh
   }
 
   private var totalCost: Double { workerTotalCost + mainSessionCost }
@@ -197,6 +204,14 @@ struct AIUsageView: View {
     out.dateFormat = "MMM d"
     return out.string(from: date)
   }
+  
+  private func formatDate(_ date: Date) -> String {
+    let formatter = DateFormatter()
+    formatter.dateStyle = .medium
+    formatter.timeStyle = .none
+    formatter.timeZone = TimeZone(identifier: "America/New_York")
+    return formatter.string(from: date)
+  }
 
   // MARK: - Body
 
@@ -225,6 +240,26 @@ struct AIUsageView: View {
           }
           .pickerStyle(.segmented)
           .frame(maxWidth: 320)
+        }
+        
+        // Stale data warning
+        if isMainSessionStale, let lastUpdate = mainUsage?.lastUpdateDate {
+          HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+              .foregroundColor(.orange)
+            VStack(alignment: .leading, spacing: 4) {
+              Text("Main session data is outdated")
+                .font(.system(size: 13, weight: .semibold))
+              Text("Last updated \(formatDate(lastUpdate)). Only worker history is included in totals.")
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+            }
+            Spacer()
+          }
+          .padding(12)
+          .background(Color.orange.opacity(0.1))
+          .cornerRadius(8)
+          .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.orange.opacity(0.3), lineWidth: 1))
         }
 
         // Summary cards

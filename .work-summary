@@ -1,17 +1,1 @@
-Completed Documents view feature (agent reports & research display). Infrastructure was already in place - added async loading integration and UI extensions. Created comprehensive test suite documenting behavior. Syntax verified. Full test execution blocked by pre-existing Preview macro errors (not related to changes).
-
-Changes:
-- Added DocumentSource/DocumentStatus extensions with UI properties (displayName, icon)
-- Created DocumentsView.swift with filtering, search, split-pane layout
-- Added loadAgentDocumentsAsync() to AppViewModel for background loading
-- Integrated async loading into reload() pipeline
-- Created DocumentsViewTests.swift with filtering, sorting, integration tests
-
-Already existed:
-- Store.loadAgentDocuments() (filesystem scanning)
-- AppViewModel.agentDocuments, markDocumentRead/Unread()
-- ContentView Documents integration (toolbar button, keyboard shortcut ⌘D, overlay)
-- Models: AgentDocument, DocumentSource, DocumentStatus
-
-Keyboard shortcut: ⌘D
-Data sources: state/reports/{pending,approved,rejected}/, state/research/{topic}/
+Fixed onboarding stuck at 100% issue. Enhanced completeOnboarding() with fallback logic: if setControlRepo fails, directly update config; if config is nil, create minimal config; force @Published update via re-assignment; dispatch objectWillChange on main queue for guaranteed view refresh. Created OnboardingDoneScreenTests.swift with 5 tests for edge cases. Extended OnboardingViewRefreshTests.swift with 2 additional tests. Syntax verified via swift build (successful compilation). Full test execution blocked by pre-existing Preview macro errors.

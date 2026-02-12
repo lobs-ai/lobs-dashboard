@@ -1093,8 +1093,9 @@ private struct StatsRow: View {
   }
 
   /// Main session usage for the current week from daily summaries.
+  /// Returns 0 if main session data is stale (older than 7 days) to avoid incorrect totals.
   private var weeklyMainSpend: Double {
-    guard let usage = mainSessionUsage else { return 0 }
+    guard let usage = mainSessionUsage, usage.isFresh else { return 0 }
     let startOfWeek = mondayStartOfWeek()
     let df = DateFormatter()
     df.dateFormat = "yyyy-MM-dd"
@@ -1105,7 +1106,7 @@ private struct StatsRow: View {
   }
 
   private var weeklyMainTokens: Int {
-    guard let usage = mainSessionUsage else { return 0 }
+    guard let usage = mainSessionUsage, usage.isFresh else { return 0 }
     let startOfWeek = mondayStartOfWeek()
     let df = DateFormatter()
     df.dateFormat = "yyyy-MM-dd"
