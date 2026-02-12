@@ -1,0 +1,728 @@
+import Foundation
+
+enum APIError: Error, LocalizedError {
+  case invalidURL
+  case invalidResponse
+  case httpError(statusCode: Int, message: String)
+  case decodingError(Error)
+  case encodingError(Error)
+  case networkError(Error)
+  
+  var errorDescription: String? {
+    switch self {
+    case .invalidURL:
+      return "Invalid API URL"
+    case .invalidResponse:
+      return "Invalid API response"
+    case .httpError(let code, let message):
+      return "HTTP \(code): \(message)"
+    case .decodingError(let error):
+      return "JSON decoding failed: \(error.localizedDescription)"
+    case .encodingError(let error):
+      return "JSON encoding failed: \(error.localizedDescription)"
+    case .networkError(let error):
+      return "Network error: \(error.localizedDescription)"
+    }
+  }
+}
+
+/// API service that communicates with the lobs-server REST API.
+/// Provides the same interface as LobsControlStore but uses HTTP instead of file I/O.
+final class APIService {
+  let baseURL: URL
+  
+  init(baseURL: URL) {
+    self.baseURL = baseURL
+  }
+  
+  convenience init(baseURLString: String = "http://localhost:8000") throws {
+    guard let url = URL(string: baseURLString) else {
+      throw APIError.invalidURL
+    }
+    self.init(baseURL: url)
+  }
+  
+  // MARK: - HTTP Helpers
+  
+  private func decoder() -> JSONDecoder {
+    let d = JSONDecoder()
+    d.keyDecodingStrategy = .convertFromSnakeCase
+    d.dateDecodingStrategy = .custom { decoder in
+      let container = try decoder.singleValueContainer()
+      let str = try container.decode(String.self)
+      // Try standard ISO 8601 first
+      let isoFormatter = ISO8601DateFormatter()
+      isoFormatter.formatOptions = [.withInternetDateTime]
+      if let date = isoFormatter.date(from: str) { return date }
+      // Try with fractional seconds
+      isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+      if let date = isoFormatter.date(from: str) { return date }
+      throw DecodingError.dataCorruptedError(in: container, debugDescription: "Cannot decode date: \(str)")
+    }
+    return d
+  }
+  
+  private func encoder() -> JSONEncoder {
+    let e = JSONEncoder()
+    e.keyEncodingStrategy = .convertToSnakeCase
+    e.dateEncodingStrategy = .iso8601
+    return e
+  }
+  
+  private func request<T: Decodable>(
+    method: String,
+    path: String,
+    queryItems: [URLQueryItem]? = nil,
+    body: (any Encodable)? = nil
+  ) async throws -> T {
+    var urlComponents = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
+    urlComponents.queryItems = queryItems
+    
+    guard let url = urlComponents.url else {
+      throw APIError.invalidURL
+    }
+    
+    var req = URLRequest(url: url)
+    req.httpMethod = method
+    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    req.setValue("application/json", forHTTPHeaderField: "Accept")
+    
+    if let body = body {
+      do {
+        req.httpBody = try encoder().encode(body)
+      } catch {
+        throw APIError.encodingError(error)
+      }
+    }
+    
+    let (data, response) = try await URLSession.shared.data(for: req)
+    
+    guard let httpResponse = response as? HTTPURLResponse else {
+      throw APIError.invalidResponse
+    }
+    
+    guard (200..<300).contains(httpResponse.statusCode) else {
+      let message = String(data: data, encoding: .utf8) ?? "Unknown error"
+      throw APIError.httpError(statusCode: httpResponse.statusCode, message: message)
+    }
+    
+    do {
+      return try decoder().decode(T.self, from: data)
+    } catch {
+      throw APIError.decodingError(error)
+    }
+  }
+  
+  private func requestVoid(
+    method: String,
+    path: String,
+    queryItems: [URLQueryItem]? = nil,
+    body: (any Encodable)? = nil
+  ) async throws {
+    var urlComponents = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
+    urlComponents.queryItems = queryItems
+    
+    guard let url = urlComponents.url else {
+      throw APIError.invalidURL
+    }
+    
+    var req = URLRequest(url: url)
+    req.httpMethod = method
+    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    
+    if let body = body {
+      do {
+        req.httpBody = try encoder().encode(body)
+      } catch {
+        throw APIError.encodingError(error)
+      }
+    }
+    
+    let (_, response) = try await URLSession.shared.data(for: req)
+    
+    guard let httpResponse = response as? HTTPURLResponse else {
+      throw APIError.invalidResponse
+    }
+    
+    guard (200..<300).contains(httpResponse.statusCode) else {
+      throw APIError.httpError(statusCode: httpResponse.statusCode, message: "Request failed")
+    }
+  }
+  
+  // MARK: - Projects
+  
+  func loadProjects() async throws -> ProjectsFile {
+    let projects: [Project] = try await request(method: "GET", path: "/api/projects", queryItems: [
+      URLQueryItem(name: "limit", value: "1000"),
+      URLQueryItem(name: "archived", value: "false")
+    ])
+    
+    // Ensure default project exists
+    var allProjects = projects
+    if !allProjects.contains(where: { $0.id == "default" }) {
+      let now = Date()
+      allProjects.insert(Project(
+        id: "default",
+        title: "Default",
+        createdAt: now,
+        updatedAt: now,
+        notes: nil,
+        archived: false
+      ), at: 0)
+    }
+    
+    return ProjectsFile(
+      schemaVersion: 1,
+      generatedAt: Date(),
+      projects: allProjects
+    )
+  }
+  
+  func saveProjects(_ file: ProjectsFile) async throws {
+    // The API doesn't have a bulk update endpoint, so we update each project individually
+    // In practice, the dashboard updates projects one at a time anyway
+    for project in file.projects {
+      let update = ProjectUpdate(from: project)
+      let _: Project = try await request(
+        method: "PUT",
+        path: "/api/projects/\(project.id)",
+        body: update
+      )
+    }
+  }
+  
+  func renameProject(id: String, newTitle: String) async throws {
+    let update = ProjectUpdate(title: newTitle)
+    let _: Project = try await request(
+      method: "PUT",
+      path: "/api/projects/\(id)",
+      body: update
+    )
+  }
+  
+  func updateProjectNotes(id: String, notes: String?) async throws {
+    let update = ProjectUpdate(notes: notes)
+    let _: Project = try await request(
+      method: "PUT",
+      path: "/api/projects/\(id)",
+      body: update
+    )
+  }
+  
+  func updateProjectSyncMode(id: String, syncMode: SyncMode, githubConfig: GitHubConfig?) async throws {
+    let update = ProjectUpdate(
+      tracking: syncMode.rawValue,
+      githubRepo: githubConfig?.repo,
+      githubLabelFilter: githubConfig?.labelFilter
+    )
+    let _: Project = try await request(
+      method: "PUT",
+      path: "/api/projects/\(id)",
+      body: update
+    )
+  }
+  
+  func deleteProject(id: String) async throws {
+    try await requestVoid(
+      method: "DELETE",
+      path: "/api/projects/\(id)"
+    )
+  }
+  
+  func archiveProject(id: String) async throws {
+    let _: Project = try await request(
+      method: "POST",
+      path: "/api/projects/\(id)/archive"
+    )
+  }
+  
+  // MARK: - Tasks
+  
+  func loadTasks() async throws -> TasksFile {
+    let tasks: [DashboardTask] = try await request(
+      method: "GET",
+      path: "/api/tasks",
+      queryItems: [URLQueryItem(name: "limit", value: "1000")]
+    )
+    
+    return TasksFile(
+      schemaVersion: 0,
+      generatedAt: Date(),
+      tasks: tasks
+    )
+  }
+  
+  func loadLocalTasks() async throws -> [DashboardTask] {
+    // In API mode, there's no distinction between local and remote tasks
+    let tasks: [DashboardTask] = try await request(
+      method: "GET",
+      path: "/api/tasks",
+      queryItems: [URLQueryItem(name: "limit", value: "1000")]
+    )
+    return tasks
+  }
+  
+  func saveTasks(_ file: TasksFile) async throws {
+    // The API doesn't have a bulk update endpoint
+    // Individual task updates should use setStatus, setWorkState, etc.
+    // This method is primarily used after batch operations, which we'll handle separately
+  }
+  
+  func setStatus(taskId: String, status: TaskStatus) async throws {
+    struct StatusUpdate: Codable {
+      let status: String
+    }
+    let _: DashboardTask = try await request(
+      method: "PATCH",
+      path: "/api/tasks/\(taskId)/status",
+      body: StatusUpdate(status: status.rawValue)
+    )
+  }
+  
+  func setWorkState(taskId: String, workState: WorkState?) async throws {
+    struct WorkStateUpdate: Codable {
+      let workState: String
+      
+      enum CodingKeys: String, CodingKey {
+        case workState = "work_state"
+      }
+    }
+    let _: DashboardTask = try await request(
+      method: "PATCH",
+      path: "/api/tasks/\(taskId)/work-state",
+      body: WorkStateUpdate(workState: workState?.rawValue ?? "")
+    )
+  }
+  
+  func setReviewState(taskId: String, reviewState: ReviewState?) async throws {
+    struct ReviewStateUpdate: Codable {
+      let reviewState: String
+      
+      enum CodingKeys: String, CodingKey {
+        case reviewState = "review_state"
+      }
+    }
+    let _: DashboardTask = try await request(
+      method: "PATCH",
+      path: "/api/tasks/\(taskId)/review-state",
+      body: ReviewStateUpdate(reviewState: reviewState?.rawValue ?? "")
+    )
+  }
+  
+  func setSortOrder(taskId: String, sortOrder: Int?) async throws {
+    struct SortOrderUpdate: Codable {
+      let sortOrder: Int?
+      
+      enum CodingKeys: String, CodingKey {
+        case sortOrder = "sort_order"
+      }
+    }
+    let update = TaskUpdateRequest(sortOrder: sortOrder)
+    let _: DashboardTask = try await request(
+      method: "PUT",
+      path: "/api/tasks/\(taskId)",
+      body: update
+    )
+  }
+  
+  func setTitleAndNotes(taskId: String, title: String, notes: String?) async throws {
+    let update = TaskUpdateRequest(title: title, notes: notes)
+    let _: DashboardTask = try await request(
+      method: "PUT",
+      path: "/api/tasks/\(taskId)",
+      body: update
+    )
+  }
+  
+  func addTask(
+    id: String = UUID().uuidString,
+    title: String,
+    owner: TaskOwner,
+    status: TaskStatus,
+    projectId: String? = nil,
+    workState: WorkState? = .notStarted,
+    reviewState: ReviewState? = .pending,
+    notes: String?
+  ) async throws -> DashboardTask {
+    let create = TaskCreateRequest(
+      id: id,
+      title: title,
+      status: status.rawValue,
+      owner: owner.rawValue,
+      workState: workState?.rawValue,
+      reviewState: reviewState?.rawValue,
+      projectId: projectId,
+      notes: notes
+    )
+    
+    return try await request(
+      method: "POST",
+      path: "/api/tasks",
+      body: create
+    )
+  }
+  
+  func saveExistingTask(_ task: DashboardTask) async throws {
+    let update = TaskUpdateRequest(from: task)
+    let _: DashboardTask = try await request(
+      method: "PUT",
+      path: "/api/tasks/\(task.id)",
+      body: update
+    )
+  }
+  
+  func deleteTask(taskId: String) async throws {
+    try await requestVoid(
+      method: "DELETE",
+      path: "/api/tasks/\(taskId)"
+    )
+  }
+  
+  func archiveTask(taskId: String) async throws {
+    let _: DashboardTask = try await request(
+      method: "POST",
+      path: "/api/tasks/\(taskId)/archive"
+    )
+  }
+  
+  // MARK: - Inbox
+  
+  func loadInboxItems() async throws -> [InboxItem] {
+    return try await request(
+      method: "GET",
+      path: "/api/inbox",
+      queryItems: [URLQueryItem(name: "limit", value: "1000")]
+    )
+  }
+  
+  func loadInboxThread(docId: String) async throws -> InboxThread? {
+    struct ThreadResponse: Codable {
+      let thread: InboxThread?
+      let messages: [InboxThreadMessage]
+    }
+    
+    let response: ThreadResponse = try await request(
+      method: "GET",
+      path: "/api/inbox/\(docId)/thread"
+    )
+    
+    guard var thread = response.thread else {
+      return nil
+    }
+    
+    thread.messages = response.messages
+    return thread
+  }
+  
+  func saveInboxThread(_ thread: InboxThread) async throws {
+    // Save each message
+    for message in thread.messages {
+      struct MessageCreate: Codable {
+        let id: String
+        let threadId: String
+        let author: String
+        let text: String
+        
+        enum CodingKeys: String, CodingKey {
+          case id
+          case threadId = "thread_id"
+          case author
+          case text
+        }
+      }
+      
+      let create = MessageCreate(
+        id: message.id,
+        threadId: thread.id,
+        author: message.author,
+        text: message.text
+      )
+      
+      let _: InboxThreadMessage = try await request(
+        method: "POST",
+        path: "/api/inbox/\(thread.docId)/thread/messages",
+        body: create
+      )
+    }
+  }
+  
+  func loadAllInboxThreads() async throws -> [String: InboxThread] {
+    // The API doesn't have a bulk threads endpoint
+    // This would need to be implemented by loading threads for each inbox item
+    // For now, return empty dict - threads are loaded on-demand
+    return [:]
+  }
+  
+  // MARK: - Agent Documents
+  
+  func loadAgentDocuments() async throws -> [AgentDocument] {
+    return try await request(
+      method: "GET",
+      path: "/api/documents",
+      queryItems: [URLQueryItem(name: "limit", value: "1000")]
+    )
+  }
+  
+  // MARK: - Worker Status
+  
+  func loadWorkerStatus() async throws -> WorkerStatus? {
+    return try await request(
+      method: "GET",
+      path: "/api/worker/status"
+    )
+  }
+  
+  func loadWorkerHistory() async throws -> WorkerHistory? {
+    let runs: [WorkerHistoryRun] = try await request(
+      method: "GET",
+      path: "/api/worker/history",
+      queryItems: [URLQueryItem(name: "limit", value: "100")]
+    )
+    return WorkerHistory(runs: runs)
+  }
+  
+  // MARK: - Agent Statuses
+  
+  func loadAgentStatuses() async throws -> [String: AgentStatus] {
+    let agents: [AgentStatus] = try await request(
+      method: "GET",
+      path: "/api/agents",
+      queryItems: [URLQueryItem(name: "limit", value: "100")]
+    )
+    
+    var dict: [String: AgentStatus] = [:]
+    for agent in agents {
+      dict[agent.agentType] = agent
+    }
+    return dict
+  }
+  
+  // MARK: - Templates
+  
+  func loadTemplates() async throws -> [TaskTemplate] {
+    return try await request(
+      method: "GET",
+      path: "/api/templates",
+      queryItems: [URLQueryItem(name: "limit", value: "100")]
+    )
+  }
+  
+  // MARK: - Research (Not yet implemented in server)
+  
+  func loadRequests(projectId: String) throws -> [ResearchRequest] {
+    // Server doesn't have research endpoints yet
+    // Return empty array for now
+    return []
+  }
+  
+  func loadResearchTiles(projectId: String) throws -> [ResearchTile] {
+    // Server doesn't have research tile endpoints yet
+    return []
+  }
+  
+  // MARK: - Tracker (Not yet implemented in server)
+  
+  func loadTrackerItems(projectId: String) throws -> [TrackerItem] {
+    // Server doesn't have tracker endpoints yet
+    return []
+  }
+  
+  // MARK: - Read State (Local-only for now)
+  
+  func loadInboxReadState() throws -> InboxReadStateFile? {
+    // Read state is still local-only
+    // Could be implemented as API endpoint later
+    return nil
+  }
+  
+  func saveInboxReadState(readItemIds: Set<String>, lastSeenThreadCounts: [String: Int]) throws {
+    // Read state is still local-only
+  }
+  
+  // MARK: - Methods that don't apply to API mode
+  
+  func archiveCompleted(olderThanDays days: Int) throws {
+    // Auto-archive should be handled server-side
+    // For now, this is a no-op in API mode
+  }
+  
+  func archiveReadInboxItems(olderThanDays days: Int, readItemIds: Set<String>) async throws {
+    // Auto-archive should be handled server-side
+  }
+  
+  func readArtifact(relativePath: String) throws -> String {
+    // Artifacts are file-based and don't go through the API
+    // This would need special handling or a file server
+    return ""
+  }
+}
+
+// MARK: - Request/Response Models
+
+private struct ProjectUpdate: Codable {
+  let title: String?
+  let notes: String?
+  let archived: Bool?
+  let type: String?
+  let sortOrder: Int?
+  let tracking: String?
+  let githubRepo: String?
+  let githubLabelFilter: [String]?
+  
+  init(
+    title: String? = nil,
+    notes: String? = nil,
+    archived: Bool? = nil,
+    type: String? = nil,
+    sortOrder: Int? = nil,
+    tracking: String? = nil,
+    githubRepo: String? = nil,
+    githubLabelFilter: [String]? = nil
+  ) {
+    self.title = title
+    self.notes = notes
+    self.archived = archived
+    self.type = type
+    self.sortOrder = sortOrder
+    self.tracking = tracking
+    self.githubRepo = githubRepo
+    self.githubLabelFilter = githubLabelFilter
+  }
+  
+  init(from project: Project) {
+    self.title = project.title
+    self.notes = project.notes
+    self.archived = project.archived
+    self.type = project.type?.rawValue
+    self.sortOrder = project.sortOrder
+    self.tracking = project.tracking?.rawValue
+    self.githubRepo = project.github?.repo
+    self.githubLabelFilter = project.github?.labelFilter
+  }
+  
+  enum CodingKeys: String, CodingKey {
+    case title
+    case notes
+    case archived
+    case type
+    case sortOrder = "sort_order"
+    case tracking
+    case githubRepo = "github_repo"
+    case githubLabelFilter = "github_label_filter"
+  }
+}
+
+private struct TaskCreateRequest: Codable {
+  let id: String
+  let title: String
+  let status: String
+  let owner: String
+  let workState: String?
+  let reviewState: String?
+  let projectId: String?
+  let notes: String?
+  
+  enum CodingKeys: String, CodingKey {
+    case id
+    case title
+    case status
+    case owner
+    case workState = "work_state"
+    case reviewState = "review_state"
+    case projectId = "project_id"
+    case notes
+  }
+}
+
+private struct TaskUpdateRequest: Codable {
+  let title: String?
+  let status: String?
+  let owner: String?
+  let workState: String?
+  let reviewState: String?
+  let projectId: String?
+  let notes: String?
+  let artifactPath: String?
+  let startedAt: Date?
+  let finishedAt: Date?
+  let sortOrder: Int?
+  let blockedBy: [String]?
+  let pinned: Bool?
+  let shape: String?
+  let githubIssueNumber: Int?
+  let agent: String?
+  
+  init(
+    title: String? = nil,
+    status: String? = nil,
+    owner: String? = nil,
+    workState: String? = nil,
+    reviewState: String? = nil,
+    projectId: String? = nil,
+    notes: String? = nil,
+    artifactPath: String? = nil,
+    startedAt: Date? = nil,
+    finishedAt: Date? = nil,
+    sortOrder: Int? = nil,
+    blockedBy: [String]? = nil,
+    pinned: Bool? = nil,
+    shape: String? = nil,
+    githubIssueNumber: Int? = nil,
+    agent: String? = nil
+  ) {
+    self.title = title
+    self.status = status
+    self.owner = owner
+    self.workState = workState
+    self.reviewState = reviewState
+    self.projectId = projectId
+    self.notes = notes
+    self.artifactPath = artifactPath
+    self.startedAt = startedAt
+    self.finishedAt = finishedAt
+    self.sortOrder = sortOrder
+    self.blockedBy = blockedBy
+    self.pinned = pinned
+    self.shape = shape
+    self.githubIssueNumber = githubIssueNumber
+    self.agent = agent
+  }
+  
+  init(from task: DashboardTask) {
+    self.title = task.title
+    self.status = task.status.rawValue
+    self.owner = task.owner.rawValue
+    self.workState = task.workState?.rawValue
+    self.reviewState = task.reviewState?.rawValue
+    self.projectId = task.projectId
+    self.notes = task.notes
+    self.artifactPath = task.artifactPath
+    self.startedAt = task.startedAt
+    self.finishedAt = task.finishedAt
+    self.sortOrder = task.sortOrder
+    self.blockedBy = task.blockedBy
+    self.pinned = task.pinned
+    self.shape = task.shape?.rawValue
+    self.githubIssueNumber = task.githubIssueNumber
+    self.agent = task.agent
+  }
+  
+  enum CodingKeys: String, CodingKey {
+    case title
+    case status
+    case owner
+    case workState = "work_state"
+    case reviewState = "review_state"
+    case projectId = "project_id"
+    case notes
+    case artifactPath = "artifact_path"
+    case startedAt = "started_at"
+    case finishedAt = "finished_at"
+    case sortOrder = "sort_order"
+    case blockedBy = "blocked_by"
+    case pinned
+    case shape
+    case githubIssueNumber = "github_issue_number"
+    case agent
+  }
+}

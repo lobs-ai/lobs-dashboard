@@ -12,6 +12,9 @@ struct AppConfig: Codable {
     /// Whether the user has completed initial onboarding
     var onboardingComplete: Bool
     
+    /// URL of the lobs-server API (default: http://localhost:8000)
+    var serverURL: String
+    
     /// User preferences and UI state
     var settings: UserSettings
     
@@ -19,11 +22,13 @@ struct AppConfig: Codable {
         controlRepoUrl: String = "",
         controlRepoPath: String = "",
         onboardingComplete: Bool = false,
+        serverURL: String = "http://localhost:8000",
         settings: UserSettings = UserSettings()
     ) {
         self.controlRepoUrl = controlRepoUrl
         self.controlRepoPath = controlRepoPath
         self.onboardingComplete = onboardingComplete
+        self.serverURL = serverURL
         self.settings = settings
     }
 }
