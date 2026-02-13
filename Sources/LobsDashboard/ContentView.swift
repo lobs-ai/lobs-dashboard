@@ -3874,6 +3874,7 @@ private struct EditProjectSheet: View {
       title = project.title
       notes = project.notes ?? ""
   }
+  }
 }
 
 // MARK: - Add Task Sheet

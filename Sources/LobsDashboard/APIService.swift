@@ -57,6 +57,14 @@ final class APIService {
       // Try with fractional seconds
       isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
       if let date = isoFormatter.date(from: str) { return date }
+      // Try without timezone (server returns naive datetimes, assume UTC)
+      let noTZ = DateFormatter()
+      noTZ.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+      noTZ.timeZone = TimeZone(identifier: "UTC")
+      if let date = noTZ.date(from: str) { return date }
+      // Try without timezone with fractional seconds
+      noTZ.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSS"
+      if let date = noTZ.date(from: str) { return date }
       throw DecodingError.dataCorruptedError(in: container, debugDescription: "Cannot decode date: \(str)")
     }
     return d
