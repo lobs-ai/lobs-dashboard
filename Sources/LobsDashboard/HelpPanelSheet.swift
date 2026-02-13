@@ -171,6 +171,6 @@ struct HelpPanelSheet: View {
   }
 }
 
-#Preview {
-  HelpPanelSheet(isPresented: .constant(true))
-}
+// // #Preview {
+// HelpPanelSheet(isPresented: .constant(true))
+// }

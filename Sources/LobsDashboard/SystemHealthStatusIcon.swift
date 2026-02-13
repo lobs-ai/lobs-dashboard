@@ -240,6 +240,6 @@ private struct SystemHealthPopover: View {
   }
 }
 
-#Preview {
-  SystemHealthStatusIcon(vm: AppViewModel())
-}
+// #Preview {
+// SystemHealthStatusIcon(vm: AppViewModel())
+// }

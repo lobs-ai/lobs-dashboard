@@ -45,7 +45,7 @@ struct OnboardingDoneView: View {
   }
 }
 
-#Preview {
-  OnboardingDoneView(onFinish: {})
-    .frame(width: 800, height: 600)
-}
+// // #Preview {
+// OnboardingDoneView(onFinish: {})
+// .frame(width: 800, height: 600)
+// }

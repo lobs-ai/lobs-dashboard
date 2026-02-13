@@ -126,7 +126,7 @@ struct OnboardingServerGuideView: View {
   }
 }
 
-#Preview {
-  OnboardingServerGuideView()
-    .frame(width: 800, height: 700)
-}
+// // #Preview {
+// OnboardingServerGuideView()
+// .frame(width: 800, height: 700)
+// }

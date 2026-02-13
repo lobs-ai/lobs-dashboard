@@ -340,8 +340,8 @@ struct OnboardingPersonalityView: View {
   }
 }
 
-#Preview {
-  OnboardingPersonalityView(onBack: {}, onContinue: {})
-    .environmentObject(AppViewModel())
-    .frame(width: 800, height: 600)
-}
+// // #Preview {
+// OnboardingPersonalityView(onBack: {}, onContinue: {})
+// .environmentObject(AppViewModel())
+// .frame(width: 800, height: 600)
+// }

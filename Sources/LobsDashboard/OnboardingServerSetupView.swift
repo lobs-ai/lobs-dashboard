@@ -313,12 +313,12 @@ struct StepBlock: View {
     }
 }
 
-#Preview {
-    OnboardingServerSetupView(
-        repoUrl: "git@github.com:user/lobs-control.git",
-        onBack: {},
-        onContinue: {}
-    )
-    .environmentObject(AppViewModel())
-    .frame(width: 800, height: 600)
-}
+// // #Preview {
+// OnboardingServerSetupView(
+// repoUrl: "git@github.com:user/lobs-control.git",
+// onBack: {},
+// onContinue: {}
+// )
+// .environmentObject(AppViewModel())
+// .frame(width: 800, height: 600)
+// }

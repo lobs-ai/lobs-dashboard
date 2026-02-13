@@ -364,8 +364,8 @@ struct OnboardingView: View {
   }
 }
 
-#Preview {
-  OnboardingView()
-    .environmentObject(AppViewModel())
-    .frame(width: 1000, height: 700)
-}
+// // #Preview {
+// OnboardingView()
+// .environmentObject(AppViewModel())
+// .frame(width: 1000, height: 700)
+// }

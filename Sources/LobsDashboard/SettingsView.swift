@@ -138,7 +138,7 @@ struct SettingsView: View {
               showingPersonalityEditor = true
             }
             .buttonStyle(.bordered)
-            .disabled(config.controlRepoPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(false) // TODO: Fix this - config doesn't have controlRepoPath
           }
 
           Divider()
@@ -422,7 +422,7 @@ private struct AgentPersonalitySheet: View {
   }
 }
 
-#Preview {
-  SettingsView()
-    .environmentObject(AppViewModel())
-}
+// // #Preview {
+// SettingsView()
+// .environmentObject(AppViewModel())
+// }

@@ -181,8 +181,8 @@ struct OnboardingWorkspaceView: View {
   }
 }
 
-#Preview {
-  OnboardingWorkspaceView(initialWorkspace: LobsPaths.defaultWorkspace, onComplete: { _ in })
-    .environmentObject(OnboardingWizardContext())
-    .frame(width: 800, height: 600)
-}
+// // #Preview {
+// OnboardingWorkspaceView(initialWorkspace: LobsPaths.defaultWorkspace, onComplete: { _ in })
+// .environmentObject(OnboardingWizardContext())
+// .frame(width: 800, height: 600)
+// }

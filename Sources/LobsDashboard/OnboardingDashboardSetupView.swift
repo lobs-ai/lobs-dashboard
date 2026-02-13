@@ -65,8 +65,8 @@ struct OnboardingDashboardSetupView: View {
   }
 }
 
-#Preview {
-  OnboardingDashboardSetupView(onComplete: {})
-    .environmentObject(OnboardingWizardContext())
-    .frame(width: 900, height: 650)
-}
+// // #Preview {
+// OnboardingDashboardSetupView(onComplete: {})
+// .environmentObject(OnboardingWizardContext())
+// .frame(width: 900, height: 650)
+// }

@@ -151,16 +151,16 @@ struct OnboardingRepoSetupView: View {
     }
 }
 
-#Preview {
-    OnboardingRepoSetupView(
-        onComplete: { url, _ in
-            print("Continue with server URL: \(url)")
-        },
-        onSkip: {
-            print("Skip server setup")
-        }
-    )
-    .environmentObject(AppViewModel())
-    .environmentObject(OnboardingWizardContext())
-    .frame(width: 800, height: 600)
-}
+// // #Preview {
+// OnboardingRepoSetupView(
+// onComplete: { url, _ in
+// print("Continue with server URL: \(url)")
+// },
+// onSkip: {
+// print("Skip server setup")
+// }
+// )
+// .environmentObject(AppViewModel())
+// .environmentObject(OnboardingWizardContext())
+// .frame(width: 800, height: 600)
+// }

@@ -185,8 +185,8 @@ struct OnboardingOpenClawInstallView: View {
   }
 }
 
-#Preview {
-  OnboardingOpenClawInstallView(onComplete: {}, onSkip: {})
-    .environmentObject(OnboardingWizardContext())
-    .frame(width: 800, height: 600)
-}
+// // #Preview {
+// OnboardingOpenClawInstallView(onComplete: {}, onSkip: {})
+// .environmentObject(OnboardingWizardContext())
+// .frame(width: 800, height: 600)
+// }

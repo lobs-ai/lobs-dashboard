@@ -260,8 +260,8 @@ private struct AgentPersonalitySheet: View {
   }
 }
 
-#Preview {
-  SetupStatusView()
-    .environmentObject(AppViewModel())
-    .environmentObject(OrchestratorManager())
-}
+// // #Preview {
+// SetupStatusView()
+// .environmentObject(AppViewModel())
+// .environmentObject(OrchestratorManager())
+// }

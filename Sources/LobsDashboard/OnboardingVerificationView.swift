@@ -408,12 +408,12 @@ struct TroubleshootingTip: View {
     }
 }
 
-#Preview {
-    OnboardingVerificationView(
-        repoUrl: "http://localhost:8000",
-        onBack: {},
-        onComplete: {}
-    )
-    .environmentObject(AppViewModel())
-    .frame(width: 800, height: 600)
-}
+// // #Preview {
+// OnboardingVerificationView(
+// repoUrl: "http://localhost:8000",
+// onBack: {},
+// onComplete: {}
+// )
+// .environmentObject(AppViewModel())
+// .frame(width: 800, height: 600)
+// }

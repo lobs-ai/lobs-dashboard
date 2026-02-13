@@ -175,8 +175,8 @@ struct OnboardingAgentSetupView: View {
   }
 }
 
-#Preview {
-  OnboardingAgentSetupView(workspacePath: LobsPaths.defaultWorkspace, initialAgentName: "Lobs", initialUserName: "Rafe", onComplete: { _, _ in })
-    .environmentObject(OnboardingWizardContext())
-    .frame(width: 800, height: 600)
-}
+// // #Preview {
+// OnboardingAgentSetupView(workspacePath: LobsPaths.defaultWorkspace, initialAgentName: "Lobs", initialUserName: "Rafe", onComplete: { _, _ in })
+// .environmentObject(OnboardingWizardContext())
+// .frame(width: 800, height: 600)
+// }

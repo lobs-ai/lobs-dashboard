@@ -293,13 +293,13 @@ struct OnboardingCloneView: View {
     }
 }
 
-#Preview {
-    OnboardingCloneView(
-        repoUrl: "http://localhost:8000",
-        isNewRepo: false,
-        onBack: {},
-        onComplete: {}
-    )
-    .environmentObject(AppViewModel())
-    .frame(width: 800, height: 600)
-}
+// // #Preview {
+// OnboardingCloneView(
+// repoUrl: "http://localhost:8000",
+// isNewRepo: false,
+// onBack: {},
+// onComplete: {}
+// )
+// .environmentObject(AppViewModel())
+// .frame(width: 800, height: 600)
+// }

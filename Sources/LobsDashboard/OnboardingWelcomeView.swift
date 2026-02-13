@@ -42,7 +42,7 @@ struct OnboardingWelcomeView: View {
   }
 }
 
-#Preview {
-  OnboardingWelcomeView()
-    .frame(width: 800, height: 600)
-}
+// // #Preview {
+// OnboardingWelcomeView()
+// .frame(width: 800, height: 600)
+// }

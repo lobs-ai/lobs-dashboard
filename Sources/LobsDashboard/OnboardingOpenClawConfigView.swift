@@ -388,8 +388,8 @@ struct OnboardingOpenClawConfigView: View {
   }
 }
 
-#Preview {
-  OnboardingOpenClawConfigView(workspacePath: LobsPaths.defaultWorkspace, onComplete: {})
-    .environmentObject(OnboardingWizardContext())
-    .frame(width: 800, height: 600)
-}
+// // #Preview {
+// OnboardingOpenClawConfigView(workspacePath: LobsPaths.defaultWorkspace, onComplete: {})
+// .environmentObject(OnboardingWizardContext())
+// .frame(width: 800, height: 600)
+// }
