@@ -175,8 +175,8 @@ final class AppViewModel: ObservableObject {
     // If config doesn't exist or doesn't say complete, check the onboarding state.
     // Load from workspace (parent of control repo), not control repo itself
     let workspacePath: String? = {
-      guard let controlPath = config?.controlRepoPath, !controlPath.isEmpty else { return nil }
-      return URL(fileURLWithPath: controlPath).deletingLastPathComponent().path
+      guard !repoPath.isEmpty else { return nil }
+      return URL(fileURLWithPath: repoPath).deletingLastPathComponent().path
     }()
     let onboardingState = OnboardingStateManager.load(preferredWorkspacePath: workspacePath)
     
@@ -191,14 +191,7 @@ final class AppViewModel: ObservableObject {
         saveConfig()
       } else {
         // Config is missing entirely - create one with onboarding complete.
-        // Use workspace path from onboarding state if available.
-        let workspace = onboardingState.workspace ?? LobsPaths.defaultWorkspace
-        let controlPath = (workspace as NSString).appendingPathComponent("lobs-control")
-        let newConfig = AppConfig(
-          controlRepoUrl: "",
-          controlRepoPath: controlPath,
-          onboardingComplete: true
-        )
+        let newConfig = AppConfig(onboardingComplete: true)
         self.config = newConfig
         saveConfig()
       }
@@ -625,11 +618,17 @@ final class AppViewModel: ObservableObject {
     api = (try? APIService(baseURLString: baseURL)) ?? APIService(baseURL: URL(string: "http://localhost:8000")!)
     config = loadedConfig
     
-    // Load repo path from config
+    // Resolve control repo path from onboarding state (config no longer stores repo path).
+    let onboardingState = OnboardingStateManager.load()
+    if let workspace = onboardingState.workspace?.trimmingCharacters(in: .whitespacesAndNewlines), !workspace.isEmpty {
+      let onboardingRepoPath = (workspace as NSString).appendingPathComponent("lobs-control")
+      if Self.isGitRepo(atPath: onboardingRepoPath) {
+        repoPath = onboardingRepoPath
+      }
+    }
+
+    // Load settings from config
     if let loadedConfig {
-      repoPath = loadedConfig.controlRepoPath
-      
-      // Load all settings from config
       let s = loadedConfig.settings
       selectedProjectId = s.selectedProjectId
       ownerFilter = s.ownerFilter
@@ -649,7 +648,6 @@ final class AppViewModel: ObservableObject {
       quickCaptureHotkeyMode = s.quickCaptureHotkeyMode
     } else {
       // No config yet (fresh install or migration failed)
-      repoPath = ""
       // Properties will use their default values from UserSettings()
     }
 
@@ -659,7 +657,7 @@ final class AppViewModel: ObservableObject {
     let defaultRepoPath = (NSHomeDirectory() as NSString).appendingPathComponent("lobs-control")
     if repoPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       if Self.isGitRepo(atPath: defaultRepoPath) {
-        _ = setControlRepo(path: defaultRepoPath, repoUrl: config?.controlRepoUrl, onboardingComplete: true)
+        _ = setControlRepo(path: defaultRepoPath, onboardingComplete: true)
       }
     } else {
       // If config points at a path that no longer exists, clear the in-memory repoPath
@@ -951,21 +949,24 @@ final class AppViewModel: ObservableObject {
     return URL(fileURLWithPath: repoPath)
   }
 
-  /// Set the control repo path (and optionally URL) and persist config.
+  /// Set the control repo path and persist onboarding/config state.
   ///
   /// - Parameters:
   ///   - path: Local filesystem path to the lobs-control repository.
-  ///   - repoUrl: Optional git URL for the control repository.
   ///   - onboardingComplete: If non-nil, updates the onboarding completion flag.
   @discardableResult
-  func setControlRepo(path: String, repoUrl: String? = nil, onboardingComplete: Bool? = nil) -> Bool {
+  func setControlRepo(path: String, onboardingComplete: Bool? = nil) -> Bool {
     repoPath = path
 
-    var updatedConfig = config ?? AppConfig()
-    updatedConfig.controlRepoPath = path
-    if let repoUrl {
-      updatedConfig.controlRepoUrl = repoUrl
+    // Keep onboarding state aligned so repo path can be restored on next launch.
+    var onboardingState = OnboardingStateManager.load()
+    onboardingState.workspace = URL(fileURLWithPath: path).deletingLastPathComponent().path
+    if onboardingComplete == true {
+      onboardingState.markCompleted(.done)
     }
+    OnboardingStateManager.save(onboardingState)
+
+    var updatedConfig = config ?? AppConfig()
     if let onboardingComplete {
       updatedConfig.onboardingComplete = onboardingComplete
     }
@@ -984,7 +985,7 @@ final class AppViewModel: ObservableObject {
 
   func setRepoURL(_ url: URL) {
     // Legacy API used by the repo picker; selecting a repo implies onboarding is complete.
-    setControlRepo(path: url.path, repoUrl: nil, onboardingComplete: true)
+    setControlRepo(path: url.path, onboardingComplete: true)
   }
 
   /// URL of the lobs-dashboard repo — derived as sibling of lobs-control.

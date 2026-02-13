@@ -138,7 +138,7 @@ struct SettingsView: View {
               showingPersonalityEditor = true
             }
             .buttonStyle(.bordered)
-            .disabled(false) // TODO: Fix this - config doesn't have controlRepoPath
+            .disabled(vm.repoURL == nil)
           }
 
           Divider()
