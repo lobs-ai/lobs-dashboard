@@ -3090,6 +3090,7 @@ private struct WorkerHistoryRow: View {
             .padding(.vertical, 2)
           }
 
+        }
       }
     }
   }

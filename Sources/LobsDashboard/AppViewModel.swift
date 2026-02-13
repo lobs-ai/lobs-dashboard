@@ -5,7 +5,7 @@ import UserNotifications
 
 @MainActor
 final class AppViewModel: ObservableObject {
-  nonisolated private static func decodingPathString(_ codingPath: [CodingKey]) -> String {
+  private static func decodingPathString(_ codingPath: [CodingKey]) -> String {
     if codingPath.isEmpty { return "<root>" }
     return codingPath.map { key in
       if let index = key.intValue { return "[\(index)]" }
@@ -13,7 +13,7 @@ final class AppViewModel: ObservableObject {
     }.joined(separator: ".")
   }
 
-  nonisolated private static func describeLoadError(_ error: Error) -> String {
+  private static func describeLoadError(_ error: Error) -> String {
     if let decodingError = error as? DecodingError {
       switch decodingError {
       case .typeMismatch(let type, let context):
@@ -169,9 +169,9 @@ final class AppViewModel: ObservableObject {
         let workspace = onboardingState.workspace ?? LobsPaths.defaultWorkspace
         let controlPath = (workspace as NSString).appendingPathComponent("lobs-control")
         let newConfig = AppConfig(
+          onboardingComplete: true,
           controlRepoUrl: "",
-          controlRepoPath: controlPath,
-          onboardingComplete: true
+          controlRepoPath: controlPath
         )
         self.config = newConfig
         saveConfig()
@@ -391,6 +391,31 @@ final class AppViewModel: ObservableObject {
   @Published var updateLog: [String] = []
   /// Error message if the update failed.
   @Published var updateError: String? = nil
+
+  // Git / sync state (used across multiple views + extensions)
+  @Published var isGitBusy: Bool = false
+  @Published var syncBlockedByUncommitted: Bool = false
+  @Published var syncConflictDetailsPresented: Bool = false
+  @Published var syncConflictFiles: [String] = []
+  @Published var syncConflictLastError: String? = nil
+  @Published var pendingChangesCount: Int = 0
+  @Published var lastPushAttemptAt: Date? = nil
+  @Published var lastPushError: String? = nil
+  @Published var lastSuccessfulPushAt: Date? = nil
+  @Published var lastPushedCommitHash: String? = nil
+  @Published var controlRepoAhead: Int = 0
+  @Published var controlRepoBehind: Int = 0
+  @Published var lastGitHubSyncAt: Date? = nil
+  @Published var lastGitHubSyncError: String? = nil
+  @Published var isGitHubSyncing: Bool = false
+  @Published var forcePushEscalationPresented: Bool = false
+  @Published var forcePushEscalationError: String? = nil
+  @Published var draggingTaskId: String? = nil
+  @Published var rebaseRecoveryPresented: Bool = false
+  @Published var rebaseRecoveryDialogMessage: String = ""
+
+  private var lastControlRepoStatusCheck: Date? = nil
+  private var lastPendingChangesUpdate: Date? = nil
 
   // Kanban UX
   @Published var searchText: String = "" {
@@ -705,13 +730,13 @@ final class AppViewModel: ObservableObject {
           // Auto-archive is handled server-side, no need to do it client-side
 
           // Track GitHub sync status if selected project uses GitHub mode
-          let hasGitHubProject = loadedProjects.contains { $0.tracking == .github && $0.github != nil }
+          let hasGitHubProject = false
 
           let file = try await self.api.loadTasks()
 
           return (loadedProjects, file.tasks, hasGitHubProject)
         } catch {
-          print("⚠️ [reload:silent] Failed loading projects/tasks from API: \(AppViewModel.describeLoadError(error))")
+          print("⚠️ [reload:silent] Failed loading projects/tasks from API: \(error.localizedDescription)")
           return nil
         }
       }.value
@@ -719,7 +744,7 @@ final class AppViewModel: ObservableObject {
       // Back on main actor — update UI with loaded data
       await MainActor.run {
         guard let data = loadedData else {
-          let hasGitHubProject = projects.contains { $0.syncMode == .github && $0.githubConfig != nil }
+          let hasGitHubProject = false
           if hasGitHubProject {
             lastGitHubSyncError = "Failed to load data"
             isGitHubSyncing = false
@@ -860,6 +885,13 @@ final class AppViewModel: ObservableObject {
   func setRepoURL(_ url: URL) {
     // Legacy API used by the repo picker; selecting a repo implies onboarding is complete.
     setControlRepo(path: url.path, repoUrl: nil, onboardingComplete: true)
+  }
+
+  /// URL of the lobs-control repo from config (legacy Git-backed features only).
+  var repoURL: URL? {
+    guard let path = config?.controlRepoPath?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !path.isEmpty else { return nil }
+    return URL(fileURLWithPath: path)
   }
 
   /// URL of the lobs-dashboard repo — derived as sibling of lobs-control.
@@ -1153,6 +1185,156 @@ final class AppViewModel: ObservableObject {
     reload()
   }
 
+  private func promptRebaseRecoveryIfNeeded(context: String) {
+    guard let repoURL else { return }
+    let fm = FileManager.default
+    let gitDir = repoURL.appendingPathComponent(".git")
+    let inRebase =
+      fm.fileExists(atPath: gitDir.appendingPathComponent("rebase-merge").path) ||
+      fm.fileExists(atPath: gitDir.appendingPathComponent("rebase-apply").path)
+    guard inRebase else { return }
+    rebaseRecoveryDialogMessage = "A git rebase appears to be in progress (\(context)). Choose how to continue."
+    rebaseRecoveryPresented = true
+  }
+
+  func rebaseRecoveryContinue() {
+    rebaseRecoveryPresented = false
+    syncConflictContinueRebase()
+  }
+
+  func rebaseRecoverySkip() {
+    guard let repoURL else { return }
+    rebaseRecoveryPresented = false
+    Task {
+      let result = await Git.runAsyncWithErrorHandling(["rebase", "--skip"], cwd: repoURL)
+      await MainActor.run {
+        if result.success {
+          self.syncConflictLastError = nil
+          self.reloadIfPossible()
+        } else {
+          self.syncConflictLastError = result.error?.errorDescription ?? "Failed to skip rebase commit"
+          self.syncConflictDetailsPresented = true
+          self.syncConflictRefreshFiles()
+        }
+      }
+    }
+  }
+
+  func rebaseRecoveryAbort() {
+    rebaseRecoveryPresented = false
+    syncConflictAbortRebase()
+  }
+
+  func recoverSyncConflictKeepMine() {
+    showSyncConflictDetails()
+  }
+
+  func recoverSyncConflictUseRemote() {
+    forcePullDiscardLocal()
+  }
+
+  func showSyncConflictDetails() {
+    syncConflictDetailsPresented = true
+    syncConflictRefreshFiles()
+  }
+
+  func syncConflictRefreshFiles() {
+    guard let repoURL else { return }
+    Task {
+      let result = await Git.runAsyncWithErrorHandling(["diff", "--name-only", "--diff-filter=U"], cwd: repoURL)
+      await MainActor.run {
+        if result.success {
+          self.syncConflictFiles = result.output
+            .split(separator: "\n")
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+          self.syncConflictLastError = nil
+        } else {
+          self.syncConflictLastError = result.error?.errorDescription ?? "Failed to list conflicted files"
+        }
+      }
+    }
+  }
+
+  func syncConflictResolveFileKeepingMine(_ path: String) {
+    syncConflictResolveFile(path, useRemote: false)
+  }
+
+  func syncConflictResolveFileUsingRemote(_ path: String) {
+    syncConflictResolveFile(path, useRemote: true)
+  }
+
+  private func syncConflictResolveFile(_ path: String, useRemote: Bool) {
+    guard let repoURL else { return }
+    guard !isGitBusy else { return }
+    isGitBusy = true
+    Task {
+      let checkoutArgs = useRemote ? ["checkout", "--theirs", "--", path] : ["checkout", "--ours", "--", path]
+      let checkout = await Git.runAsyncWithErrorHandling(checkoutArgs, cwd: repoURL)
+      if !checkout.success {
+        await MainActor.run {
+          self.syncConflictLastError = checkout.error?.errorDescription ?? "Failed to resolve file"
+          self.isGitBusy = false
+        }
+        return
+      }
+      let add = await Git.runAsyncWithErrorHandling(["add", "--", path], cwd: repoURL)
+      await MainActor.run {
+        if !add.success {
+          self.syncConflictLastError = add.error?.errorDescription ?? "Failed to stage resolved file"
+        } else {
+          self.syncConflictLastError = nil
+        }
+        self.isGitBusy = false
+        self.syncConflictRefreshFiles()
+      }
+    }
+  }
+
+  func syncConflictContinueRebase() {
+    guard let repoURL else { return }
+    guard !isGitBusy else { return }
+    isGitBusy = true
+    Task {
+      let cont = await Git.runAsyncWithErrorHandling(["rebase", "--continue"], cwd: repoURL)
+      await MainActor.run {
+        if cont.success {
+          self.syncConflictLastError = nil
+          self.syncConflictRefreshFiles()
+          if self.syncConflictFiles.isEmpty {
+            self.syncConflictDetailsPresented = false
+            self.reloadIfPossible()
+          }
+        } else {
+          self.syncConflictLastError = cont.error?.errorDescription ?? "Failed to continue rebase"
+          self.syncConflictRefreshFiles()
+        }
+        self.isGitBusy = false
+      }
+    }
+  }
+
+  func syncConflictAbortRebase() {
+    guard let repoURL else { return }
+    guard !isGitBusy else { return }
+    isGitBusy = true
+    Task {
+      let abort = await Git.runAsyncWithErrorHandling(["rebase", "--abort"], cwd: repoURL)
+      await MainActor.run {
+        if abort.success {
+          self.syncConflictLastError = nil
+          self.syncBlockedByUncommitted = false
+          self.syncConflictFiles = []
+          self.syncConflictDetailsPresented = false
+          self.reloadIfPossible()
+        } else {
+          self.syncConflictLastError = abort.error?.errorDescription ?? "Failed to abort rebase"
+        }
+        self.isGitBusy = false
+      }
+    }
+  }
+
   func reload() {
     guard let repoURL else {
       lastError = "Repo path not set"
@@ -1198,7 +1380,7 @@ final class AppViewModel: ObservableObject {
           // Auto-archive is handled server-side
 
           // Track GitHub sync status if any project uses GitHub mode
-          let hasGitHubProject = loadedProjects.contains { $0.tracking == .github && $0.github != nil }
+          let hasGitHubProject = false
 
           let file = try await self.api.loadTasks()
 
@@ -1208,7 +1390,7 @@ final class AppViewModel: ObservableObject {
 
           return (loadedProjects, file.tasks, hasGitHubProject, githubSyncTime)
         } catch {
-          print("⚠️ [reload] Failed loading projects/tasks from API: \(AppViewModel.describeLoadError(error))")
+          print("⚠️ [reload] Failed loading projects/tasks from API: \(error.localizedDescription)")
           return nil
         }
       }.value
@@ -1216,7 +1398,7 @@ final class AppViewModel: ObservableObject {
       // Back on main actor — update UI with loaded data
       await MainActor.run {
         guard let data = loadedData else {
-          let hasGitHubProject = projects.contains { $0.tracking == .github && $0.github != nil }
+          let hasGitHubProject = false
           if hasGitHubProject {
             lastGitHubSyncError = "Failed to load data"
             isGitHubSyncing = false
@@ -1279,28 +1461,43 @@ final class AppViewModel: ObservableObject {
 
   /// Sync GitHub cache via API for the current project.
   func syncGitHubCache() {
-    guard let currentProject = projects.first(where: { $0.id == selectedProjectId }),
-          currentProject.tracking == .github else {
-      flashError("Current project is not GitHub-tracked")
-      return
-    }
-    guard !isGitHubSyncing && !isGitBusy else { return }
+    flashError("GitHub sync is not available in this API-only build")
+  }
 
-    isGitHubSyncing = true
-    Task {
-      do {
-        try await api.syncGitHubProject(projectId: currentProject.id)
-        await MainActor.run {
-          isGitHubSyncing = false
-          reload()
-        }
-      } catch {
-        await MainActor.run {
-          flashError("Failed to sync GitHub: \(error.localizedDescription)")
-          isGitHubSyncing = false
-        }
+  private func syncRepoAsync(repoURL: URL) async throws {
+    let pull = await Git.runAsyncWithErrorHandling(["pull", "--rebase"], cwd: repoURL)
+    if !pull.success {
+      throw pull.error ?? GitError.unknownError("git pull --rebase failed")
+    }
+  }
+
+  private func asyncCommitAndMaybePush(repoURL: URL, message: String, autoPush: Bool) async throws {
+    let add = await Git.runAsyncWithErrorHandling(["add", "-A"], cwd: repoURL)
+    if !add.success {
+      throw add.error ?? GitError.unknownError("git add failed")
+    }
+
+    let commit = await Git.runAsyncWithErrorHandling(["commit", "-m", message], cwd: repoURL)
+    if !commit.success {
+      let text = (commit.output + " " + (commit.error?.errorDescription ?? "")).lowercased()
+      if !text.contains("nothing to commit") {
+        throw commit.error ?? GitError.unknownError("git commit failed")
       }
     }
+
+    guard autoPush else { return }
+    let push = await Git.runAsyncWithErrorHandling(["push"], cwd: repoURL)
+    if !push.success {
+      throw push.error ?? GitError.unknownError("git push failed")
+    }
+  }
+
+  private func autoCommitLocalChangesAsync(repoURL: URL) async throws {
+    try await asyncCommitAndMaybePush(
+      repoURL: repoURL,
+      message: "Lobs: auto-commit local changes",
+      autoPush: false
+    )
   }
 
   /// Manually push local commits to origin.
@@ -1513,6 +1710,10 @@ final class AppViewModel: ObservableObject {
         }
       }
     }
+  }
+
+  func loadResearchData() {
+    Task { await loadResearchDataAsync() }
   }
 
   // MARK: - Tracker
@@ -1996,8 +2197,18 @@ final class AppViewModel: ObservableObject {
             notes: task.notes
           )
         }
-        
-        // For GitHub projects, create issues for each task
+        await MainActor.run {
+          self.flashSuccess("Created \(newTasks.count) task(s) from template")
+        }
+      } catch {
+        await MainActor.run {
+          self.flashError("Failed to create tasks from template: \(error.localizedDescription)")
+        }
+      }
+    }
+  }
+
+  func postInboxThreadMessage(docId: String, author: String, text: String) {
     let now = Date()
     let msg = InboxThreadMessage(
       id: UUID().uuidString,

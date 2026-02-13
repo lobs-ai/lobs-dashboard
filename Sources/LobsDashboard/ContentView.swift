@@ -1235,8 +1235,8 @@ private struct ToolbarArea: View {
 
       // Project
       Menu {
-        ForEach(vm.sortedActiveProjects) { p in
-          let activeCount = vm.tasks.filter { $0.projectId == p.id && $0.status == .active }.count
+        ForEach(vm.sortedActiveProjects, id: \.id) { p in
+          let activeCount = vm.tasks.filter { ($0.projectId ?? "default") == p.id && $0.status == .active }.count
           Button {
             vm.selectedProjectId = p.id
             vm.showOverview = false
@@ -4508,7 +4508,7 @@ private struct TextDumpSheet: View {
           Picker("Project", selection: $selectedProjectId) {
             Text("Choose a project")
               .tag("")
-            ForEach(vm.sortedActiveProjects) { project in
+            ForEach(vm.sortedActiveProjects, id: \.id) { project in
               HStack(spacing: 6) {
                 Image(systemName: project.resolvedType == .research ? "doc.text.magnifyingglass" : "rectangle.split.3x1")
                 Text(project.title)

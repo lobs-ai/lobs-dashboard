@@ -184,13 +184,14 @@ struct DashboardTask: Codable, Identifiable, Hashable {
     blockedBy = try? container.decode([String].self, forKey: .blockedBy)
     pinned = try? container.decode(Bool.self, forKey: .pinned)
     shape = try? container.decode(TaskShape.self, forKey: .shape)
+    githubIssueNumber = try? container.decode(Int.self, forKey: .githubIssueNumber)
     agent = try? container.decode(String.self, forKey: .agent)
   }
 
   private enum CodingKeys: String, CodingKey {
     case id, title, status, owner, createdAt, updatedAt
     case workState, reviewState, projectId, artifactPath, notes
-    case startedAt, finishedAt, sortOrder, blockedBy, pinned, shape, agent
+    case startedAt, finishedAt, sortOrder, blockedBy, pinned, shape, githubIssueNumber, agent
   }
 
   // Memberwise initializer for creating tasks programmatically
@@ -212,6 +213,7 @@ struct DashboardTask: Codable, Identifiable, Hashable {
     blockedBy: [String]? = nil,
     pinned: Bool? = nil,
     shape: TaskShape? = nil,
+    githubIssueNumber: Int? = nil,
     agent: String? = nil
   ) {
     self.id = id
@@ -231,6 +233,7 @@ struct DashboardTask: Codable, Identifiable, Hashable {
     self.blockedBy = blockedBy
     self.pinned = pinned
     self.shape = shape
+    self.githubIssueNumber = githubIssueNumber
     self.agent = agent
   }
 
@@ -265,6 +268,9 @@ struct DashboardTask: Codable, Identifiable, Hashable {
   /// Work shape/type for filtering (deep work, shallow, creative, admin, waiting).
   var shape: TaskShape?
 
+  /// Optional GitHub issue number for legacy GitHub-synced tasks.
+  var githubIssueNumber: Int?
+
   /// Agent type assignment (programmer, researcher, reviewer, writer, architect).
   var agent: String?
 }
@@ -275,6 +281,16 @@ enum ProjectType: String, Codable, CaseIterable, Hashable {
   case tracker
 }
 
+enum ProjectTracking: String, Codable, Hashable {
+  case local
+  case github
+}
+
+struct GitHubProjectConfig: Codable, Hashable {
+  var repo: String
+  var labelFilter: [String]?
+}
+
 struct Project: Codable, Identifiable, Hashable {
   var id: String
   var title: String
@@ -283,15 +299,20 @@ struct Project: Codable, Identifiable, Hashable {
   var notes: String?
   var archived: Bool?
   var type: ProjectType?
+  var tracking: ProjectTracking?
+  var github: GitHubProjectConfig?
 
   /// Manual sort order (lower = higher in list). Nil means unsorted (append to end).
   var sortOrder: Int?
 
   /// Resolved type (defaults to kanban for backwards compatibility).
   var resolvedType: ProjectType { type ?? .kanban }
+  var resolvedTracking: ProjectTracking { tracking ?? .local }
 
   enum CodingKeys: String, CodingKey {
-    case id, title, createdAt, updatedAt, notes, archived, type, sortOrder
+    case id, title, createdAt, updatedAt, notes, archived, type, sortOrder, tracking
+    case githubRepo = "github_repo"
+    case githubLabelFilter = "github_label_filter"
   }
   
   init(from decoder: Decoder) throws {
@@ -305,6 +326,13 @@ struct Project: Codable, Identifiable, Hashable {
     archived = try? container.decode(Bool.self, forKey: .archived)
     type = try? container.decode(ProjectType.self, forKey: .type)
     sortOrder = try? container.decode(Int.self, forKey: .sortOrder)
+    tracking = try? container.decode(ProjectTracking.self, forKey: .tracking)
+    if let repo = try? container.decode(String.self, forKey: .githubRepo) {
+      let labels = try? container.decode([String].self, forKey: .githubLabelFilter)
+      github = GitHubProjectConfig(repo: repo, labelFilter: labels)
+    } else {
+      github = nil
+    }
   }
   
   func encode(to encoder: Encoder) throws {
@@ -318,9 +346,23 @@ struct Project: Codable, Identifiable, Hashable {
     try container.encodeIfPresent(archived, forKey: .archived)
     try container.encodeIfPresent(type, forKey: .type)
     try container.encodeIfPresent(sortOrder, forKey: .sortOrder)
+    try container.encodeIfPresent(tracking, forKey: .tracking)
+    try container.encodeIfPresent(github?.repo, forKey: .githubRepo)
+    try container.encodeIfPresent(github?.labelFilter, forKey: .githubLabelFilter)
   }
   
-  init(id: String, title: String, createdAt: Date, updatedAt: Date, notes: String? = nil, archived: Bool? = nil, type: ProjectType? = nil, sortOrder: Int? = nil) {
+  init(
+    id: String,
+    title: String,
+    createdAt: Date,
+    updatedAt: Date,
+    notes: String? = nil,
+    archived: Bool? = nil,
+    type: ProjectType? = nil,
+    sortOrder: Int? = nil,
+    tracking: ProjectTracking? = nil,
+    github: GitHubProjectConfig? = nil
+  ) {
     self.id = id
     self.title = title
     self.createdAt = createdAt
@@ -329,6 +371,8 @@ struct Project: Codable, Identifiable, Hashable {
     self.archived = archived
     self.type = type
     self.sortOrder = sortOrder
+    self.tracking = tracking
+    self.github = github
   }
 }
 
