@@ -4,7 +4,6 @@ struct SettingsView: View {
   @EnvironmentObject var vm: AppViewModel
   @Environment(\.dismiss) private var dismiss
   
-  @State private var showingChangeRepoConfirmation = false
   @State private var showingResetConfirmation = false
   @State private var showingPersonalityEditor = false
   @State private var showingSetupStatus = false
@@ -12,8 +11,6 @@ struct SettingsView: View {
   @State private var showingServerSetupGuide = false
   @State private var showingRerunOnboardingConfirm = false
 
-  @State private var showingForcePullConfirm: Bool = false
-  @State private var showingForcePushConfirm: Bool = false
   @State private var serverURL: String = ""
   @State private var connectionTestStatus: ConnectionTestStatus = .idle
   
@@ -130,7 +127,7 @@ struct SettingsView: View {
             Text("Agent")
               .font(.headline)
 
-            Text("Customize the worker persona (SOUL.md, USER.md, IDENTITY.md) stored in your control repo.")
+            Text("Customize the worker persona (SOUL.md, USER.md, IDENTITY.md) via the server API.")
               .font(.caption)
               .foregroundColor(.secondary)
 
@@ -181,23 +178,6 @@ struct SettingsView: View {
           
           // Action Buttons
           VStack(spacing: 12) {
-            Button("Change Repository") {
-              showingChangeRepoConfirmation = true
-            }
-            .buttonStyle(.bordered)
-            .confirmationDialog(
-              "Change Repository",
-              isPresented: $showingChangeRepoConfirmation,
-              titleVisibility: .visible
-            ) {
-              Button("Continue", role: .destructive) {
-                changeRepository()
-              }
-              Button("Cancel", role: .cancel) {}
-            } message: {
-              Text("This will disconnect from your current control repo. Your local data will remain. Continue?")
-            }
-            
             Button("Reset Everything") {
               showingResetConfirmation = true
             }
@@ -260,21 +240,6 @@ struct SettingsView: View {
       Button("Cancel", role: .cancel) {}
     } message: {
       Text("This will take you back through the setup wizard, without deleting your current configuration.")
-    }
-  }
-  
-  private func changeRepository() {
-    do {
-      // Reset config but keep local data
-      try ConfigManager.reset()
-      
-      // Update AppViewModel to trigger onboarding
-      vm.config = nil
-      
-      // Close settings window - onboarding will appear
-      dismiss()
-    } catch {
-      print("⚠️ Failed to reset config: \(error)")
     }
   }
   

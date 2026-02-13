@@ -722,14 +722,6 @@ struct ResearchDocView: View {
 
         Spacer()
 
-        if vm.isGitBusy {
-          ProgressView()
-            .scaleEffect(0.6)
-          Text("Syncing…")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-        }
-
         // Word count
         let wordCount = editContent.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
         if wordCount > 0 {

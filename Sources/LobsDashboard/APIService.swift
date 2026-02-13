@@ -209,18 +209,8 @@ final class APIService {
     )
   }
   
-  func updateProjectSyncMode(id: String, syncMode: SyncMode, githubConfig: GitHubConfig?) async throws {
-    let update = ProjectUpdate(
-      tracking: syncMode.rawValue,
-      githubRepo: githubConfig?.repo,
-      githubLabelFilter: githubConfig?.labelFilter
-    )
-    let _: Project = try await request(
-      method: "PUT",
-      path: "/api/projects/\(id)",
-      body: update
-    )
-  }
+  // REMOVED: updateProjectSyncMode - no longer using GitHub sync
+  // func updateProjectSyncMode(id: String, syncMode: SyncMode, githubConfig: GitHubConfig?) async throws { ... }
   
   func deleteProject(id: String) async throws {
     try await requestVoid(

@@ -3817,17 +3817,6 @@ private struct EditProjectSheet: View {
 
   @State private var title: String = ""
   @State private var notes: String = ""
-  @State private var tracking: TrackingMode = .local
-  @State private var ghRepo: String = ""
-  @State private var ghLabelFilter: String = ""
-  @State private var isTestingConnection: Bool = false
-  @State private var connectionTestResult: ConnectionTestResult? = nil
-
-  enum ConnectionTestResult {
-    case success
-    case failure(String)
-  }
-
   var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 16) {
@@ -3854,138 +3843,6 @@ private struct EditProjectSheet: View {
             .lineLimit(6, reservesSpace: true)
         }
 
-        Divider()
-
-        // Tracking mode configuration
-        VStack(alignment: .leading, spacing: 12) {
-          Text("Tracking Mode")
-            .font(.headline)
-
-          Picker("", selection: $tracking) {
-            Text("Local").tag(TrackingMode.local)
-            Text("GitHub").tag(TrackingMode.github)
-          }
-          .pickerStyle(.segmented)
-          .onChange(of: tracking) { _ in
-            // Clear connection test result when switching modes
-            connectionTestResult = nil
-          }
-
-          if tracking == .local {
-            Text("Tasks stored locally in JSON files")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          } else {
-            Text("Tasks synced with GitHub Issues")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
-        }
-
-        // GitHub configuration (only shown when GitHub mode selected)
-        if tracking == .github {
-          Divider()
-
-          VStack(alignment: .leading, spacing: 12) {
-            Text("GitHub Configuration")
-              .font(.headline)
-
-            VStack(alignment: .leading, spacing: 8) {
-              Text("Repository")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-              TextField("owner/repo (e.g., RafeSymonds/my-project)", text: $ghRepo)
-                .textFieldStyle(.roundedBorder)
-                .onChange(of: ghRepo) { _ in
-                  // Clear connection test result when repo changes
-                  connectionTestResult = nil
-                }
-              Text("Format: owner/repo (gh CLI must be authenticated)")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-              Text("Label Filter (Optional)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-              TextField("e.g., lobs,dashboard", text: $ghLabelFilter)
-                .textFieldStyle(.roundedBorder)
-              Text("Comma-separated labels to filter issues (leave empty for all)")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            }
-
-            // Test connection button
-            HStack(spacing: 12) {
-              Button {
-                testGitHubConnection()
-              } label: {
-                HStack(spacing: 6) {
-                  if isTestingConnection {
-                    ProgressView()
-                      .scaleEffect(0.7)
-                  } else {
-                    Image(systemName: "network")
-                  }
-                  Text("Test Connection")
-                }
-                .font(.caption)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Theme.subtle)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-              }
-              .buttonStyle(.plain)
-              .disabled(isTestingConnection || ghRepo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-              // Connection test result indicator
-              if let result = connectionTestResult {
-                switch result {
-                case .success:
-                  HStack(spacing: 4) {
-                    Image(systemName: "checkmark.circle.fill")
-                      .foregroundStyle(.green)
-                    Text("Connected")
-                      .font(.caption)
-                      .foregroundStyle(.green)
-                  }
-                case .failure(let error):
-                  HStack(spacing: 4) {
-                    Image(systemName: "xmark.circle.fill")
-                      .foregroundStyle(.red)
-                    Text("Failed")
-                      .font(.caption)
-                      .foregroundStyle(.red)
-                  }
-                  .help(error)
-                }
-              }
-            }
-
-            // Validation warning
-            if ghRepo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-              HStack(spacing: 6) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                  .foregroundStyle(.orange)
-                Text("Repository is required for GitHub tracking")
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
-              }
-              .padding(.top, 4)
-            } else if !ghRepo.contains("/") {
-              HStack(spacing: 6) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                  .foregroundStyle(.orange)
-                Text("Repository must be in 'owner/repo' format")
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
-              }
-              .padding(.top, 4)
-            }
-          }
-        }
-
         HStack {
           Button("Cancel") { dismiss() }
             .keyboardShortcut(.cancelAction)
@@ -4003,19 +3860,11 @@ private struct EditProjectSheet: View {
               vm.updateProjectNotes(id: project.id, notes: trimmedNotes.isEmpty ? nil : trimmedNotes)
             }
 
-            // Update tracking mode and GitHub config
-            let trimmedRepo = ghRepo.trimmingCharacters(in: .whitespacesAndNewlines)
-            let githubConfig: GitHubProjectConfig? = tracking == .github ? GitHubProjectConfig(
-              repo: trimmedRepo,
-              labelFilter: ghLabelFilter.isEmpty ? nil : ghLabelFilter.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-            ) : nil
-            
-            vm.updateProjectSyncMode(id: project.id, syncMode: tracking, githubConfig: githubConfig)
 
             dismiss()
           }
           .keyboardShortcut(.defaultAction)
-          .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (tracking == .github && (ghRepo.isEmpty || !ghRepo.contains("/"))))
+          .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
       }
       .padding(20)
@@ -4024,54 +3873,6 @@ private struct EditProjectSheet: View {
     .onAppear {
       title = project.title
       notes = project.notes ?? ""
-      tracking = project.resolvedTracking
-      if let config = project.github {
-        ghRepo = config.repo
-        ghLabelFilter = config.labelFilter?.joined(separator: ", ") ?? ""
-      }
-    }
-  }
-
-  private func testGitHubConnection() {
-    isTestingConnection = true
-    connectionTestResult = nil
-
-    let repo = ghRepo.trimmingCharacters(in: .whitespacesAndNewlines)
-    
-    DispatchQueue.global(qos: .userInitiated).async {
-      let process = Process()
-      process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-      process.arguments = ["gh", "issue", "list", "--repo", repo, "--limit", "1"]
-
-      let pipe = Pipe()
-      let errorPipe = Pipe()
-      process.standardOutput = pipe
-      process.standardError = errorPipe
-
-      do {
-        try process.run()
-        process.waitUntilExit()
-
-        let exitCode = process.terminationStatus
-        
-        DispatchQueue.main.async {
-          isTestingConnection = false
-          if exitCode == 0 {
-            connectionTestResult = .success
-          } else {
-            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-            let errorMessage = String(data: errorData, encoding: .utf8)?
-              .trimmingCharacters(in: .whitespacesAndNewlines) ?? "Unknown error"
-            connectionTestResult = .failure(errorMessage)
-          }
-        }
-      } catch {
-        DispatchQueue.main.async {
-          isTestingConnection = false
-          connectionTestResult = .failure("Failed to run gh command: \(error.localizedDescription)")
-        }
-      }
-    }
   }
 }
 

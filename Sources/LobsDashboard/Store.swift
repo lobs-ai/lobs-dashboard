@@ -245,15 +245,8 @@ final class LobsControlStore {
     try saveProjects(file)
   }
 
-  func updateProjectSyncMode(id: String, syncMode: SyncMode, githubConfig: GitHubConfig?) throws {
-    var file = try loadProjects()
-    guard let idx = file.projects.firstIndex(where: { $0.id == id }) else { return }
-    file.projects[idx].syncMode = syncMode
-    file.projects[idx].githubConfig = githubConfig
-    file.projects[idx].updatedAt = Date()
-    file.generatedAt = Date()
-    try saveProjects(file)
-  }
+  // REMOVED: updateProjectSyncMode - no longer using GitHub sync
+  // func updateProjectSyncMode(id: String, syncMode: SyncMode, githubConfig: GitHubConfig?) throws { ... }
 
   func deleteProject(id: String) throws {
     var file = try loadProjects()
@@ -692,55 +685,8 @@ final class LobsControlStore {
     )
   }
 
-  /// Map a GitHub Issue to a DashboardTask.
-  private func mapGitHubIssueToTask(issue: GitHubIssue, projectId: String) throws -> DashboardTask {
-    // Parse status from labels (e.g., "status:active", "status:completed")
-    var status: TaskStatus = .active
-    var workState: WorkState? = nil
-
-    for label in issue.labels ?? [] {
-      let name = label.name.lowercased()
-      if name.hasPrefix("status:") {
-        let statusValue = String(name.dropFirst("status:".count))
-        status = parseTaskStatus(statusValue)
-      } else if name.hasPrefix("work:") {
-        let workValue = String(name.dropFirst("work:".count))
-        workState = parseWorkState(workValue)
-      }
-    }
-
-    // Default: open issues are active, closed issues are completed
-    if status == .active && issue.state == "closed" {
-      status = .completed
-    }
-
-    // Parse owner from assignees (first assignee becomes owner)
-    var owner: TaskOwner = .other("github")
-    if let assignee = issue.assignees?.first {
-      owner = parseTaskOwner(assignee.login)
-    }
-
-    return DashboardTask(
-      id: "github-\(issue.number)",
-      title: issue.title,
-      status: status,
-      owner: owner,
-      createdAt: issue.createdAt,
-      updatedAt: issue.updatedAt,
-      workState: workState,
-      reviewState: nil,
-      projectId: projectId,
-      artifactPath: nil,
-      notes: issue.body,
-      startedAt: nil,
-      finishedAt: issue.closedAt,
-      sortOrder: nil,
-      blockedBy: nil,
-      pinned: nil,
-      shape: nil,
-      githubIssueNumber: issue.number
-    )
-  }
+  // REMOVED: mapGitHubIssueToTask - no longer using GitHub sync
+  // private func mapGitHubIssueToTask(issue: GitHubIssue, projectId: String) throws -> DashboardTask { ... }
 
   private func parseTaskStatus(_ value: String) -> TaskStatus {
     switch value {

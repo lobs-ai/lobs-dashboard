@@ -232,7 +232,6 @@ struct OverviewView: View {
         velocitySection
         activitySection
         AgentGridView(vm: vm)
-        syncStatusSection
         projectCardsSection
         columnsSection
         inboxColumnsSection
@@ -359,21 +358,15 @@ struct OverviewView: View {
   }
 
   private var onboardingSteps: [OnboardingStep] {
-    let repoSet = (vm.repoURL != nil)
     let walkthroughComplete = vm.firstTaskWalkthroughComplete
     // Don't cache onboardingComplete - needsOnboarding may auto-fix config
     let onboardingDone = !vm.needsOnboarding
 
     return [
       OnboardingStep(
-        title: "Connect to server",
-        isComplete: repoSet,
-        detail: repoSet ? nil : "Configure your Lobs API server so tasks/projects can load."
-      ),
-      OnboardingStep(
         title: "Finish onboarding",
         isComplete: onboardingDone,
-        detail: onboardingDone ? nil : "Run the setup wizard to validate your repo + server settings."
+        detail: onboardingDone ? nil : "Run the setup wizard to validate your server settings."
       ),
       OnboardingStep(
         title: "First task walkthrough",
@@ -711,90 +704,6 @@ struct OverviewView: View {
   }
 
   @ViewBuilder
-  private var syncStatusSection: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      HStack {
-        Image(systemName: "arrow.triangle.2.circlepath")
-          .foregroundStyle(.blue)
-        Text("Sync Status")
-          .font(.headline)
-          .fontWeight(.bold)
-        Spacer()
-        if vm.pendingChangesCount > 0 {
-          Text("\(vm.pendingChangesCount) pending")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-              Capsule()
-                .fill(Color.orange.opacity(0.2))
-            )
-        }
-      }
-
-      VStack(alignment: .leading, spacing: 8) {
-        if let lastPush = vm.lastSuccessfulPushAt {
-          HStack {
-            Text("Last sync:")
-              .foregroundStyle(.secondary)
-            Text(lastPush, style: .relative)
-              .foregroundStyle(.primary)
-            Text("ago")
-              .foregroundStyle(.secondary)
-          }
-          .font(.callout)
-        }
-
-        if let error = vm.lastPushError, !error.isEmpty {
-          HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-              .foregroundStyle(.red)
-            Text(error)
-              .font(.callout)
-              .foregroundStyle(.red)
-          }
-          .padding(8)
-          .background(
-            RoundedRectangle(cornerRadius: 6)
-              .fill(Color.red.opacity(0.1))
-          )
-        }
-
-        if vm.syncBlockedByUncommitted {
-          VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-              Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-              Text("Sync blocked by uncommitted changes")
-                .font(.callout)
-                .foregroundStyle(.orange)
-            }
-
-            Text("Commit or discard local changes to resume syncing.")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
-          .padding(8)
-          .background(
-            RoundedRectangle(cornerRadius: 6)
-              .fill(Color.orange.opacity(0.1))
-          )
-        }
-      }
-    }
-    .padding(16)
-    .background(
-      RoundedRectangle(cornerRadius: OTheme.cardRadius)
-        .fill(OTheme.cardBg)
-    )
-    .overlay(
-      RoundedRectangle(cornerRadius: OTheme.cardRadius)
-        .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
-    )
-  }
-
-
 
   private var projectCardsSection: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -1308,12 +1217,6 @@ private struct ProjectCard: View {
             .fontWeight(.bold)
             .lineLimit(1)
 
-          if project.syncMode == .github {
-            Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
-              .font(.caption)
-              .foregroundStyle(.blue)
-              .help("Synced with GitHub Issues")
-          }
 
           Spacer()
 
@@ -2956,7 +2859,6 @@ private struct WorkerHistoryRow: View {
     if let log = run.taskLog, !log.isEmpty { return true }
     if let commits = run.commitSHAs, !commits.isEmpty { return true }
     if let files = run.filesModified, !files.isEmpty { return true }
-    if run.githubCompareURL != nil { return true }
     return false
   }
 
@@ -3188,20 +3090,6 @@ private struct WorkerHistoryRow: View {
             .padding(.vertical, 2)
           }
 
-          // GitHub compare link
-          if let compareURL = run.githubCompareURL {
-            HStack(spacing: 8) {
-              Spacer().frame(width: 20)
-              Image(systemName: "link")
-                .font(.system(size: 9))
-                .foregroundStyle(.blue)
-              Link("View changes on GitHub", destination: URL(string: compareURL)!)
-                .font(.system(size: 11))
-                .foregroundStyle(.blue)
-            }
-            .padding(.vertical, 2)
-          }
-        }
         .padding(.top, 2)
         .padding(.bottom, 4)
       }
