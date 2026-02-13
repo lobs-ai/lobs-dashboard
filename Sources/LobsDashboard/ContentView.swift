@@ -53,6 +53,7 @@ struct ContentView: View {
   @State private var showInbox = false
   @State private var inboxInitialItemId: String? = nil
   @State private var showDocuments = false
+  @State private var showChat = false
   @State private var showAllDone = false
   @State private var showAllRejected = false
   @State private var quickAddText = ""
@@ -66,6 +67,7 @@ struct ContentView: View {
   @State private var showCommandPalette = false
   @State private var showOnboarding = false
   @State private var showFirstTaskWalkthrough = false
+  @State private var chatViewModel: ChatViewModel?
 
   var body: some View {
     ZStack(alignment: .top) {
@@ -82,6 +84,7 @@ struct ContentView: View {
           showSettings: $showSettings,
           showInbox: $showInbox,
           showDocuments: $showDocuments,
+          showChat: $showChat,
           showTemplates: $showTemplates,
           showHelp: $showHelp,
           showTextDump: $showTextDump,
@@ -296,16 +299,17 @@ struct ContentView: View {
           }
           .buttonStyle(.plain)
           .help("Keyboard Shortcuts (⌘/)")
-          .opacity(showInbox || showDocuments || showHelp ? 0 : 0.7)
+          .opacity(showInbox || showDocuments || showChat || showHelp ? 0 : 0.7)
           .animation(.easeInOut(duration: 0.15), value: showInbox)
           .animation(.easeInOut(duration: 0.15), value: showDocuments)
+          .animation(.easeInOut(duration: 0.15), value: showChat)
           .animation(.easeInOut(duration: 0.15), value: showHelp)
         }
         .padding(.trailing, 16)
         .padding(.bottom, 12)
       }
       .zIndex(50)
-      .allowsHitTesting(!showInbox && !showDocuments && !showHelp && !showAIUsage)
+      .allowsHitTesting(!showInbox && !showDocuments && !showChat && !showHelp && !showAIUsage)
 
       // Inbox overlay — clicking outside dismisses (Task #479271CB)
       if showInbox {
@@ -342,6 +346,29 @@ struct ContentView: View {
           .onExitCommand { withAnimation(.easeInOut(duration: 0.25)) { showDocuments = false } }
           .transition(.opacity.combined(with: .scale(scale: 0.95)))
           .zIndex(203)
+      }
+      
+      // Chat overlay — clicking outside dismisses
+      if showChat, let chatVM = chatViewModel {
+        Color.black.opacity(0.3)
+          .ignoresSafeArea()
+          .onTapGesture { withAnimation(.easeInOut(duration: 0.25)) { showChat = false } }
+          .transition(.opacity)
+          .zIndex(204)
+
+        ChatView(viewModel: chatVM)
+          .frame(minWidth: 800, idealWidth: 900, minHeight: 600, idealHeight: 700)
+          .clipShape(RoundedRectangle(cornerRadius: 16))
+          .shadow(color: .black.opacity(0.3), radius: 30, y: 10)
+          .padding(40)
+          .onExitCommand { withAnimation(.easeInOut(duration: 0.25)) { showChat = false } }
+          .transition(.opacity.combined(with: .scale(scale: 0.95)))
+          .zIndex(205)
+          .onAppear {
+            if let serverURL = vm.config?.serverURL {
+              chatVM.connect(serverURL: serverURL)
+            }
+          }
       }
 
       // AI Usage overlay — clicking outside dismisses (Task #2EB50767)
@@ -475,6 +502,12 @@ struct ContentView: View {
       Text(vm.rebaseRecoveryDialogMessage)
     }
     .onAppear {
+      // Initialize chat view model
+      if chatViewModel == nil {
+        let chatService = ChatService()
+        chatViewModel = ChatViewModel(chatService: chatService, apiService: vm.api)
+      }
+      
       // Check if onboarding is needed on first launch
       if vm.needsOnboarding {
         showOnboarding = true
@@ -910,6 +943,7 @@ private struct ToolbarArea: View {
   @Binding var showSettings: Bool
   @Binding var showInbox: Bool
   @Binding var showDocuments: Bool
+  @Binding var showChat: Bool
   @Binding var showTemplates: Bool
   @Binding var showHelp: Bool
   @Binding var showTextDump: Bool
@@ -1362,6 +1396,19 @@ private struct ToolbarArea: View {
       DocumentsToolbarButton(vm: vm) {
         withAnimation(.easeInOut(duration: 0.25)) { showDocuments = true }
       }
+      
+      // Chat button
+      Button {
+        withAnimation(.easeInOut(duration: 0.25)) { showChat = true }
+      } label: {
+        Image(systemName: "message.fill")
+          .font(.body)
+          .padding(6)
+          .background(Theme.subtle)
+          .clipShape(RoundedRectangle(cornerRadius: 8))
+      }
+      .buttonStyle(.plain)
+      .help("Chat with Lobs")
 
       // Templates button
       if !vm.templates.isEmpty {

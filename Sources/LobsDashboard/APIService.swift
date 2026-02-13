@@ -1284,6 +1284,59 @@ final class APIService {
       userInfo: [NSLocalizedDescriptionKey: "Artifact reading not yet implemented in API mode. Artifacts are file-based and require additional server infrastructure."]
     )
   }
+  
+  // MARK: - Chat
+  
+  func fetchChatSessions() async throws -> [ChatSession] {
+    return try await request(
+      method: "GET",
+      path: "/api/chat/sessions"
+    )
+  }
+  
+  func createChatSession(label: String) async throws -> ChatSession {
+    struct SessionCreate: Codable {
+      let label: String
+    }
+    
+    return try await request(
+      method: "POST",
+      path: "/api/chat/sessions",
+      body: SessionCreate(label: label)
+    )
+  }
+  
+  func fetchChatHistory(
+    sessionKey: String,
+    limit: Int = 100,
+    before: String? = nil
+  ) async throws -> [ChatMessage] {
+    var queryItems = [
+      URLQueryItem(name: "limit", value: String(limit))
+    ]
+    
+    if let before = before {
+      queryItems.append(URLQueryItem(name: "before", value: before))
+    }
+    
+    return try await request(
+      method: "GET",
+      path: "/api/chat/sessions/\(sessionKey)/messages",
+      queryItems: queryItems
+    )
+  }
+  
+  func sendChatMessage(sessionKey: String, content: String) async throws -> ChatMessage {
+    struct MessageSend: Codable {
+      let content: String
+    }
+    
+    return try await request(
+      method: "POST",
+      path: "/api/chat/sessions/\(sessionKey)/messages",
+      body: MessageSend(content: content)
+    )
+  }
 }
 
 // MARK: - Request/Response Models
