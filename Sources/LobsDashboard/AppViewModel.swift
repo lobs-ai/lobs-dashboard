@@ -2165,7 +2165,7 @@ final class AppViewModel: ObservableObject {
   func flashError(_ message: String) {
     errorBanner = message
     Task {
-      try? await Task.sleep(nanoseconds: 5_000_000_000)
+      try? await Task.sleep(nanoseconds: 8_000_000_000) // 8 seconds for errors
       if errorBanner == message { errorBanner = nil }
     }
   }

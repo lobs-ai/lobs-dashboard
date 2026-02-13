@@ -3,6 +3,12 @@ import Foundation
 enum APIError: Error, LocalizedError {
   case invalidURL
   case invalidResponse
+  case conflict(message: String)
+  case validation(message: String)
+  case notFound(message: String)
+  case serverError(message: String)
+  case connectionError(message: String)
+  case timeout(message: String)
   case httpError(statusCode: Int, message: String)
   case decodingError(Error)
   case encodingError(Error)
@@ -14,6 +20,18 @@ enum APIError: Error, LocalizedError {
       return "Invalid API URL"
     case .invalidResponse:
       return "Invalid API response"
+    case .conflict(let message):
+      return message
+    case .validation(let message):
+      return message
+    case .notFound(let message):
+      return message
+    case .serverError(let message):
+      return message
+    case .connectionError(let message):
+      return message
+    case .timeout(let message):
+      return message
     case .httpError(let code, let message):
       return "HTTP \(code): \(message)"
     case .decodingError(let error):
@@ -22,6 +40,59 @@ enum APIError: Error, LocalizedError {
       return "JSON encoding failed: \(error.localizedDescription)"
     case .networkError(let error):
       return "Network error: \(error.localizedDescription)"
+    }
+  }
+  
+  /// Parse a user-friendly error message from FastAPI error response
+  static func parseErrorResponse(_ data: Data, statusCode: Int) -> APIError {
+    // Try to parse FastAPI error format: {"detail": "..."}
+    struct FastAPIError: Codable {
+      let detail: String
+    }
+    
+    if let fastAPIError = try? JSONDecoder().decode(FastAPIError.self, from: data) {
+      let detail = fastAPIError.detail
+      
+      switch statusCode {
+      case 409:
+        // Conflict - extract entity type if possible
+        if detail.contains("project") && detail.contains("already exists") {
+          return .conflict(message: "A project with this name already exists")
+        } else if detail.contains("already exists") {
+          return .conflict(message: detail)
+        } else {
+          return .conflict(message: "This item already exists")
+        }
+        
+      case 422:
+        // Validation error
+        return .validation(message: "Invalid input: \(detail)")
+        
+      case 404:
+        return .notFound(message: "Not found: \(detail)")
+        
+      case 500...599:
+        return .serverError(message: "Server error — please try again")
+        
+      default:
+        return .httpError(statusCode: statusCode, message: detail)
+      }
+    }
+    
+    // Fallback for non-JSON or unknown format
+    let rawMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+    
+    switch statusCode {
+    case 409:
+      return .conflict(message: "This item already exists")
+    case 422:
+      return .validation(message: "Invalid input")
+    case 404:
+      return .notFound(message: "Not found")
+    case 500...599:
+      return .serverError(message: "Server error — please try again")
+    default:
+      return .httpError(statusCode: statusCode, message: rawMessage)
     }
   }
 }
@@ -103,15 +174,26 @@ final class APIService {
       }
     }
     
-    let (data, response) = try await URLSession.shared.data(for: req)
+    let (data, response): (Data, URLResponse)
+    do {
+      (data, response) = try await URLSession.shared.data(for: req)
+    } catch let error as URLError {
+      // Handle network-level errors with user-friendly messages
+      if error.code == .cannotConnectToHost || error.code == .cannotFindHost {
+        throw APIError.connectionError(message: "Cannot connect to server. Check that lobs-server is running.")
+      } else if error.code == .timedOut {
+        throw APIError.timeout(message: "Request timed out")
+      } else {
+        throw APIError.networkError(error)
+      }
+    }
     
     guard let httpResponse = response as? HTTPURLResponse else {
       throw APIError.invalidResponse
     }
     
     guard (200..<300).contains(httpResponse.statusCode) else {
-      let message = String(data: data, encoding: .utf8) ?? "Unknown error"
-      throw APIError.httpError(statusCode: httpResponse.statusCode, message: message)
+      throw APIError.parseErrorResponse(data, statusCode: httpResponse.statusCode)
     }
     
     do {
@@ -146,14 +228,26 @@ final class APIService {
       }
     }
     
-    let (_, response) = try await URLSession.shared.data(for: req)
+    let (data, response): (Data, URLResponse)
+    do {
+      (data, response) = try await URLSession.shared.data(for: req)
+    } catch let error as URLError {
+      // Handle network-level errors with user-friendly messages
+      if error.code == .cannotConnectToHost || error.code == .cannotFindHost {
+        throw APIError.connectionError(message: "Cannot connect to server. Check that lobs-server is running.")
+      } else if error.code == .timedOut {
+        throw APIError.timeout(message: "Request timed out")
+      } else {
+        throw APIError.networkError(error)
+      }
+    }
     
     guard let httpResponse = response as? HTTPURLResponse else {
       throw APIError.invalidResponse
     }
     
     guard (200..<300).contains(httpResponse.statusCode) else {
-      throw APIError.httpError(statusCode: httpResponse.statusCode, message: "Request failed")
+      throw APIError.parseErrorResponse(data, statusCode: httpResponse.statusCode)
     }
   }
   

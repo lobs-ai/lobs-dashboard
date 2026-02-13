@@ -2084,31 +2084,38 @@ private struct ErrorBanner: View {
   let dismiss: () -> Void
 
   var body: some View {
-    HStack(spacing: 8) {
+    HStack(spacing: 12) {
       Image(systemName: "exclamationmark.triangle.fill")
-        .foregroundStyle(.orange)
+        .font(.title3)
+        .foregroundStyle(.white)
       Text(message)
-        .font(.footnote)
-        .lineLimit(2)
+        .font(.system(size: 14, weight: .medium))
+        .foregroundStyle(.white)
+        .lineLimit(3)
+        .fixedSize(horizontal: false, vertical: true)
       Spacer()
       Button {
         dismiss()
       } label: {
-        Image(systemName: "xmark")
-          .font(.footnote)
-          .foregroundStyle(.secondary)
+        Image(systemName: "xmark.circle.fill")
+          .font(.title3)
+          .foregroundStyle(.white.opacity(0.7))
       }
       .buttonStyle(.plain)
+      .help("Dismiss")
     }
-    .padding(.horizontal, 16)
-    .padding(.vertical, 10)
-    .background(.red.opacity(0.08))
-    .clipShape(RoundedRectangle(cornerRadius: 10))
-    .overlay(
-      RoundedRectangle(cornerRadius: 10)
-        .stroke(Color.red.opacity(0.15))
-    )
     .padding(.horizontal, 20)
+    .padding(.vertical, 14)
+    .background(
+      LinearGradient(
+        colors: [.red.opacity(0.95), .orange.opacity(0.95)],
+        startPoint: .leading,
+        endPoint: .trailing
+      )
+    )
+    .clipShape(RoundedRectangle(cornerRadius: 12))
+    .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
+    .padding(.horizontal, 16)
   }
 }
 
@@ -3738,6 +3745,8 @@ struct CreateProjectSheet: View {
   @State private var title: String = ""
   @State private var notes: String = ""
   @State private var projectType: ProjectType = .kanban
+  @State private var errorMessage: String? = nil
+  @State private var isCreating: Bool = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
@@ -3782,28 +3791,103 @@ struct CreateProjectSheet: View {
 
         TextField("Project name", text: $title)
           .textFieldStyle(.roundedBorder)
+          .onChange(of: title) { _ in
+            // Clear error when user edits the title
+            errorMessage = nil
+          }
 
         TextField("Notes (optional)", text: $notes, axis: .vertical)
           .textFieldStyle(.roundedBorder)
           .lineLimit(6, reservesSpace: true)
+        
+        // Inline error display
+        if let error = errorMessage {
+          HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+              .foregroundStyle(.red)
+              .font(.footnote)
+            Text(error)
+              .font(.footnote)
+              .foregroundStyle(.red)
+            Spacer()
+          }
+          .padding(10)
+          .background(.red.opacity(0.08))
+          .clipShape(RoundedRectangle(cornerRadius: 8))
+          .overlay(
+            RoundedRectangle(cornerRadius: 8)
+              .stroke(Color.red.opacity(0.2), lineWidth: 1)
+          )
+          .transition(.opacity.combined(with: .move(edge: .top)))
+        }
       }
 
       HStack {
         Button("Cancel") { dismiss() }
           .keyboardShortcut(.cancelAction)
+          .disabled(isCreating)
 
         Spacer()
 
-        Button("Create") {
-          vm.createProject(title: title, notes: notes, type: projectType)
-          dismiss()
+        Button {
+          createProject()
+        } label: {
+          if isCreating {
+            HStack(spacing: 6) {
+              ProgressView()
+                .scaleEffect(0.7)
+              Text("Creating...")
+            }
+          } else {
+            Text("Create")
+          }
         }
         .keyboardShortcut(.defaultAction)
-        .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isCreating)
       }
     }
     .padding(20)
     .frame(width: 420)
+    .animation(.easeInOut(duration: 0.2), value: errorMessage)
+  }
+  
+  private func createProject() {
+    let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedTitle.isEmpty else { return }
+    
+    let id = vm.uniqueProjectId(for: trimmedTitle)
+    
+    isCreating = true
+    errorMessage = nil
+    
+    Task {
+      do {
+        // Create via API
+        _ = try await vm.api.createProject(id: id, title: trimmedTitle, type: projectType, notes: trimmedNotes.isEmpty ? nil : trimmedNotes)
+        
+        // Save README if notes exist
+        if !trimmedNotes.isEmpty {
+          try await vm.api.saveProjectReadme(projectId: id, content: trimmedNotes)
+        }
+        
+        await MainActor.run {
+          vm.flashSuccess("Project created")
+          vm.reload()
+          dismiss()
+        }
+      } catch {
+        await MainActor.run {
+          isCreating = false
+          // Show user-friendly error inline
+          if let apiError = error as? APIError {
+            errorMessage = apiError.errorDescription
+          } else {
+            errorMessage = error.localizedDescription
+          }
+        }
+      }
+    }
   }
 }
 
